@@ -1,0 +1,840 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="py-4">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+        <div>
+            <h2 class="mb-1" style="letter-spacing:-0.02em;">Supply Plan</h2>
+            <div class="text-muted small">Filters + inputs on the left. Graph and table on the right.</div>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="badge text-bg-light border">Grain: {{ grain_label }}</span>
+            {% if has_forecast and forecast_start_month and forecast_months %}
+            <span class="badge text-bg-light border">Horizon: {{ forecast_start_month }}-01 x {{ forecast_months }} months</span>
+            {% endif %}
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#supplyTermsModal" title="Terms">
+                <span aria-hidden="true">i</span>
+            </button>
+            
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-4 col-xl-3">
+            <div class="position-sticky" style="top: 1rem;">
+                <div class="alert alert-light border mb-3 small" style="border-color: rgba(18,24,39,0.10) !important;">
+                    {% if has_raw_data %}
+                    Inventory will be taken from your uploaded CSV if an inventory/on-hand column exists; otherwise defaults will be generated.
+                    {% else %}
+                    No uploaded dataset found in this session; defaults will be generated for inventory/constraints/policy.
+                    {% endif %}
+                </div>
+
+                {% if not has_forecast %}
+                <div class="alert alert-warning small">
+                    No forecast is currently loaded in this session. Run a forecast first and come back.
+                </div>
+                {% endif %}
+
+        <form id="supplyPlanForm">
+            {% if has_forecast and forecast_start_month and forecast_months %}
+            <div class="mb-3">
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Forecast Start</label>
+                        <input type="text" class="form-control" value="{{ forecast_start_month }}-01" disabled>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Forecast Horizon (months)</label>
+                        <input type="text" class="form-control" value="{{ forecast_months }}" disabled>
+                    </div>
+                </div>
+                <div class="form-text">Supply plan period_start and horizon match the forecast settings.</div>
+            </div>
+            {% endif %}
+
+            {% if combos and combos|length > 0 %}
+            <div class="mb-3">
+                <label for="combo_search" class="form-label">Search</label>
+                <input type="text" class="form-control mb-2" id="combo_search" placeholder="Type to filter series...">
+                <label for="combo_key" class="form-label">Item / Store (series)</label>
+                <select class="form-select" id="combo_key">
+                    {% for c in combos %}
+                    <option value="{{ c.key }}">{{ c.label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Select which item/store to simulate (sawtooth chart).</div>
+            </div>
+            {% endif %}
+
+            <div class="alert alert-light border mb-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                <div class="small text-muted mb-0">
+                    Using the latest ForecastAI output with auto-generated inventory/constraints/policy where needed.
+                    Use <strong>Edit Inputs</strong> below to override the selected series.
+                </div>
+            </div>
+
+            {% if combos and combos|length > 0 %}
+            <div class="card p-3 mb-4" style="border-radius: 16px; border: 1px solid rgba(18,24,39,0.10); background: rgba(255,255,255,0.85);">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <div>
+                        <h5 class="mb-0">Edit Inputs (Selected Series)</h5>
+                        <div class="text-muted small">Defaults load from your forecast/session; change values and regenerate to update the plot.</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="load-defaults-btn">
+                            <i class="fas fa-wand-magic-sparkles me-1"></i>Load defaults
+                        </button>
+                        <div class="form-check ms-2">
+                            <input class="form-check-input" type="checkbox" id="override_enabled" checked>
+                            <label class="form-check-label small" for="override_enabled">Apply overrides</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                            <div class="fw-bold mb-2">Supply Constraints</div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">Lead time (days)</label>
+                                    <input type="number" class="form-control" id="override_lead_time_days" value="14" min="0">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">MOQ</label>
+                                    <input type="number" class="form-control" id="override_moq" value="100" min="0">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">Order multiple</label>
+                                    <input type="number" class="form-control" id="override_order_multiple" value="10" min="1">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">Max capacity / week</label>
+                                    <input type="number" class="form-control" id="override_max_capacity_per_week" value="1200" min="0">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                            <div class="fw-bold mb-2">Policy + Inventory Snapshot</div>
+                            <div class="row g-2">
+                                <div class="col-12 mb-2">
+                                    <label class="form-label small mb-1">Inventory column (optional)</label>
+                                    <select class="form-select" id="inventory_column_select">
+                                        <option value="">Auto (detect or generate)</option>
+                                        {% for c in raw_inventory_columns %}
+                                        <option value="{{ c }}" {% if detected_inventory_col and detected_inventory_col == c %}selected{% endif %}>{{ c }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text small">Choose which column in your uploaded CSV represents on-hand inventory. Leave blank to auto-detect or generate.</div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">Service level</label>
+                                    <input type="number" class="form-control" id="override_service_level" value="0.95" min="0.5" max="0.999" step="0.01">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">On hand</label>
+                                    <input type="number" class="form-control" id="override_on_hand" value="500" min="0">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">Allocated</label>
+                                    <input type="number" class="form-control" id="override_allocated" value="0" min="0">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1">Backorders</label>
+                                    <input type="number" class="form-control" id="override_backorders" value="0" min="0">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="fw-bold">Forecast (Monthly Override)</div>
+                                <div class="text-muted small">CSV: period_start,forecast_demand</div>
+                            </div>
+                            <textarea class="form-control font-monospace" id="override_forecast_csv" rows="6">period_start,forecast_demand
+{{ forecast_start_month }}-01,0</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary" id="generateSupplyBtn">Generate</button>
+                <a href="/download_supply_plan" class="btn btn-outline-success disabled" id="downloadPlanBtn" target="_blank" aria-disabled="true">Download CSV</a>
+                <div id="supplyPlanAlert" class="small text-muted"></div>
+            </div>
+        </form>
+
+            </div>
+        </div>
+
+        <div class="col-lg-8 col-xl-9">
+            <div class="card border-0 shadow-sm mb-3" style="border-radius: 16px;">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="fw-semibold">Graph</div>
+                        <div class="text-muted small">Projected on-hand + reorder lines</div>
+                    </div>
+                    <div id="supplyPlanPlot" style="min-height: 420px;" class="border rounded-3"></div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm" style="border-radius: 16px;">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="fw-semibold">Table</div>
+                        <div class="text-muted small">Selected series (monthly)</div>
+                    </div>
+                    <div id="supplyPlanTable" class="table-responsive border rounded-3" style="border-color: rgba(18,24,39,0.10) !important;"></div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mt-3" id="planningInsightsCard" style="border-radius: 16px;">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <div>
+                            <div class="fw-semibold">Planning Insights</div>
+                            <div class="text-muted small">Top risks, suggested actions, and recommendations.</div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="run-planning-btn">Generate</button>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="form-label small mb-1">Question (optional)</label>
+                            <input type="text" class="form-control" id="planning_question" value="Provide prioritized recommendations and next steps.">
+                        </div>
+                    </div>
+
+                    <div class="mt-3" id="planningInsightsOutput" style="display:none;"></div>
+
+                    <div class="mt-3">
+                        <div class="fw-semibold small mb-1">Ask a follow-up</div>
+                        <div class="d-flex gap-2">
+                            <input type="text" class="form-control" id="planning_followup_input" placeholder="Ask a question about these risks/actions/recommendations..." disabled>
+                            <button type="button" class="btn btn-outline-secondary" id="planning_followup_send" disabled>Send</button>
+                        </div>
+                        <div id="planningFollowupChat" class="mt-2 d-grid gap-2" style="display:none; max-height: 240px; overflow:auto;"></div>
+                        <div class="text-muted small mt-1">Tip: Click Generate first to load context, then ask follow-ups.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Terms / Definitions modal -->
+<div class="modal fade" id="supplyTermsModal" tabindex="-1" aria-labelledby="supplyTermsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="supplyTermsModalLabel">Supply Planning – Terms</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="small text-muted mb-3">
+                    This page uses a <strong>monthly</strong> time-phased simulation. Some inputs (like lead time in days) are bucketed to months.
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width: 32%;">Term</th>
+                                <th>Meaning</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>Projected On-hand</code></td><td>The blue sawtooth line: simulated inventory over time using <code>beginning_on_hand</code> and <code>ending_on_hand</code>.</td></tr>
+                            <tr><td><code>forecast_demand</code></td><td>Forecasted demand for the month (monthly bucket).</td></tr>
+                            <tr><td><code>beginning_on_hand</code></td><td>On-hand at the start of the month after adding <code>receipts</code> arriving that month.</td></tr>
+                            <tr><td><code>receipts</code></td><td>Quantity arriving this month from orders placed in prior months (after lead time).</td></tr>
+                            <tr><td><code>order_qty</code></td><td>Order placed this month. It is scheduled to arrive after lead time via the pipeline.</td></tr>
+                            <tr><td><code>ending_on_hand</code></td><td>On-hand after consuming <code>forecast_demand</code> for the month (0 if stockout).</td></tr>
+                            <tr><td><code>inventory_position</code></td><td><code>on_hand + sum(pipeline)</code>: what you have plus what is already on order.</td></tr>
+                            <tr><td><code>lead_time_days</code></td><td>Supplier lead time input in days (your override).</td></tr>
+                            <tr><td><code>lead_time_months</code></td><td><code>ceil(lead_time_days / 30)</code> (minimum 1). Used by the monthly simulation to time receipts and demand coverage.</td></tr>
+                            <tr><td><code>safety_stock</code></td><td>Buffer stock based on <code>service_level</code> and monthly demand variability (scaled by <code>sqrt(lead_time_months)</code>).</td></tr>
+                            <tr><td><code>reorder_point</code></td><td><code>safety_stock + lead_time_demand</code> where lead-time demand is the sum of forecast over the next <code>lead_time_months</code>.</td></tr>
+                            <tr><td><code>target_level</code></td><td>Order-up-to target: <code>safety_stock + cover_demand</code>, where cover demand is the next <code>lead_time_months + 1</code> months.</td></tr>
+                            <tr><td><code>service_level</code></td><td>Target in-stock probability (0–1). Higher values increase <code>safety_stock</code> and tend to increase ordering.</td></tr>
+                            <tr><td><code>moq</code></td><td>Minimum Order Quantity. If an order is needed, the model orders at least this many units.</td></tr>
+                            <tr><td><code>order_multiple</code></td><td>Order quantity is rounded up to this multiple (e.g., 5 means 825 is valid, 822 is not).</td></tr>
+                            <tr><td><code>max_capacity_per_week</code></td><td>Optional supplier capacity. Converted roughly to monthly capacity as <code>* 4</code> and used as an upper bound.</td></tr>
+                            <tr><td><code>input_on_hand</code></td><td>Raw inventory snapshot input (before subtracting allocations/backorders).</td></tr>
+                            <tr><td><code>input_allocated</code></td><td>Units reserved/committed elsewhere (reduces what’s available).</td></tr>
+                            <tr><td><code>input_backorders</code></td><td>Units already owed (past unmet demand) (reduces what’s available).</td></tr>
+                            <tr><td><code>starting_net_on_hand</code></td><td><code>max(0, input_on_hand - input_allocated - input_backorders)</code>: usable starting inventory for the simulation.</td></tr>
+                            <tr><td><code>stockout_qty</code></td><td>How much demand could not be satisfied in that month.</td></tr>
+                            <tr><td><code>risk_flag</code></td><td><code>OK</code> if no stockout, <code>STOCKOUT</code> if inventory hit 0 before demand was fully met.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+ 
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+    async function loadDefaults() {
+        const combo = document.getElementById('combo_key');
+        if (!combo) return;
+        try {
+            const res = await fetch(`/supply_plan_defaults?combo_key=${encodeURIComponent(combo.value)}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.constraints) {
+                if (document.getElementById('override_lead_time_days')) document.getElementById('override_lead_time_days').value = data.constraints.lead_time_days ?? 14;
+                if (document.getElementById('override_moq')) document.getElementById('override_moq').value = data.constraints.moq ?? 100;
+                if (document.getElementById('override_order_multiple')) document.getElementById('override_order_multiple').value = data.constraints.order_multiple ?? 10;
+                if (document.getElementById('override_max_capacity_per_week')) document.getElementById('override_max_capacity_per_week').value = data.constraints.max_capacity_per_week ?? 1200;
+            }
+            if (data.policy) {
+                if (document.getElementById('override_service_level')) document.getElementById('override_service_level').value = data.policy.service_level ?? 0.95;
+            }
+            if (data.inventory) {
+                if (document.getElementById('override_on_hand')) document.getElementById('override_on_hand').value = data.inventory.on_hand ?? 0;
+                if (document.getElementById('override_allocated')) document.getElementById('override_allocated').value = data.inventory.allocated ?? 0;
+                if (document.getElementById('override_backorders')) document.getElementById('override_backorders').value = data.inventory.backorders ?? 0;
+            }
+            if (data.forecast_monthly_csv && document.getElementById('override_forecast_csv')) {
+                document.getElementById('override_forecast_csv').value = data.forecast_monthly_csv;
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    const loadBtn = document.getElementById('load-defaults-btn');
+    if (loadBtn) loadBtn.addEventListener('click', loadDefaults);
+    const combo = document.getElementById('combo_key');
+    const comboSearch = document.getElementById('combo_search');
+
+    let comboOptions = [];
+    if (combo) {
+        comboOptions = Array.from(combo.options).map(o => ({ value: o.value, label: o.text }));
+    }
+
+    function applyComboFilter() {
+        if (!combo || !comboSearch) return;
+        const q = (comboSearch.value || '').trim().toLowerCase();
+        const prev = combo.value;
+        const filtered = comboOptions.filter(o => o.label.toLowerCase().includes(q)).slice(0, 500);
+        combo.innerHTML = '';
+        for (const o of filtered) {
+            const opt = document.createElement('option');
+            opt.value = o.value;
+            opt.textContent = o.label;
+            combo.appendChild(opt);
+        }
+        if (filtered.some(o => o.value === prev)) {
+            combo.value = prev;
+        } else if (combo.options.length) {
+            combo.selectedIndex = 0;
+        }
+        loadDefaults();
+    }
+
+    if (comboSearch && combo) {
+        let t = null;
+        comboSearch.addEventListener('input', function() {
+            if (t) clearTimeout(t);
+            t = setTimeout(applyComboFilter, 120);
+        });
+    }
+
+    if (combo) combo.addEventListener('change', loadDefaults);
+
+    // Initial default load for first series
+    loadDefaults();
+
+    const plotEl = document.getElementById('supplyPlanPlot');
+    if (plotEl) plotEl.innerHTML = `<div class="p-3 text-muted small">Generate a supply plan to see the sawtooth chart.</div>`;
+    const tableEl = document.getElementById('supplyPlanTable');
+    if (tableEl) tableEl.innerHTML = `<div class="p-3 text-muted small">Generate a supply plan to see the month-by-month table.</div>`;
+
+    const esc = (s) => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const runPlanningBtn = document.getElementById('run-planning-btn');
+    const followupInput = document.getElementById('planning_followup_input');
+    const followupSend = document.getElementById('planning_followup_send');
+    const followupChat = document.getElementById('planningFollowupChat');
+    let planningChatHistory = [];
+    let planningInFlight = false;
+
+    
+
+    function addPlanningChat(text, who) {
+        if (!followupChat) return;
+        followupChat.style.display = 'block';
+        const wrap = document.createElement('div');
+        wrap.className = `border rounded-3 p-2 small ${who === 'user' ? 'bg-white' : 'bg-light'}`;
+        wrap.textContent = String(text || '');
+        followupChat.appendChild(wrap);
+        followupChat.scrollTop = followupChat.scrollHeight;
+    }
+
+    function setFollowupEnabled(enabled) {
+        if (followupInput) followupInput.disabled = !enabled;
+        if (followupSend) followupSend.disabled = !enabled;
+    }
+
+    async function planningFollowupAsk(question) {
+        const comboKey = document.getElementById('combo_key') ? document.getElementById('combo_key').value : null;
+        const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2));
+
+        const trimmedHistory = planningChatHistory.slice(-8);
+        const res = await fetch('/planning/followup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: "default",
+                combo_key: comboKey,
+                question: question,
+                history: trimmedHistory,
+                request_id: requestId
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const msg = data && data.detail ? String(data.detail) : `Server error: ${res.status}`;
+            addPlanningChat(msg, 'bot');
+            return;
+        }
+        if (data.llm_error) {
+            addPlanningChat(`(LLM issue: ${data.llm_error})`, 'bot');
+        }
+        addPlanningChat(data.answer || 'No answer.', 'bot');
+        planningChatHistory.push({ role: 'assistant', content: String(data.answer || '') });
+    }
+
+    if (runPlanningBtn) {
+        runPlanningBtn.addEventListener('click', async function() {
+            const out = document.getElementById('planningInsightsOutput');
+            const q = document.getElementById('planning_question') ? document.getElementById('planning_question').value : '';
+            const comboKey = document.getElementById('combo_key') ? document.getElementById('combo_key').value : null;
+            if (!out) return;
+
+            runPlanningBtn.disabled = true;
+            out.style.display = 'block';
+            out.innerHTML = `<div class="text-muted small"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Generating insights...</div>`;
+            setFollowupEnabled(false);
+            planningChatHistory = [];
+            if (followupChat) {
+                followupChat.innerHTML = '';
+                followupChat.style.display = 'none';
+            }
+
+            try {
+                const res = await fetch('/planning/full', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: "default",
+                        combo_key: comboKey,
+                        question: q,
+                        request_id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2))
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    out.innerHTML = `<div class="alert alert-danger mb-0">Server error: ${res.status}</div>`;
+                    return;
+                }
+
+                const provider = data.provider ? String(data.provider) : 'unknown';
+                const llmProvider = data.llm_provider ? String(data.llm_provider) : provider;
+                const llmError = data.llm_error ? String(data.llm_error) : '';
+                const risks = Array.isArray(data.risks) ? data.risks : [];
+                const actions = Array.isArray(data.actions) ? data.actions : [];
+                const answer = data.answer ? String(data.answer) : '';
+
+                const riskItems = risks.slice(0, 8).map(r => {
+                    const sev = (r && r.severity) ? String(r.severity) : 'info';
+                    const sevClass = (sev === 'high') ? 'danger' : (sev === 'medium') ? 'warning' : 'secondary';
+                    const msg = (r && (r.message || r.type)) ? String(r.message || r.type) : '';
+                    return `<li class="mb-1"><span class="badge text-bg-${sevClass} me-2">${esc(sev)}</span>${esc(msg)}</li>`;
+                }).join('');
+                const actionItems = actions.slice(0, 8).map(a => {
+                    const msg = (a && (a.message || a.type)) ? String(a.message || a.type) : '';
+                    return `<li class="mb-1">${esc(msg)}</li>`;
+                }).join('');
+
+                /* Decision Engine (options + AI narrator) disabled in favor of canonical data-block Q&A.
+                const fmt = (n, d = 2) => (typeof n === 'number' && isFinite(n)) ? n.toFixed(d) : (n === null || n === undefined ? '' : String(n));
+                const fmtPct = (x) => (typeof x === 'number' && isFinite(x)) ? `${x.toFixed(1)}%` : '';
+                const actionLabel = (a) => {
+                    const s = String(a || '');
+                    if (s === 'follow_policy') return 'Follow policy';
+                    if (s === 'expedite_now') return 'Aggressive buffer';
+                    if (s === 'aggressive_buffer') return 'Increase buffer / order more';
+                    if (s === 'capacity_capped') return 'Capacity capped';
+                    return s || 'Option';
+                };
+
+                let decisionHtml = '';
+                try {
+                    if (sku && decisionPeriod) {
+                        const reqBody = {
+                            sku: String(sku),
+                            period: String(decisionPeriod),
+                            location: location ? String(location) : null,
+                            session_id: "default",
+                            service_level_target: slt,
+                            narration_guidance: q ? String(q) : null,
+                        };
+
+                        // Option Engine + Scoring (deterministic)
+                        const sRes = await fetch('/score-options', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(reqBody)
+                        });
+                        const sData = await sRes.json().catch(() => ({}));
+                        if (!sRes.ok) {
+                            const msg = sData && sData.detail ? String(sData.detail) : `Scoring failed (HTTP ${sRes.status}).`;
+                            throw new Error(msg);
+                        }
+                        const options = Array.isArray(sData.options) ? sData.options : [];
+                        const slTarget = Number(sData.service_level_target || 0);
+                        const forecastDemand = Number(sData.forecast_demand || 0);
+                        const beginInv = Number(sData.beginning_on_hand || 0);
+                        const ltMonths = Number(sData.lead_time_months || 0);
+
+                        const bestStockout = options.length ? Math.min(...options.map(o => Number(o.projected_stockout_units || 0))) : 0;
+                        const bestService = options.length ? Math.max(...options.map(o => Number(o.service_level || 0))) : 0;
+
+                        const baseOpt = options.find(o => String(o.option_id) === 'A') || (options.length ? options[0] : null);
+                        const baseStockU = baseOpt ? Number(baseOpt.projected_stockout_units || 0) : 0;
+                        const baseSvc = baseOpt ? Number(baseOpt.service_level || 0) : 0;
+
+                        const buildRows = (chosenId) => options.map((o) => {
+                            const oid = String(o.option_id || '');
+                            const act = actionLabel(o.action);
+                            const oq = Number(o.order_qty || 0);
+                            const stockU = Number(o.projected_stockout_units || 0);
+                            const endInv = Number(o.ending_inventory || 0);
+                            const svc = Number(o.service_level || 0);
+                            const score = Number(o.decision_score || 0);
+
+                            const stockCls = stockU > 0 ? 'text-danger' : 'text-success';
+                            const svcOk = slTarget > 0 ? (svc >= slTarget) : false;
+                            const svcCls = svcOk ? 'text-success' : 'text-muted';
+
+                            const isBestStock = Math.abs(stockU - bestStockout) < 1e-9;
+                            const isBestSvc = Math.abs(svc - bestService) < 1e-9;
+                            const rowCls = (chosenId && oid === String(chosenId)) ? 'table-primary' : '';
+
+                            return `
+                                <tr class="${rowCls}">
+                                    <td class="fw-semibold">${esc(oid)}</td>
+                                    <td>${esc(act)}</td>
+                                    <td class="text-end">${esc(fmt(oq, 0))}</td>
+                                    <td class="text-end ${stockCls}">${isBestStock ? '<span class="fw-semibold">' + esc(fmt(stockU, 0)) + '</span>' : esc(fmt(stockU, 0))}</td>
+                                    <td class="text-end">${esc(fmt(endInv, 0))}</td>
+                                    <td class="text-end ${svcCls}">${isBestSvc ? '<span class="fw-semibold">' + esc(fmt(svc * 100.0, 0)) + '%</span>' : esc(fmt(svc * 100.0, 0)) + '%'}</td>
+                                </tr>
+                            `;
+                        }).join('') || `<tr><td colspan="6" class="text-muted small">No options returned.</td></tr>`;
+
+                        const scoreChips = options
+                            .slice()
+                            .sort((a, b) => Number(b.decision_score || 0) - Number(a.decision_score || 0))
+                            .map(o => `<span class="badge text-bg-light border">Option ${esc(String(o.option_id || ''))}: ${esc(fmt(Number(o.decision_score || 0), 2))}</span>`)
+                            .join(' ');
+
+                        // Remove option-based LLM selection: pick deterministic best-by-score locally.
+                        let aiBlock = '';
+                        let chosenId = options.length ? String(options[0].option_id || '') : '';
+
+                        const rows = buildRows(chosenId);
+
+                        decisionHtml = `
+                            <div class="col-12">
+                                <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                        <div class="small text-muted">
+                                            <span class="me-2">1️⃣ Context</span>
+                                            <span class="fw-semibold text-dark">SKU:</span> ${esc(String(sku || ''))}
+                                            ${location ? ` <span class="text-muted">|</span> <span class="fw-semibold text-dark">Store:</span> ${esc(String(location))}` : ``}
+                                            <span class="text-muted">|</span> <span class="fw-semibold text-dark">Period:</span> ${esc(String(decisionPeriod))}
+                                        </div>
+                                        <span class="badge text-bg-light border">Decision Engine</span>
+                                    </div>
+                                    <div class="mt-2 small text-muted d-flex flex-wrap gap-3">
+                                        <div><span class="fw-semibold text-dark">Forecast Demand:</span> ${esc(fmt(forecastDemand, 0))} units</div>
+                                        <div><span class="fw-semibold text-dark">Beginning Inventory:</span> ${esc(fmt(beginInv, 0))} units</div>
+                                        <div><span class="fw-semibold text-dark">Lead Time:</span> ${esc(fmt(ltMonths, 0))} months</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="alert ${baseStockU > 0 ? 'alert-danger' : 'alert-light'} border mb-0" style="border-color: rgba(18,24,39,0.10) !important;">
+                                    <div class="fw-semibold mb-1">2️⃣ Situation Summary</div>
+                                    <div class="small mb-1">⚠️ Stock-out Risk Detected</div>
+                                    <ul class="mb-0 ps-3 small">
+                                        <li>Expected stock-out: <span class="fw-semibold">${esc(fmt(baseStockU, 0))}</span> units</li>
+                                        <li>Current policy service level: <span class="fw-semibold">${esc(fmt(baseSvc * 100.0, 0))}%</span></li>
+                                        <li>Business target service level: <span class="fw-semibold">${esc(fmt(slTarget * 100.0, 0))}%</span></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                                    <div class="fw-semibold mb-2">3️⃣ Decision Options</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead>
+                                                <tr class="text-muted small">
+                                                    <th style="width:70px;">Option</th>
+                                                    <th>Strategy</th>
+                                                    <th class="text-end">Order Qty</th>
+                                                    <th class="text-end">Stock-out</th>
+                                                    <th class="text-end">Ending Inventory</th>
+                                                    <th class="text-end">Service Level</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>${rows}</tbody>
+                                        </table>
+                                    </div>
+                                    <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+                                        <span class="text-muted small">Scores:</span> ${scoreChips || '<span class="text-muted small">n/a</span>'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                ${aiBlock}
+                            </div>
+                        `;
+                    }
+                } catch (e) {
+                    decisionHtml = `
+                        <div class="col-12">
+                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                                    <div class="fw-semibold">Decision Engine</div>
+                                    <span class="badge text-bg-light border">Options</span>
+                                </div>
+                                <div class="text-muted small mb-0">${esc(String(e))}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                */
+                out.innerHTML = `
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <span class="badge text-bg-light border">Recommendations: ${esc(provider)}</span>
+                        <span class="badge text-bg-light border">Risks/Actions: rule-based</span>
+                        ${comboKey ? `<span class="badge text-bg-light border">Series: ${esc(comboKey)}</span>` : ``}
+                        ${(llmProvider && llmProvider !== provider) ? `<span class="badge text-bg-light border">Attempted: ${esc(llmProvider)}</span>` : ``}
+                    </div>
+                    ${llmError ? `<div class="alert alert-warning py-2 px-3 small mb-2">${esc(llmError)}</div>` : ``}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                                <div class="fw-semibold mb-2">Top Risks</div>
+                                ${riskItems ? `<ul class="mb-0 ps-3">${riskItems}</ul>` : `<div class="text-muted small mb-0">No risks returned.</div>`}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                                <div class="fw-semibold mb-2">Suggested Actions</div>
+                                ${actionItems ? `<ul class="mb-0 ps-3">${actionItems}</ul>` : `<div class="text-muted small mb-0">No actions returned.</div>`}
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                                <div class="fw-semibold mb-2">Recommendations</div>
+                                <pre class="mb-0" style="white-space:pre-wrap; font-size:0.95em;">${esc(answer)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Enable follow-up questions; keep the initial recommendations in history (for context).
+                setFollowupEnabled(true);
+                if (answer) {
+                    planningChatHistory.push({ role: 'assistant', content: answer });
+                }
+            } catch (err) {
+                out.innerHTML = `<div class="alert alert-danger mb-0">Unexpected error: ${err}</div>`;
+                console.error('Planning insights error:', err);
+            } finally {
+                runPlanningBtn.disabled = false;
+            }
+        });
+    }
+
+    if (followupInput && followupSend) {
+        followupSend.addEventListener('click', async function() {
+            if (planningInFlight) return;
+            const q = (followupInput.value || '').trim();
+            if (!q) return;
+            planningInFlight = true;
+            addPlanningChat(q, 'user');
+            planningChatHistory.push({ role: 'user', content: q });
+            followupInput.value = '';
+            followupInput.disabled = true;
+            followupSend.disabled = true;
+            try {
+                await planningFollowupAsk(q);
+            } finally {
+                planningInFlight = false;
+                followupInput.disabled = false;
+                followupSend.disabled = false;
+                followupInput.focus();
+            }
+        });
+
+        followupInput.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                followupSend.click();
+            }
+        });
+    }
+});
+
+function setDownloadEnabled(enabled) {
+    const a = document.getElementById('downloadPlanBtn');
+    if (!a) return;
+    if (enabled) {
+        a.classList.remove('disabled');
+        a.setAttribute('aria-disabled', 'false');
+    } else {
+        a.classList.add('disabled');
+        a.setAttribute('aria-disabled', 'true');
+    }
+}
+
+function renderSupplyTable(columns, rows) {
+    const el = document.getElementById('supplyPlanTable');
+    if (!el) return;
+    const esc = (s) => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    if (!Array.isArray(columns) || !Array.isArray(rows) || rows.length === 0) {
+        el.innerHTML = `<div class="p-3 text-muted small">No table data returned.</div>`;
+        return;
+    }
+    const thead = columns.map(c => `<th class="small text-muted fw-semibold" style="position:sticky; top:0; background:#fff;">${esc(c)}</th>`).join('');
+    const body = rows.map(r => {
+        const tds = columns.map(c => {
+            const v = (r && typeof r === 'object') ? r[c] : null;
+            const s = (v === null || v === undefined) ? '' : String(v);
+            return `<td class="small" style="white-space:nowrap;">${esc(s)}</td>`;
+        }).join('');
+        return `<tr>${tds}</tr>`;
+    }).join('');
+    el.innerHTML = `
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr>${thead}</tr></thead>
+            <tbody>${body}</tbody>
+        </table>
+    `;
+}
+
+document.getElementById('supplyPlanForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('generateSupplyBtn');
+    const alertEl = document.getElementById('supplyPlanAlert');
+    const plotEl = document.getElementById('supplyPlanPlot');
+    const tableEl = document.getElementById('supplyPlanTable');
+
+    if (btn) btn.disabled = true;
+    setDownloadEnabled(false);
+    if (alertEl) alertEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Generating...`;
+
+    const payload = {
+        combo_key: document.getElementById('combo_key') ? document.getElementById('combo_key').value : null,
+        use_latest_forecast: true,
+        auto_fill: true,
+        forecast_csv: "",
+        inventory_csv: "",
+        constraints_csv: "",
+        policy_csv: "",
+        override_enabled: document.getElementById('override_enabled') ? document.getElementById('override_enabled').checked : false,
+        override_lead_time_days: document.getElementById('override_lead_time_days') ? document.getElementById('override_lead_time_days').value : null,
+        override_moq: document.getElementById('override_moq') ? document.getElementById('override_moq').value : null,
+        override_order_multiple: document.getElementById('override_order_multiple') ? document.getElementById('override_order_multiple').value : null,
+        override_max_capacity_per_week: document.getElementById('override_max_capacity_per_week') ? document.getElementById('override_max_capacity_per_week').value : null,
+        override_service_level: document.getElementById('override_service_level') ? document.getElementById('override_service_level').value : null,
+        override_on_hand: document.getElementById('override_on_hand') ? document.getElementById('override_on_hand').value : null,
+        override_allocated: document.getElementById('override_allocated') ? document.getElementById('override_allocated').value : null,
+        override_backorders: document.getElementById('override_backorders') ? document.getElementById('override_backorders').value : null,
+        override_forecast_csv: document.getElementById('override_forecast_csv') ? document.getElementById('override_forecast_csv').value : null,
+        inventory_column: (document.getElementById('inventory_column_select') ? document.getElementById('inventory_column_select').value : null) || null,
+    };
+
+    try {
+        const res = await fetch('/supply_plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (alertEl) alertEl.innerHTML = `<span class="text-danger">Server error: ${res.status}</span>`;
+            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Server error: ${res.status}</div>`;
+            if (tableEl) tableEl.innerHTML = ``;
+            return;
+        }
+        if (data.error) {
+            if (alertEl) alertEl.innerHTML = `<span class="text-danger">${String(data.error)}</span>`;
+            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">${String(data.error)}</div>`;
+            if (tableEl) tableEl.innerHTML = ``;
+            return;
+        }
+
+        if (alertEl) {
+            const src = data && data.inventory_source ? String(data.inventory_source) : null;
+            const srcLabel = src === 'file_upload' ? 'Uploaded CSV' : src === 'file_column' ? 'Uploaded CSV (selected column)' : src === 'derived' ? 'Derived from session context' : src === 'manual_override' ? 'Manual overrides (textbox)' : src === 'generated' ? 'Generated defaults' : 'Unknown';
+            alertEl.innerHTML = `Updated. <span class="badge text-bg-light border ms-2">Inventory: ${srcLabel}</span>`;
+        }
+        setDownloadEnabled(true);
+
+        if (data.plot_json) {
+            const plotObj = JSON.parse(data.plot_json);
+            Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+        } else if (plotEl) {
+            plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
+        }
+
+        renderSupplyTable(data.table_columns, data.table_rows);
+    } catch (err) {
+        if (alertEl) alertEl.innerHTML = `<span class="text-danger">Unexpected error: ${err}</span>`;
+        if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Unexpected error: ${err}</div>`;
+        if (tableEl) tableEl.innerHTML = ``;
+        console.error('Supply plan error:', err);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

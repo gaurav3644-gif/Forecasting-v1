@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForecastAI - Retail's AI Forecasting Partner</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+                :root {
+                    --bg: #f6f8ff;
+                    --panel: #ffffff;
+                    --text: #121827;
+                    --muted: #5c5e6e;
+                    --border: rgba(18,24,39,0.12);
+                    --shadow-sm: 0 8px 30px rgba(18,24,39,0.06);
+                    --shadow-md: 0 18px 60px rgba(18,24,39,0.10);
+                    --brand-1: #43e97b;
+                    --brand-2: #38f9d7;
+                    --accent: #5f6fff;
+                }
+                /* Fix for sections with light backgrounds */
+                .section[style*="#f8f9fa"],
+                .section[style*="#ffffff"],
+                .value-prop-section,
+                .newsletter-section,
+                .card,
+                .insight-card,
+                .stat-box,
+                .chart-container {
+                    color: #181a23 !important;
+                }
+                .section[style*="#f8f9fa"] h2,
+                .section[style*="#f8f9fa"] h3,
+                .section[style*="#f8f9fa"] h4,
+                .section[style*="#f8f9fa"] p,
+                .section[style*="#f8f9fa"] .step-number,
+                .section[style*="#ffffff"] h2,
+                .section[style*="#ffffff"] h3,
+                .section[style*="#ffffff"] h4,
+                .section[style*="#ffffff"] p,
+                .section[style*="#ffffff"] .step-number {
+                    color: #181a23 !important;
+                }
+                .text-muted, .section[style*="#f8f9fa"] .text-muted, .section[style*="#ffffff"] .text-muted {
+                    color: #5c5e6e !important;
+                }
+                .step-number {
+                    background: linear-gradient(135deg, #27c96f 0%, #23e3c9 100%);
+                    color: #fff !important;
+                    font-weight: 700;
+                    font-size: 1.5rem;
+                    margin: 0 auto 20px;
+                    width: 60px;
+                    height: 60px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 12px #27c96f55;
+                }
+        body {
+            font-family: 'Inter', 'SF Pro Display', 'Segoe UI', Arial, sans-serif;
+            background: radial-gradient(1200px 500px at 20% 5%, rgba(95,111,255,0.12), transparent 60%),
+                        radial-gradient(900px 500px at 80% 0%, rgba(56,249,215,0.10), transparent 55%),
+                        var(--bg);
+            min-height: 100vh;
+            color: var(--text);
+        }
+        .navbar {
+            background: rgba(255,255,255,0.80);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            box-shadow: var(--shadow-sm);
+            border-bottom: 1px solid rgba(18,24,39,0.10);
+        }
+        .hero {
+            padding: 120px 0 70px 0;
+            text-align: left;
+            color: var(--text);
+            background: linear-gradient(135deg, rgba(95,111,255,0.14) 0%, rgba(56,249,215,0.10) 40%, rgba(67,233,123,0.10) 100%);
+            border-bottom: 1px solid rgba(18,24,39,0.08);
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(600px 260px at 15% 15%, rgba(255,255,255,0.55), transparent 60%),
+                radial-gradient(500px 240px at 85% 10%, rgba(255,255,255,0.35), transparent 60%),
+                linear-gradient(180deg, rgba(255,255,255,0.40), rgba(255,255,255,0.0));
+            pointer-events: none;
+        }
+        .hero .container {
+            position: relative;
+            z-index: 2;
+        }
+        .hero h1 {
+            font-size: 3.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            letter-spacing: -1.5px;
+            border: none;
+            white-space: normal;
+        }
+        .hero h1 .headline-accent {
+            background: linear-gradient(90deg, var(--accent), #1a2233);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        @keyframes typing {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+        @keyframes blink-caret {
+            from, to { border-color: transparent; }
+            50% { border-color: white; }
+        }
+        .hero p {
+            font-size: 1.25rem;
+            margin-bottom: 2.2rem;
+            opacity: 0.98;
+            color: var(--muted);
+        }
+        .btn-hero {
+            background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%);
+            border: none;
+            border-radius: 16px;
+            padding: 15px 44px;
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #102018;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 10px 40px rgba(18,24,39,0.16);
+        }
+        .btn-hero:hover {
+            background: linear-gradient(90deg, #38f9d7 0%, #43e97b 100%);
+            box-shadow: 0 8px 32px 0 rgba(67,233,123,0.18);
+            color: #102018;
+        }
+        .btn-hero-secondary {
+            border: 1px solid rgba(18,24,39,0.18);
+            background: rgba(255,255,255,0.70);
+            border-radius: 16px;
+            padding: 15px 26px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .btn-hero-secondary:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+            color: var(--text);
+        }
+        .hero-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 16px;
+            justify-content: flex-start;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.75);
+            border: 1px solid rgba(18,24,39,0.12);
+            box-shadow: 0 8px 24px rgba(18,24,39,0.06);
+            color: #1a2233;
+            font-weight: 600;
+            font-size: 0.92rem;
+        }
+        .hero-kpis {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+        .kpi {
+            background: rgba(255,255,255,0.72);
+            border: 1px solid rgba(18,24,39,0.12);
+            border-radius: 16px;
+            padding: 12px 14px;
+            box-shadow: 0 10px 30px rgba(18,24,39,0.08);
+        }
+        .kpi .kpi-value {
+            font-weight: 800;
+            font-size: 1.1rem;
+            letter-spacing: -0.3px;
+        }
+        .kpi .kpi-label {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .hero-media {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.70);
+            border: 1px solid rgba(18,24,39,0.10);
+            box-shadow: var(--shadow-md);
+        }
+        .hero-media img {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .hero-media .hero-media-badge {
+            position: absolute;
+            left: 16px;
+            bottom: 16px;
+            background: rgba(18,24,39,0.86);
+            color: #fff;
+            border-radius: 14px;
+            padding: 10px 12px;
+            font-size: 0.92rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+        .trust-strip {
+            background: rgba(255,255,255,0.75);
+            border-bottom: 1px solid rgba(18,24,39,0.10);
+        }
+        .trust-strip .trust-title {
+            font-size: 0.92rem;
+            color: var(--muted);
+            font-weight: 600;
+            margin: 0;
+        }
+        .trust-strip .trust-logos {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .trust-strip .trust-logos .pill {
+            background: rgba(255,255,255,0.85);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .section {
+            padding: 80px 0;
+            background: #fff;
+        }
+        .section-bg {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+        }
+        .upload-card {
+            border: 1px solid rgba(18,24,39,0.10);
+            border-radius: 20px;
+            box-shadow: var(--shadow-md);
+        }
+        .upload-title {
+            letter-spacing: -0.5px;
+        }
+        .upload-subtitle {
+            color: var(--muted);
+        }
+        .upload-help {
+            background: rgba(255,255,255,0.75);
+            border: 1px solid rgba(18,24,39,0.10);
+            border-radius: 18px;
+            padding: 18px;
+            box-shadow: var(--shadow-sm);
+        }
+        .upload-help code {
+            color: #1a2233;
+            background: rgba(95,111,255,0.10);
+            padding: 2px 6px;
+            border-radius: 8px;
+        }
+        .sample-box {
+            background: rgba(18,24,39,0.92);
+            color: rgba(255,255,255,0.88);
+            border-radius: 14px;
+            padding: 14px;
+            font-size: 0.9rem;
+            overflow: auto;
+            max-height: 200px;
+            white-space: pre;
+        }
+        .feature-card {
+            background: #f8f9fa;
+            border-radius: 18px;
+            padding: 32px 26px;
+            text-align: center;
+            box-shadow: 0 4px 32px 0 rgba(0,0,0,0.04);
+            transition: box-shadow 0.2s, border 0.2s;
+            height: 100%;
+            border: 1.5px solid #e9ecef;
+        }
+        .feature-card:hover {
+            box-shadow: 0 12px 48px rgba(0,0,0,0.08);
+            border: 1.5px solid #bbb;
+        }
+        .feature-icon {
+            font-size: 2.7rem;
+            color: #bbb;
+            margin-bottom: 18px;
+            text-shadow: none;
+        }
+        .connector-card {
+            background: #fff;
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.04);
+            transition: all 0.3s ease;
+            height: 100%;
+            border: 1px solid #e9ecef;
+            position: relative;
+            overflow: hidden;
+        }
+        .connector-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(0,0,0,0.08);
+        }
+        .connector-icon {
+            font-size: 2.5rem;
+            color: #bbb;
+            margin-bottom: 15px;
+            transition: color 0.3s ease;
+            text-shadow: none;
+        }
+        .connector-card:hover .connector-icon {
+            color: #222;
+        }
+        .connector-card h5 {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #222;
+        }
+        .connector-card p {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+        .connector-status {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .connector-status.available {
+            background: #d4edda;
+            color: #155724;
+        }
+        .connector-status.coming-soon {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .value-prop-section {
+            background: #ffffff;
+        }
+        .value-points {
+            margin-top: 2rem;
+        }
+        .value-point {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 12px;
+            transition: transform 0.3s ease;
+        }
+        .value-point:hover {
+            transform: translateX(5px);
+        }
+        .value-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            margin-right: 1rem;
+            flex-shrink: 0;
+            box-shadow: 0 2px 12px #4e6cf455;
+        }
+        .value-content h5 {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+        .value-content p {
+            color: #666;
+            margin: 0;
+            font-size: 0.95rem;
+        }
+        .stats-card {
+            background: rgba(30,32,44,0.7);
+            color: #fff;
+            padding: 1.5rem;
+            border-radius: 18px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1.2rem;
+            box-shadow: 0 4px 32px 0 rgba(80,120,255,0.10);
+            border: 1.5px solid rgba(120,120,180,0.10);
+            backdrop-filter: blur(12px);
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #43e97b;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .insight-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+            border: 1px solid #e9ecef;
+        }
+        .insight-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+        }
+        .insight-type {
+            background: #6c757d;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }
+        .insight-card h5 {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+        .insight-card p {
+            color: #666;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+        .insight-link {
+            color: #6c757d;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+        .insight-link:hover {
+            color: #495057;
+        }
+        .newsletter-section {
+            background: linear-gradient(135deg, #23243a 0%, #181a23 100%);
+            color: #fff;
+        }
+        .newsletter-form .form-control {
+            border: none;
+            border-radius: 25px 0 0 25px;
+        }
+        .newsletter-form .btn {
+            border-radius: 0 25px 25px 0;
+            border: none;
+            font-weight: 600;
+        }
+        .step {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(45deg, #6c757d, #495057);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin: 0 auto 20px;
+        }
+        .cta-section {
+            background: linear-gradient(135deg, #27c96f 0%, #23e3c9 100%);
+            color: #fff;
+            padding: 80px 0;
+            text-align: center;
+            box-shadow: 0 8px 48px 0 rgba(39,201,111,0.18);
+            border-radius: 0 0 32px 32px;
+            position: relative;
+            overflow: hidden;
+        }
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(ellipse at 60% 0%, rgba(80,120,255,0.18) 0%, transparent 70%), radial-gradient(ellipse at 20% 100%, rgba(180,80,255,0.12) 0%, transparent 70%);
+            opacity: 1;
+            z-index: 0;
+        }
+        .cta-section > .container {
+            position: relative;
+            z-index: 1;
+        }
+        .footer {
+            background: linear-gradient(135deg, #232526 0%, #1a2233 100%);
+            color: white;
+            padding: 40px 0;
+            text-align: center;
+        }
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+        .animate-on-scroll.animate {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .floating-shapes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+        .shape {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            animation: float 6s ease-in-out infinite;
+        }
+        .shape-1 {
+            width: 80px;
+            height: 80px;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+        .shape-2 {
+            width: 60px;
+            height: 60px;
+            top: 20%;
+            right: 15%;
+            animation-delay: 2s;
+        }
+        .shape-3 {
+            width: 100px;
+            height: 100px;
+            bottom: 15%;
+            left: 20%;
+            animation-delay: 4s;
+        }
+        .shape-4 {
+            width: 70px;
+            height: 70px;
+            bottom: 10%;
+            right: 10%;
+            animation-delay: 1s;
+        }
+        .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+        .particle {
+            position: absolute;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            animation: particle-float 10s linear infinite;
+        }
+        .particle:nth-child(1) { width: 4px; height: 4px; top: 20%; left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { width: 6px; height: 6px; top: 40%; left: 20%; animation-delay: 1s; }
+        .particle:nth-child(3) { width: 3px; height: 3px; top: 60%; left: 30%; animation-delay: 2s; }
+        .particle:nth-child(4) { width: 5px; height: 5px; top: 80%; left: 40%; animation-delay: 3s; }
+        .particle:nth-child(5) { width: 4px; height: 4px; top: 30%; left: 50%; animation-delay: 4s; }
+        .particle:nth-child(6) { width: 7px; height: 7px; top: 50%; left: 60%; animation-delay: 5s; }
+        .particle:nth-child(7) { width: 3px; height: 3px; top: 70%; left: 70%; animation-delay: 6s; }
+        .particle:nth-child(8) { width: 5px; height: 5px; top: 10%; left: 80%; animation-delay: 7s; }
+        @keyframes particle-float {
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+        .stat-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+            border: 1px solid #e9ecef;
+        }
+        .stat-box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        .stat-box h4 {
+            color: #28a745;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-box small {
+            color: #6c757d;
+            font-weight: 500;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+        }
+        .demo-chart .bar {
+            animation: grow 2s ease-out forwards;
+            transform-origin: bottom;
+            transform: scaleY(0);
+            fill: #6c757d;
+        }
+        .bar-1 { animation-delay: 0.1s; }
+        .bar-2 { animation-delay: 0.2s; }
+        .bar-3 { animation-delay: 0.3s; }
+        .bar-4 { animation-delay: 0.4s; }
+        .bar-5 { animation-delay: 0.5s; }
+        .bar-6 { animation-delay: 0.6s; }
+        .bar-7 { animation-delay: 0.7s; }
+        .bar-8 { animation-delay: 0.8s; }
+        .bar-9 { animation-delay: 0.9s; }
+        .bar-10 { animation-delay: 1.0s; }
+        @keyframes grow {
+            to { transform: scaleY(1); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="fas fa-brain me-2"></i>ForecastAI
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#connectors">Connectors</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#insights">Insights</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#how-it-works">How It Works</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#pricing">Pricing</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#contact">Contact</a></li>
+                    <li class="nav-item ms-lg-3">
+                        {% set user_email = request.state.user_email if request and request.state is not none else None %}
+                        {% if user_email %}
+                            <a class="btn btn-outline-secondary btn-sm px-3" href="/signout">Sign out</a>
+                        {% else %}
+                            <a class="btn btn-outline-primary btn-sm px-3" href="/signin">Sign in</a>
+                        {% endif %}
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-6 text-lg-start text-center mb-4 mb-lg-0">
+                    <div class="hero-badges justify-content-lg-start justify-content-center">
+                        <span class="pill"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Forecasting</span>
+                        <span class="pill"><i class="fa-solid fa-truck-fast"></i> Supply Planning</span>
+                        <span class="pill"><i class="fa-solid fa-shield-halved"></i> Enterprise-ready</span>
+                    </div>
+                    <h1>Retail's <span class="headline-accent">AI Forecasting</span> Partner</h1>
+                    <p class="lead">Upload sales data, generate accurate forecasts, and turn them into clear order recommendations—fast. Built for real retail operations: items, stores, lead times, MOQs, and service levels.</p>
+                    <div class="d-flex flex-column flex-sm-row gap-3 justify-content-lg-start justify-content-center">
+                        <a href="#upload" class="btn-hero">Start Forecasting</a>
+                        <a href="#features" class="btn-hero-secondary"><i class="fa-solid fa-circle-play"></i> Explore features</a>
+                    </div>
+
+                    <div class="hero-kpis text-start mt-4">
+                        <div class="kpi">
+                            <div class="kpi-value">Minutes</div>
+                            <div class="kpi-label">to first forecast</div>
+                        </div>
+                        <div class="kpi">
+                            <div class="kpi-value">CSV → Charts</div>
+                            <div class="kpi-label">no setup required</div>
+                        </div>
+                        <div class="kpi">
+                            <div class="kpi-value">Forecast → Orders</div>
+                            <div class="kpi-label">MVP supply engine</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 text-center">
+                    <div class="hero-media">
+                        <img src="https://wair.ai/wp-content/uploads/2025/06/Measuring-and-maximizing-ROI-with-AI-retail-demand-forecasting.webp" alt="AI Retail Demand Forecasting" class="img-fluid" style="max-height:360px; object-fit:cover; background:#eaf3f7;" loading="lazy">
+                        <div class="hero-media-badge">
+                            <i class="fa-solid fa-chart-line"></i>
+                            <span><strong>ForecastAI</strong> • Upload → Forecast → Plan</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Trust Strip -->
+    <section class="trust-strip py-4">
+        <div class="container">
+            <div class="row align-items-center g-3">
+                <div class="col-lg-5 text-center text-lg-start">
+                    <p class="trust-title">Built for retail operators and analysts who need decisions, not dashboards.</p>
+                </div>
+                <div class="col-lg-7">
+                    <div class="trust-logos justify-content-center justify-content-lg-end">
+                        <span class="pill"><i class="fa-solid fa-store"></i> Multi-store</span>
+                        <span class="pill"><i class="fa-solid fa-boxes-stacked"></i> SKU-level</span>
+                        <span class="pill"><i class="fa-solid fa-file-csv"></i> CSV-first</span>
+                        <span class="pill"><i class="fa-solid fa-bolt"></i> FastAPI</span>
+                        <span class="pill"><i class="fa-solid fa-chart-simple"></i> Plotly</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Value Proposition Section -->
+    <section class="value-prop-section section-bg" style="padding: 80px 0;">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-6">
+                    <h2 class="fw-bold mb-4">Built for retail operations.</h2>
+                    <div class="value-points">
+                        <div class="value-point">
+                            <div class="value-icon">
+                                <i class="fas fa-brain"></i>
+                            </div>
+                            <div class="value-content">
+                                <h5>Advanced ML forecasting models</h5>
+                                <p>Proprietary algorithms trained on millions of retail data points for unmatched accuracy.</p>
+                            </div>
+                        </div>
+                        <div class="value-point">
+                            <div class="value-icon">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <div class="value-content">
+                                <h5>Real-time demand sensing</h5>
+                                <p>Continuous learning from sales patterns, seasonality, and market trends.</p>
+                            </div>
+                        </div>
+                        <div class="value-point">
+                            <div class="value-icon">
+                                <i class="fas fa-cogs"></i>
+                            </div>
+                            <div class="value-content">
+                                <h5>Seamless system integration</h5>
+                                <p>Connect directly to your POS, ERP, and e-commerce platforms for automated insights.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="stats-card">
+                        <div class="stat">
+                            <div class="stat-number">95%</div>
+                            <div class="stat-label">Forecast Accuracy</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">60%</div>
+                            <div class="stat-label">Inventory Cost Reduction</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">24/7</div>
+                            <div class="stat-label">Automated Updates</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="section section-bg">
+        <div class="container">
+            <div class="row">
+                <div class="col-12 text-center mb-5">
+                    <h2 class="fw-bold">Why Choose ForecastAI?</h2>
+                    <p class="text-muted">Cutting-edge AI technology meets intuitive design</p>
+                </div>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="feature-card animate-on-scroll">
+                        <img src="https://images.unsplash.com/photo-1468657988500-aca2be09f4c6?auto=format&fit=crop&w=600&q=80" alt="AI Demand Forecasting" class="img-fluid rounded mb-3" style="height:180px; object-fit:cover;">
+                        <div class="feature-icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <h4>Advanced AI Models</h4>
+                        <p>State-of-the-art machine learning algorithms trained on millions of data points for unparalleled accuracy.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card animate-on-scroll">
+                        <img src="https://images.unsplash.com/photo-1521737852567-6949f3f9f2b5?auto=format&fit=crop&w=600&q=80" alt="Supply Chain Analytics" class="img-fluid rounded mb-3" style="height:180px; object-fit:cover;">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h4>Real-time Analytics</h4>
+                        <p>Interactive dashboards with live data visualization and predictive insights at your fingertips.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card animate-on-scroll">
+                        <img src="https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=600&q=80" alt="Predictive Analytics Dashboard" class="img-fluid rounded mb-3" style="height:180px; object-fit:cover;">
+                        <div class="feature-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h4>Enterprise Security</h4>
+                        <p>Bank-level encryption and compliance with GDPR, ensuring your data is always protected.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Demo Chart Section -->
+    <section class="section section-bg">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h2 class="fw-bold mb-4">See ForecastAI in Action</h2>
+                    <p class="text-muted mb-4">Our AI models analyze historical data to predict future sales with remarkable accuracy. Watch as trends emerge and insights unfold.</p>
+                    <div class="d-flex gap-3">
+                        <div class="stat-box">
+                            <h4 style="color: #28a745;">95%</h4>
+                            <small>Accuracy Rate</small>
+                        </div>
+                        <div class="stat-box">
+                            <h4 style="color: #007bff;">2x</h4>
+                            <small>Faster Insights</small>
+                        </div>
+                        <div class="stat-box">
+                            <h4 style="color: #6c757d;">24/7</h4>
+                            <small>Automated</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="chart-container animate-on-scroll">
+                        <svg viewBox="0 0 400 250" class="demo-chart">
+                            <defs>
+                                <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#6c757d;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#495057;stop-opacity:1" />
+                                </linearGradient>
+                            </defs>
+                            <rect x="50" y="150" width="20" height="50" fill="url(#grad1)" class="bar bar-1"/>
+                            <rect x="80" y="120" width="20" height="80" fill="url(#grad1)" class="bar bar-2"/>
+                            <rect x="110" y="100" width="20" height="100" fill="url(#grad1)" class="bar bar-3"/>
+                            <rect x="140" y="80" width="20" height="120" fill="url(#grad1)" class="bar bar-4"/>
+                            <rect x="170" y="60" width="20" height="140" fill="url(#grad1)" class="bar bar-5"/>
+                            <rect x="200" y="40" width="20" height="160" fill="url(#grad1)" class="bar bar-6"/>
+                            <rect x="230" y="30" width="20" height="170" fill="url(#grad1)" class="bar bar-7"/>
+                            <rect x="260" y="50" width="20" height="150" fill="url(#grad1)" class="bar bar-8"/>
+                            <rect x="290" y="70" width="20" height="130" fill="url(#grad1)" class="bar bar-9"/>
+                            <rect x="320" y="90" width="20" height="110" fill="url(#grad1)" class="bar bar-10"/>
+                            <line x1="40" y1="200" x2="360" y2="200" stroke="#ddd" stroke-width="1"/>
+                            <line x1="40" y1="200" x2="40" y2="20" stroke="#ddd" stroke-width="1"/>
+                            <text x="200" y="220" text-anchor="middle" font-size="12" fill="#666">Months</text>
+                            <text x="20" y="120" text-anchor="middle" font-size="12" fill="#666" transform="rotate(-90 20 120)">Sales ($)</text>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="section section-bg">
+        <div class="container">
+            <div class="row">
+                <div class="col-12 text-center mb-5">
+                    <h2 class="fw-bold">How It Works</h2>
+                    <p class="text-muted">Get accurate forecasts in three simple steps</p>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="step animate-on-scroll">
+                        <div class="step-number">1</div>
+                        <h4>Connect Your Data</h4>
+                        <p>Connect to your existing systems - databases, e-commerce platforms, POS systems, or upload CSV files.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="step animate-on-scroll">
+                        <div class="step-number">2</div>
+                        <h4>Configure Forecast</h4>
+                        <p>Set your forecast horizon and parameters. Our intelligent system optimizes automatically.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="step animate-on-scroll">
+                        <div class="step-number">3</div>
+                        <h4>Get Insights</h4>
+                        <p>Receive detailed forecasts, visualizations, and actionable business insights instantly.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Data Connectors -->
+    <section id="connectors" class="section section-bg">
+        <div class="container">
+            <div class="row">
+                <div class="col-12 text-center mb-5">
+                    <h2 class="fw-bold">Connect to Your Retail Systems</h2>
+                    <p class="text-muted">Seamlessly integrate with the tools your business already uses</p>
+                </div>
+            </div>
+            <div class="row g-4">
+                <!-- Databases -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="connector-card">
+                        <div class="connector-icon">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <h5>Databases</h5>
+                        <p>PostgreSQL, MySQL, SQL Server, Oracle</p>
+                        <div class="connector-status available">Available</div>
+                    </div>
+                </div>
+                <!-- Cloud Warehouses -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="connector-card">
+                        <div class="connector-icon">
+                            <i class="fas fa-cloud"></i>
+                        </div>
+                        <h5>Cloud Warehouses</h5>
+                        <p>BigQuery, Snowflake, Redshift, Azure Synapse</p>
+                        <div class="connector-status available">Available</div>
+                    </div>
+                </div>
+                <!-- E-commerce -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="connector-card">
+                        <div class="connector-icon">
+                            <i class="fas fa-shopping-cart"></i>
+                        </div>
+                        <h5>E-commerce</h5>
+                        <p>Shopify, WooCommerce, Magento, BigCommerce</p>
+                        <div class="connector-status coming-soon">Coming Soon</div>
+                    </div>
+                </div>
+                <!-- POS Systems -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="connector-card">
+                        <div class="connector-icon">
+                            <i class="fas fa-cash-register"></i>
+                        </div>
+                        <h5>POS Systems</h5>
+                        <p>Square, Toast, Clover, Lightspeed</p>
+                        <div class="connector-status coming-soon">Coming Soon</div>
+                    </div>
+                </div>
+                <!-- ERP Systems -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="connector-card">
+                        <div class="connector-icon">
+                            <i class="fas fa-building"></i>
+                        </div>
+                        <h5>ERP Systems</h5>
+                        <p>SAP, Oracle ERP, Microsoft Dynamics</p>
+                        <div class="connector-status coming-soon">Coming Soon</div>
+                    </div>
+                </div>
+                <!-- File Upload -->
+                <div class="col-md-6 col-lg-4">
+                    <div class="connector-card">
+                        <div class="connector-icon">
+                            <i class="fas fa-file-csv"></i>
+                        </div>
+                        <h5>File Upload</h5>
+                        <p>CSV, Excel, JSON files</p>
+                        <div class="connector-status available">Available</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Upload Section -->
+    <section id="upload" class="section section-bg">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-lg-10">
+                    <div class="card upload-card p-4 p-md-5">
+                        <div class="row g-4 align-items-start">
+                            <div class="col-lg-7">
+                                <div class="mb-4 text-center text-lg-start">
+                                    <div class="d-inline-flex align-items-center gap-2 mb-2">
+                                        <i class="fas fa-upload text-primary"></i>
+                                        <span class="pill">CSV quick start</span>
+                                    </div>
+                                    <h3 class="upload-title mb-2">Quick Start with CSV</h3>
+                                    <p class="upload-subtitle mb-0">Upload sales data and get forecasts in minutes. Then convert forecasts into order recommendations.</p>
+                                </div>
+
+                                <form action="/upload" method="post" enctype="multipart/form-data">
+                                    <div id="forecast-progress" class="progress mb-3" style="height: 18px; display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">
+                                            <span id="progress-text" style="font-weight:600; letter-spacing:0.5px;">Generating forecast, please wait...</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="file" class="form-label fw-bold">Upload Sales CSV</label>
+                                        <input type="file" class="form-control form-control-lg" id="file" name="file" accept=".csv" required>
+                                        <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
+                                    </div>
+
+                                    <div class="d-flex flex-column flex-sm-row gap-2">
+                                        <button type="submit" class="btn btn-primary btn-lg flex-grow-1" id="forecast-btn">
+                                            <i class="fas fa-rocket me-2"></i>Generate Forecast
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-lg" id="download-sample-btn">
+                                            <i class="fa-solid fa-download me-2"></i>Sample CSV
+                                        </button>
+                                    </div>
+                                </form>
+
+                                <div class="mt-3 text-muted small">
+                                    Need to connect to your existing systems? <a href="#connectors">View all connectors</a>
+                                </div>
+                            </div>
+
+                            <div class="col-lg-5">
+                                <div class="upload-help">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <strong>CSV format</strong>
+                                        <span class="pill"><i class="fa-solid fa-circle-info"></i> minimal</span>
+                                    </div>
+                                    <div class="sample-box" id="sample-csv-box">date,item,store,sales
+2026-01-01,1,1,120
+2026-01-02,1,1,135
+2026-01-03,1,1,98
+2026-01-01,2,1,42</div>
+                                    <div class="d-flex gap-2 mt-3 flex-wrap">
+                                        <button type="button" class="btn btn-sm btn-light" id="copy-sample-btn"><i class="fa-regular fa-copy me-1"></i>Copy</button>
+                                        <a class="btn btn-sm btn-light" href="/supply_plan"><i class="fa-solid fa-truck-fast me-1"></i>Supply planning</a>
+                                    </div>
+                                    <div class="mt-3 small text-muted">
+                                        After upload you can filter results and download forecasts. For order recommendations, use the Supply Planning page.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Insights Section -->
+    <section id="insights" class="section section-bg">
+        <div class="container">
+            <div class="row">
+                <div class="col-12 text-center mb-5">
+                    <h2 class="fw-bold">From the ForecastAI Lab</h2>
+                    <p class="text-muted">Latest insights on retail forecasting and AI trends</p>
+                </div>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-6 col-lg-4">
+                    <div class="insight-card">
+                        <div class="insight-type">WHITEPAPER</div>
+                        <h5>Seasonal Forecasting: Beat the Holiday Rush</h5>
+                        <p>How AI models predict seasonal demand spikes with 94% accuracy. Learn the techniques used by top retailers.</p>
+                        <a href="#" class="insight-link">Read More <i class="fas fa-arrow-right ms-1"></i></a>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="insight-card">
+                        <div class="insight-type">CASE STUDY</div>
+                        <h5>$2.3M Saved: Fashion Retailer's Success Story</h5>
+                        <p>How a major fashion brand reduced inventory costs by 45% using our AI forecasting platform.</p>
+                        <a href="#" class="insight-link">Read More <i class="fas fa-arrow-right ms-1"></i></a>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="insight-card">
+                        <div class="insight-type">ARTICLE</div>
+                        <h5>The Future of Retail: AI-Driven Inventory</h5>
+                        <p>Why 78% of retail executives believe AI forecasting will be critical to their success in 2026.</p>
+                        <a href="#" class="insight-link">Read More <i class="fas fa-arrow-right ms-1"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Newsletter Section -->
+    <section class="newsletter-section" style="background: #fff; color: #222; padding: 60px 0; border-top: 1px solid #e9ecef; border-bottom: 1px solid #e9ecef;">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-8 text-center">
+                    <h3 class="fw-bold mb-3">Stay Ahead of Retail Trends</h3>
+                    <p class="mb-4 opacity-75">Get weekly insights on AI forecasting, retail analytics, and industry best practices.</p>
+                    <form class="newsletter-form">
+                        <div class="input-group input-group-lg">
+                            <input type="email" class="form-control" placeholder="Enter your email" required>
+                            <button class="btn btn-outline-dark" type="submit">
+                                <i class="fas fa-paper-plane me-2"></i>Subscribe
+                            </button>
+                        </div>
+                    </form>
+                    <small class="text-muted mt-2 d-block">No spam, unsubscribe anytime.</small>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section" style="background: #fff; color: #222; border-top: 1px solid #e9ecef;">
+        <div class="container text-center py-5">
+            <h2 class="fw-bold mb-3">Ready to Revolutionize Your Sales Strategy?</h2>
+            <p class="mb-4">Join thousands of businesses using AI to predict the future</p>
+            <a href="#upload" class="btn btn-dark btn-lg px-5 py-3" style="border-radius: 16px; font-weight: 600;">Start Free Trial</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-4">
+                    <h5>ForecastAI</h5>
+                    <p>Empowering businesses with AI-driven sales forecasting since 2024.</p>
+                </div>
+                <div class="col-md-4">
+                    <h5>Quick Links</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="#features" class="text-white text-decoration-none">Features</a></li>
+                        <li><a href="#how-it-works" class="text-white text-decoration-none">How It Works</a></li>
+                        <li><a href="#pricing" class="text-white text-decoration-none">Pricing</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <h5>Contact</h5>
+                    <p><i class="fas fa-envelope me-2"></i>support@forecastai.com</p>
+                    <p><i class="fas fa-phone me-2"></i>+1 (555) 123-4567</p>
+                </div>
+            </div>
+            <hr>
+            <p class="mb-0">&copy; 2026 ForecastAI. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Smooth scrolling
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+
+        // Animate on scroll (repeatable)
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animate');
+                } else {
+                    entry.target.classList.remove('animate');
+                }
+            });
+        });
+
+        document.querySelectorAll('.animate-on-scroll').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Newsletter form handling
+        document.querySelector('.newsletter-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const email = this.querySelector('input[type="email"]').value;
+            const button = this.querySelector('button');
+            const originalText = button.innerHTML;
+
+            // Show loading state
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Subscribing...';
+            button.disabled = true;
+
+            // Simulate API call (replace with actual endpoint)
+            setTimeout(() => {
+                button.innerHTML = '<i class="fas fa-check me-2"></i>Subscribed!';
+                button.classList.remove('btn-light');
+                button.classList.add('btn-success');
+
+                // Reset after 3 seconds
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-light');
+                    button.disabled = false;
+                    this.reset();
+                }, 3000);
+            }, 1500);
+        });
+
+        // --- Connector Card Click Handler ---
+        document.querySelectorAll('.connector-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const title = card.querySelector('h5').textContent.trim().toLowerCase();
+                let connector = null;
+                let connectorLabel = '';
+                if(title === 'databases') { connector = 'mysql'; connectorLabel = 'Database'; }
+                else if(title === 'cloud warehouses') { connector = 'google_sheets'; connectorLabel = 'Cloud Warehouse'; }
+                else if(title === 'e-commerce') { connector = 'shopify'; connectorLabel = 'Shopify'; }
+                else if(title === 'pos systems') return; // not available
+                else if(title === 'erp systems') return; // not available
+                else if(title === 'file upload') { connector = 'file_upload'; connectorLabel = 'File Upload'; }
+                if(!connector) return;
+
+                // File upload scroll
+                if(connector === 'file_upload') {
+                    document.getElementById('upload').scrollIntoView({behavior:'smooth'});
+                    return;
+                }
+
+                fetch(`/connector-schema/${connector}`)
+                    .then(res => res.json())
+                    .then(schema => {
+                        if(schema.error) { alert(schema.error); return; }
+                        showConnectorForm(connector, schema.fields, connectorLabel);
+                    })
+                    .catch(() => alert('Failed to load connector schema.'));
+            });
+        });
+
+        // --- Show Connector Form Modal ---
+                function showConnectorForm(connector, fields, connectorLabel) {
+                        let modal = document.getElementById('connector-modal');
+                        if(!modal) {
+                                modal = document.createElement('div');
+                                modal.id = 'connector-modal';
+                                modal.className = 'modal fade';
+                                modal.tabIndex = -1;
+                                modal.innerHTML = `
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Connect to <span id='connector-modal-title'></span></h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <form id="connector-form">
+                                            <div class="modal-body"></div>
+                                            <div class="modal-footer">
+                                                <button type="submit" class="btn btn-primary">Connect</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>`;
+                                document.body.appendChild(modal);
+                        }
+                        // Set modal title
+                        modal.querySelector('#connector-modal-title').textContent = connectorLabel || (connector.charAt(0).toUpperCase()+connector.slice(1));
+                        const body = modal.querySelector('.modal-body');
+                        body.innerHTML = fields.map(f => `
+                                <div class="mb-3">
+                                    <label class="form-label">${f.label}</label>
+                                    <input name="${f.name}" type="${f.type}" class="form-control" ${f.default ? `value='${f.default}'` : ''} required>
+                                </div>
+                        `).join('');
+
+                        // Form submit handler
+                        const form = modal.querySelector('#connector-form');
+                        form.onsubmit = function(e) {
+                                e.preventDefault();
+                                const data = Object.fromEntries(new FormData(form));
+                                fetch(`/connect/${connector}`, {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify(data)
+                                })
+                                .then(res => res.json())
+                                .then(resp => {
+                                        alert(resp.status === 'success' ? 'Connected!' : 'Connection failed');
+                                        const modalInstance = bootstrap.Modal.getOrCreateInstance(modal);
+                                        modalInstance.hide();
+                                })
+                                .catch(() => alert('Connection error.'));
+                        };
+
+                        // Show modal
+                        const modalInstance = bootstrap.Modal.getOrCreateInstance(modal);
+                        modalInstance.show();
+                }
+
+        // Upload helpers (sample download + copy + progress bar)
+        document.addEventListener('DOMContentLoaded', function () {
+            const sampleBox = document.getElementById('sample-csv-box');
+            const downloadBtn = document.getElementById('download-sample-btn');
+            const copyBtn = document.getElementById('copy-sample-btn');
+
+            const sampleText = (sampleBox && sampleBox.textContent) ? sampleBox.textContent : '';
+
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', function () {
+                    const blob = new Blob([sampleText.replace(/\r?\n/g, '\n') + '\n'], { type: 'text/csv;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'sample_sales.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                });
+            }
+
+            if (copyBtn && navigator.clipboard) {
+                copyBtn.addEventListener('click', async function () {
+                    try {
+                        await navigator.clipboard.writeText(sampleText);
+                        const old = copyBtn.innerHTML;
+                        copyBtn.textContent = 'Copied';
+                        setTimeout(() => { copyBtn.innerHTML = old; }, 1200);
+                    } catch (e) {
+                        // ignore
+                    }
+                });
+            }
+
+            const form = document.querySelector('form[action="/upload"]');
+            const progress = document.getElementById('forecast-progress');
+            const btn = document.getElementById('forecast-btn');
+            if (form && progress && btn) {
+                form.addEventListener('submit', function () {
+                    btn.disabled = true;
+                    progress.style.display = 'block';
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Forecasting App{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {% block navbar %}
+    <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">ForecastAI</a>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                {% set user_email = request.state.user_email if request and request.state is not none else None %}
+                {% if user_email %}
+                    <span class="small text-muted d-none d-sm-inline">{{ user_email }}</span>
+                    <a class="btn btn-outline-secondary btn-sm" href="/signout">Sign out</a>
+                {% else %}
+                    <a class="btn btn-outline-primary btn-sm" href="/signin">Sign in</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+    {% endblock %}
+    <div class="container-fluid px-4">
+        {% block content %}{% endblock %}
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

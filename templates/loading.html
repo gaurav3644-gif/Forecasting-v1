@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generating Forecast - ForecastAI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .loading-container {
+            text-align: center;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 50px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            max-width: 500px;
+            width: 100%;
+            border: 1px solid #e9ecef;
+        }
+        .spinner {
+            width: 80px;
+            height: 80px;
+            border: 6px solid rgba(255,255,255,0.3);
+            border-top: 6px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 30px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6c757d, #495057);
+            width: 0%;
+            animation: fill 3s ease-in-out infinite;
+        }
+        @keyframes fill {
+            0%, 100% { width: 0%; }
+            50% { width: 100%; }
+        }
+        .loading-text {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .floating-dots {
+            display: inline-block;
+            margin-top: 20px;
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 4px;
+            animation: bounce 1.4s ease-in-out infinite both;
+        }
+        .dot:nth-child(1) { animation-delay: -0.32s; }
+        .dot:nth-child(2) { animation-delay: -0.16s; }
+        .dot:nth-child(3) { animation-delay: 0s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-container">
+        <div class="spinner"></div>
+        <h2 class="mb-3">Generating Your Forecast</h2>
+        <p class="loading-text">AI is analyzing your data and predicting future sales...</p>
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
+        </div>
+        <p class="text-muted">This may take a few moments</p>
+        <div class="floating-dots">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+
+    <script>
+        // Set a timeout for the forecast generation
+        const TIMEOUT_MS = 300000; // 5 minutes timeout
+        let timeoutId;
+        let statusCheckInterval;
+
+        // Function to check forecast status
+        function checkForecastStatus() {
+            return fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Status check:', data);
+                    return data.forecast_ready;
+                })
+                .catch(error => {
+                    console.error('Status check error:', error);
+                    return false;
+                });
+        }
+
+        // Start polling for forecast completion
+        function startStatusPolling() {
+            statusCheckInterval = setInterval(async () => {
+                const isReady = await checkForecastStatus();
+                if (isReady) {
+                    clearInterval(statusCheckInterval);
+                    clearTimeout(timeoutId);
+                    console.log('Forecast completed! Redirecting to results...');
+                    window.location.href = '/results';
+                }
+            }, 5000); // Check every 5 seconds
+        }
+
+        // Call the forecast generation API
+        const forecastPromise = fetch('/generate_forecast', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        // Set timeout
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error('Request timed out after 5 minutes'));
+            }, TIMEOUT_MS);
+        });
+
+        // Start status polling immediately
+        startStatusPolling();
+
+        // Race between the fetch and timeout
+        Promise.race([forecastPromise, timeoutPromise])
+        .then(response => {
+            clearTimeout(timeoutId);
+            clearInterval(statusCheckInterval);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Forecast response:', data);
+            if (data.status === 'success') {
+                // Redirect to results
+                window.location.href = '/results';
+            } else {
+                // Show detailed error message
+                const errorMessage = data.message || 'Error generating forecast';
+                alert('Error generating forecast: ' + errorMessage);
+                // Redirect back to forecast page
+                window.location.href = '/forecast';
+            }
+        })
+        .catch(error => {
+            clearTimeout(timeoutId);
+            clearInterval(statusCheckInterval);
+            console.error('Error:', error);
+            if (error.message.includes('timed out')) {
+                alert('Forecast generation is taking longer than expected (5+ minutes). The process may still be running in the background. Please wait a few more minutes and then refresh this page to check if results are available.');
+                // Continue polling in case it completes
+                startStatusPolling();
+            } else {
+                alert('Network error while generating forecast. Please check your data and try again.');
+                // Redirect back to forecast page
+                window.location.href = '/forecast';
+            }
+        });
+
+        // Animate progress bar with more realistic timing
+        let progress = 0;
+        const progressFill = document.querySelector('.progress-fill');
+        const progressText = document.querySelector('.loading-text');
+        const interval = setInterval(() => {
+            progress += Math.random() * 2; // Slower progress increase
+            if (progress > 85) progress = 85; // Leave more room for completion
+            progressFill.style.width = progress + '%';
+            
+            // Update loading text based on progress
+            if (progress < 30) {
+                progressText.textContent = 'AI is analyzing your data...';
+            } else if (progress < 60) {
+                progressText.textContent = 'Training forecasting model...';
+            } else if (progress < 85) {
+                progressText.textContent = 'Generating predictions...';
+            } else {
+                progressText.textContent = 'Finalizing results...';
+            }
+        }, 1000); // Update every second
+    </script>
+</body>
+</html></content>
+<parameter name="filePath">c:\Forecasting\v2\streamlit v2\fastapi_app\templates\loading.html

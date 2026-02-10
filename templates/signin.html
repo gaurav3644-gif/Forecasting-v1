@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in{% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block head %}
+<style>
+  body {
+    background: radial-gradient(900px 420px at 50% 0%, rgba(13,110,253,0.10), transparent 60%),
+                #f7f8fc;
+  }
+  .auth-wrap {
+    min-height: calc(100vh - 40px);
+    display: grid;
+    place-items: center;
+    padding: 24px 12px;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 520px;
+    border-radius: 28px;
+    border: 1px solid rgba(18,24,39,0.12);
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 18px 60px rgba(18,24,39,0.10);
+    padding: 28px;
+  }
+  .auth-logo {
+    width: 52px;
+    height: 52px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    margin: 0 auto 10px auto;
+    background: rgba(18,24,39,0.04);
+  }
+  .auth-title {
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 18px;
+  }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 18px 0;
+    color: rgba(18,24,39,0.55);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+  .divider::before, .divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(18,24,39,0.12);
+  }
+  .btn-black {
+    background: #000;
+    color: #fff;
+    border-radius: 14px;
+    padding: 0.7rem 1rem;
+    font-weight: 800;
+  }
+  .btn-black:hover { background: #111; color: #fff; }
+  .btn-outline-soft {
+    border-radius: 14px;
+    border: 1px solid rgba(18,24,39,0.14);
+    background: #fff;
+    font-weight: 700;
+    padding: 0.65rem 1rem;
+  }
+  .muted-link { color: rgba(18,24,39,0.65); }
+  .muted-link a { color: #0d6efd; text-decoration: none; font-weight: 700; }
+  .muted-link a:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo" aria-hidden="true">
+      <span style="font-size: 26px;">&#129433;</span>
+    </div>
+    <h2 class="auth-title">Sign in</h2>
+
+    {% if error %}
+    <div class="alert alert-danger small">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/signin" class="mb-2">
+      <input type="hidden" name="next" value="{{ next or '' }}">
+      <div class="mb-2">
+        <label class="form-label fw-semibold">Email</label>
+        <input class="form-control form-control-lg" type="email" name="email" placeholder="Your email address" required>
+      </div>
+      <button type="submit" class="btn btn-black w-100">Continue</button>
+    </form>
+
+    <div class="divider">OR</div>
+
+    <div class="d-grid gap-2">
+      <a class="btn btn-outline-soft" href="/auth/google?next={{ next or '' }}">
+        Continue with Google
+      </a>
+      <a class="btn btn-outline-soft" href="/auth/github?next={{ next or '' }}">
+        Continue with GitHub
+      </a>
+    </div>
+
+    <div class="text-center mt-3 small muted-link">
+      Don't have an account? <a href="/signup?next={{ next or '' }}">Sign up</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

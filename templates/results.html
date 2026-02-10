@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForecastAI - Your Sales Forecast Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+                :root {
+                    --bg: #f7f8fc;
+                    --panel: rgba(255,255,255,0.92);
+                    --panel-solid: #ffffff;
+                    --text: #121827;
+                    --muted: #5c5e6e;
+                    --border: rgba(18,24,39,0.12);
+                    --shadow-sm: 0 8px 22px rgba(18,24,39,0.07);
+                    --shadow-md: 0 14px 40px rgba(18,24,39,0.10);
+                    --accent: #5f6fff;
+                    --accent-2: #38f9d7;
+                    --good: #43e97b;
+                }
+                .pill {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 7px 12px;
+                    border-radius: 999px;
+                    background: rgba(255,255,255,0.92);
+                    border: 1px solid rgba(18,24,39,0.12);
+                    box-shadow: none;
+                    color: #1a2233;
+                    font-weight: 600;
+                    font-size: 0.84rem;
+                    white-space: nowrap;
+                }
+                .btn-cta {
+                    background: var(--accent);
+                    background-color: var(--accent);
+                    border: 1px solid rgba(18,24,39,0.08);
+                    color: #fff;
+                    font-weight: 700;
+                    border-radius: 12px;
+                    box-shadow: 0 8px 22px rgba(18,24,39,0.10);
+                }
+                .btn-cta:hover {
+                    color: #fff;
+                    background-color: #4f60ff;
+                    border-color: rgba(18,24,39,0.10);
+                    transform: none;
+                    box-shadow: 0 10px 28px rgba(18,24,39,0.12);
+                }
+                .btn-cta:focus-visible {
+                    outline: 3px solid rgba(95,111,255,0.25);
+                    outline-offset: 2px;
+                }
+                .refine-title {
+                    font-family: 'Inter', sans-serif;
+                    font-size: 1.25rem;
+                    font-weight: 700;
+                    text-align: center;
+                    margin-bottom: 0.3rem;
+                    color: #234;
+                    background: linear-gradient(90deg, #e3e8f7 0%, #c7d0e6 100%);
+                    border-radius: 8px;
+                    padding: 10px 0 10px 0;
+                    box-shadow: 0 2px 10px #bfc9e622;
+                    letter-spacing: 0.5px;
+                    text-shadow: none;
+                }
+                .refine-subtitle {
+                    text-align: center;
+                    font-size: 1.02rem;
+                    margin-bottom: 0.5rem;
+                    color: #4a5876;
+                    background: #f4f7fb;
+                    border-radius: 6px;
+                    padding: 6px 0 6px 0;
+                    font-weight: 500;
+                    letter-spacing: 0.2px;
+                }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            color: var(--text);
+            position: relative;
+        }
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="rgba(95,111,255,0.08)"/><circle cx="75" cy="75" r="1" fill="rgba(95,111,255,0.08)"/><circle cx="50" cy="50" r="2" fill="rgba(26,34,51,0.04)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0;
+            pointer-events: none;
+            z-index: -1;
+        }
+        .navbar {
+            background: rgba(255,255,255,0.80);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            box-shadow: var(--shadow-sm);
+            border-bottom: 1px solid rgba(18,24,39,0.10);
+        }
+        .card {
+            border: none;
+            border-radius: 20px;
+            box-shadow: var(--shadow-sm);
+            backdrop-filter: blur(10px);
+            background: var(--panel-solid);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: none;
+            box-shadow: var(--shadow-sm);
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #5f6fff 0%, #1a2233 100%);
+            color: #fff;
+            position: relative;
+            overflow: hidden;
+        }
+        .results-header {
+            text-align: center;
+            padding: 1rem 1rem;
+            background: rgba(255,255,255,0.86);
+            border-radius: 16px;
+            border: 1px solid rgba(18,24,39,0.10);
+            box-shadow: var(--shadow-sm);
+        }
+        .forecast-summary {
+            display: flex;
+            justify-content: center;
+            gap: 1.2rem;
+            margin-top: 1rem;
+        }
+        .summary-stat {
+            text-align: center;
+        }
+        .summary-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        .summary-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #333;
+        }
+        .kpi-card {
+            background: rgba(255,255,255,0.92);
+            border-radius: 16px;
+            padding: 0.85rem 1rem;
+            box-shadow: none;
+            border: 1px solid rgba(18,24,39,0.10);
+            transition: none;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .kpi-card:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        .kpi-icon {
+            width: 38px;
+            height: 38px;
+            background: rgba(95,111,255,0.10);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .kpi-content {
+            flex: 1;
+        }
+        .kpi-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        .kpi-value {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+        .kpi-subtitle {
+            font-size: 0.75rem;
+            color: #666;
+        }
+        .forecast-card {
+            background: rgba(255,255,255,0.92);
+            border-radius: 16px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid rgba(18,24,39,0.10);
+            overflow: hidden;
+        }
+        .forecast-header {
+            padding: 1rem 1.2rem;
+            border-bottom: 1px solid rgba(18,24,39,0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .forecast-badge {
+            background: rgba(95,111,255,0.12);
+            color: var(--accent);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .forecast-content {
+            padding: 1.2rem;
+            position: relative;
+        }
+        .forecast-footer {
+            padding: 0.7rem 1.2rem;
+            background: rgba(255,255,255,0.55);
+            border-top: 1px solid rgba(18,24,39,0.08);
+            text-align: center;
+        }
+        .actions-card {
+            background: rgba(255,255,255,0.92);
+            border-radius: 16px;
+            padding: 1.2rem;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid rgba(18,24,39,0.10);
+        }
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 0.7rem;
+        }
+        .action-btn {
+            display: block;
+            padding: 0.7rem 0.5rem;
+            border-radius: 12px;
+            text-decoration: none;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .action-btn.primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .action-btn.primary:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        .action-btn.secondary {
+            background: #1a2233;
+            color: #fff;
+            border: none;
+        }
+        .action-btn.secondary:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        .action-btn.outline {
+            background: #fff;
+            color: #5f6fff;
+            border: 2px solid #5f6fff;
+        }
+        .action-btn.outline:hover {
+            background: #5f6fff;
+            color: #fff;
+            transform: none;
+        }
+        .action-btn i {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .action-btn small {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-top: 0.25rem;
+        }
+        .filters-card {
+            background: rgba(255,255,255,0.92);
+            border-radius: 16px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid rgba(18,24,39,0.10);
+            overflow: hidden;
+            position: sticky;
+            top: 92px;
+        }
+        .filters-header {
+            padding: 1.25rem;
+            background: transparent;
+            color: var(--text);
+            text-align: center;
+        }
+        .filters-header h5 {
+            margin-bottom: 0.25rem;
+        }
+        .filters-body {
+            padding: 1.5rem;
+        }
+        .filter-section {
+            margin-bottom: 2rem;
+        }
+        .filter-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+        .filter-reset {
+            color: var(--muted);
+            text-decoration: none;
+        }
+        .filter-reset:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
+        .filter-count {
+            background: rgba(95,111,255,0.12);
+            color: var(--accent);
+            padding: 0.25rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            border: 1px solid rgba(95,111,255,0.18);
+        }
+        .filter-options {
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 0.5rem;
+        }
+        .filter-dropdown-btn {
+            background: #fff;
+            border: 1px solid rgba(18,24,39,0.12);
+            border-radius: 12px;
+            padding: 0.55rem 0.75rem;
+        }
+        .filter-dropdown-btn:hover {
+            background: #fff;
+            border-color: rgba(18,24,39,0.18);
+        }
+        .filter-dropdown-menu {
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid rgba(18,24,39,0.12);
+            box-shadow: var(--shadow-md);
+        }
+        .filter-dropdown-menu .filter-options {
+            max-height: 280px;
+            border: none;
+            padding: 0;
+        }
+        .filter-dropdown-menu .filter-option {
+            padding: 0.4rem 0.5rem;
+        }
+        .filter-search {
+            border-radius: 10px;
+        }
+        .filter-option {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background-color 0.2s ease;
+        }
+        .filter-option:hover {
+            background-color: #f8f9fa;
+        }
+        .filter-option .form-check-input {
+            margin-right: 0.75rem;
+        }
+        .filter-option .form-check-label {
+            margin-bottom: 0;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .filter-actions {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e9ecef;
+        }
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+            transform: rotate(45deg);
+            transition: all 0.6s;
+        }
+        .metric-card:hover::before {
+            animation: shimmer 1.5s ease-in-out;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+        .plot-container {
+            background: white;
+            border-radius: 16px;
+            padding: 22px;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            border: 1px solid #e9ecef;
+        }
+        .plot-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><pattern id="chart-bg" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="%236c757d" opacity="0.1"/><path d="M0,20 L40,20 M20,0 L20,40" stroke="%236c757d" stroke-width="0.5" opacity="0.1"/></pattern></defs><rect width="400" height="400" fill="url(%23chart-bg)"/></svg>');
+            border-radius: 16px;
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0;
+        }
+        .sidebar-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .btn-success {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            border: none;
+            border-radius: 50px;
+            padding: 15px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        }
+        .btn-outline-primary {
+            border-radius: 25px;
+            border-width: 2px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-outline-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .floating-elements {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: -1;
+        }
+        .floating-elements::after,
+        .floating-elements::before {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            animation: float 6s ease-in-out infinite;
+        }
+        .floating-elements::after {
+            width: 100px;
+            height: 100px;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+        .floating-elements::before {
+            width: 150px;
+            height: 150px;
+            bottom: 10%;
+            right: 10%;
+            animation-delay: 3s;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        .message {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .user-message .message-avatar {
+            background: #28a745;
+        }
+        .message-content {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 70%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .user-message {
+            flex-direction: row-reverse;
+        }
+        .user-message .message-content {
+            background: #007bff;
+            color: white;
+        }
+        .chat-input-container {
+            border-top: 1px solid #dee2e6;
+            padding-top: 15px;
+        }
+        .plot-loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            border-radius: 16px;
+        }
+        .plot-loading-overlay.hidden {
+            display: none;
+        }
+        .plot-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e9ecef;
+            border-top: 4px solid #6c757d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .plot-container {
+            background: white;
+            border-radius: 16px;
+            padding: 22px;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            border: 1px solid #e9ecef;
+            min-height: 500px;
+        }
+        #plot-content {
+            transition: opacity 0.3s ease;
+        }
+        .data-visualization-icon {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 4rem;
+            color: rgba(102, 126, 234, 0.1);
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-brain me-2"></i>ForecastAI
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/#connectors">Connectors</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/#insights">Insights</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="#results">Results</a></li>
+                    <li class="nav-item ms-lg-3">
+                        <a href="/supply_plan" class="btn btn-cta btn-sm px-3 py-2">
+                            <i class="fas fa-truck-fast me-2"></i>Supply Planning
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-5 pt-4">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3">
+                <div class="filters-card sticky-top">
+                    <div class="filters-header modern-filters-header text-center p-4" style="background: rgba(255,255,255,0.92); border-radius: 16px 16px 0 0; border-bottom: 1px solid rgba(18,24,39,0.10);">
+                        <div class="d-flex justify-content-center mb-2">
+                            <span class="pill"><i class="fas fa-sliders-h"></i> Filters</span>
+                        </div>
+                        <h5 class="mb-1 fw-semibold" style="letter-spacing:-0.2px;">Refine</h5>
+                        <div class="text-muted small">Narrow results by your forecast grain</div>
+                    </div>
+                    <div class="filters-body p-4" style="background:rgba(255,255,255,0.92); border-radius:0 0 16px 16px;">
+                        <form action="/results" method="get" id="filter-form">
+                            {% for col in grain %}
+                                {% if col in all_grain_values %}
+                                    <div class="filter-section mb-4">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="d-flex align-items-center gap-2" style="font-weight:600; color:#333; font-size:0.95rem;">
+                                                <i class="fas fa-filter" style="opacity:0.7;"></i>{{ col|capitalize }}
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <button type="button" class="btn btn-link btn-sm p-0 filter-reset" data-filter-col="{{ col }}">All</button>
+                                                <span class="filter-count">{{ selected_grain_values[col]|length }}/{{ all_grain_values[col]|length }}</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="dropdown w-100">
+                                            <button class="btn filter-dropdown-btn w-100 d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                                <span class="filter-dropdown-text text-truncate">Select</span>
+                                                <i class="fas fa-chevron-down small" style="opacity:0.7;"></i>
+                                            </button>
+                                            <div class="dropdown-menu p-2 filter-dropdown-menu">
+                                                <input type="search" class="form-control form-control-sm mb-2 filter-search" placeholder="Search {{ col }}..." autocomplete="off">
+                                                <div class="filter-options" style="background:transparent;">
+                                                    {% for val in all_grain_values[col] %}
+                                                        <div class="filter-option">
+                                                            <input
+                                                                class="form-check-input"
+                                                                type="checkbox"
+                                                                name="{{ col }}"
+                                                                value="{{ val }}"
+                                                                id="{{ col }}-{{ loop.index }}"
+                                                                {% if val in selected_grain_values[col] %}checked{% endif %}
+                                                            >
+                                                            <label class="form-check-label" for="{{ col }}-{{ loop.index }}">
+                                                                {{ val }}
+                                                            </label>
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+
+                            <div class="filter-actions mt-3">
+                                <button type="submit" class="btn btn-cta w-100" id="filter-btn">
+                                    <i class="fas fa-search me-2"></i>Apply Filters
+                                </button>
+
+                                <small class="text-muted text-center d-block mt-2">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Updates chart instantly
+                                </small>
+                            </div>
+                        </form>
+
+
+
+
+
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9">
+                <!-- Header Section -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="results-header" id="results">
+                            <div class="d-flex flex-column align-items-center gap-2">
+                                <div class="d-flex flex-wrap justify-content-center gap-2">
+                                    <span class="pill"><i class="fas fa-chart-line"></i> Forecast Results</span>
+                                    <span class="pill"><i class="fas fa-calendar"></i> {{ current_date }}</span>
+                                    {% if forecast_start_month and forecast_months %}
+                                    <span class="pill"><i class="fas fa-hourglass-half"></i> {{ forecast_start_month }} ({{ forecast_months }} months)</span>
+                                    {% endif %}
+                                </div>
+                                <h2 class="fw-semibold mb-0" style="letter-spacing:-0.4px; font-size: 1.4rem;">Forecast Analysis</h2>
+                                <p class="mb-0 text-center" style="color: var(--muted); max-width: 920px;">
+                                    Interactive forecast visualization, model drivers, and downloadable data &mdash; built for decisions.
+                                </p>
+                                <div class="d-flex flex-wrap justify-content-center gap-2 mt-2">
+                                    <span class="pill"><i class="fas fa-layer-group"></i> Grain: {{ grain|join(" &bull; ") }}</span>
+                                    <span class="pill"><i class="fas fa-database"></i> Rows: {{ filtered_df|length }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPIs -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="kpi-card">
+                            <div class="kpi-icon">
+                                <i class="fas fa-dollar-sign"></i>
+                            </div>
+                            <div class="kpi-content">
+                                <div class="kpi-label">Historical Sales</div>
+                                <div class="kpi-value">{{ actual_total }}</div>
+                                <div class="kpi-subtitle">Total actual sales</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="kpi-card">
+                            <div class="kpi-icon">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <div class="kpi-content">
+                                <div class="kpi-label">Forecast Sales</div>
+                                <div class="kpi-value">{{ forecast_total }}</div>
+                                <div class="kpi-subtitle">AI predicted sales</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="kpi-card">
+                            <div class="kpi-icon">
+                                <i class="fas fa-percentage"></i>
+                            </div>
+                            <div class="kpi-content">
+                                <div class="kpi-label">Growth Projection</div>
+                                <div class="kpi-value">{{ delta_pct }}</div>
+                                <div class="kpi-subtitle">vs historical period</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Forecast Visualization -->
+                <div class="row mb-5">
+                    <div class="col-12">
+                        <div class="forecast-card">
+                            <div class="forecast-header d-flex align-items-center" style="gap:1rem;">
+                                <h5 class="mb-0 fw-semibold"><i class="fas fa-chart-area me-2"></i>Forecast</h5>
+                                <span class="forecast-badge ms-auto">Chart</span>
+                            </div>
+                            <div class="forecast-content">
+                                <div class="plot-loading-overlay hidden" id="plot-loading">
+                                    <div class="plot-spinner"></div>
+                                    <p class="mt-2">Updating forecast...</p>
+                                </div>
+                                <div id="plot-content">{{ plot_html|safe }}</div>
+                                <!-- Forecast quantiles table removed as requested -->
+                            
+                            </div>
+                            <div class="forecast-footer">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Hover over data points for detailed accuracy metrics
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feature Importance -->
+                {% if feature_importance_plot %}
+                <div class="row mb-5">
+                    <div class="col-12">
+                        <div class="forecast-card">
+                            <div class="forecast-header d-flex align-items-center" style="gap:1rem;">
+                                <h5 class="mb-0 fw-semibold"><i class="fas fa-brain me-2"></i>Feature Importance</h5>
+                                <span class="forecast-badge ms-auto">Insights</span>
+                            </div>
+                            <div class="forecast-content">
+                                <div id="feature-plot-content">{{ feature_importance_plot|safe }}</div>
+                            </div>
+                            <div class="forecast-footer">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Features ranked by their importance in the forecasting model
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Actions -->
+                <div class="row">
+                    <div class="col-12">
+                        <div class="actions-card">
+                            <h4 class="mb-3">Next Steps</h4>
+                            <div class="action-buttons">
+                                <a href="data:text/csv;charset=utf-8,{{ csv_data|urlencode }}" download="sales_forecast.csv" class="action-btn primary">
+                                    <i class="fas fa-download me-2"></i>
+                                    Download Forecast Data
+                                    <small class="d-block">CSV format for your systems</small>
+                                </a>
+                                <button class="action-btn secondary" data-bs-toggle="modal" data-bs-target="#chatModal">
+                                    <i class="fas fa-robot me-2"></i>
+                                    Ask AI Assistant
+                                    <small class="d-block">Get insights about your forecast</small>
+                                </button>
+                                <a href="/" class="action-btn outline">
+                                    <i class="fas fa-plus me-2"></i>
+                                    Run New Forecast
+                                    <small class="d-block">Upload different data</small>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Modal -->
+    <div class="modal fade" id="chatModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-robot me-2"></i>AI Assistant</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="chat-messages" class="chat-messages">
+                        <div class="message bot-message">
+                            <div class="message-avatar">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="message-content">
+                                <p>Hello! I'm your AI assistant. Ask me anything about your sales forecast data.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-container">
+                        <form id="chat-form">
+                            <div class="input-group">
+                                <input type="text" id="chat-input" class="form-control" placeholder="Ask about your raw data, forecast, or supply plan..." required>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-5 py-4" style="background: rgba(255,255,255,0.75); border-top: 1px solid rgba(18,24,39,0.10);">
+        <div class="container text-center small" style="color: var(--muted);">
+            <i class="fas fa-brain me-2"></i>ForecastAI results
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let chatInFlight = false;
+        document.getElementById('chat-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (chatInFlight) return;
+            const input = document.getElementById('chat-input');
+            const submitBtn = document.querySelector('#chat-form button[type="submit"]');
+            const question = input.value.trim();
+            if (!question) return;
+
+            chatInFlight = true;
+            if (submitBtn) submitBtn.disabled = true;
+            input.disabled = true;
+
+            // Add user message
+            addMessage(question, 'user');
+            input.value = '';
+
+            // Show typing indicator
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message bot-message';
+            typingDiv.innerHTML = `
+                <div class="message-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="message-content">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            `;
+            document.getElementById('chat-messages').appendChild(typingDiv);
+            document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+
+            // Send to server
+            const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2));
+            fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ message: question, request_id: requestId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Remove typing indicator
+                document.getElementById('chat-messages').removeChild(typingDiv);
+                // Add bot response
+                addMessage(data.answer, 'bot');
+            })
+            .catch(error => {
+                document.getElementById('chat-messages').removeChild(typingDiv);
+                addMessage('Sorry, I encountered an error. Please try again.', 'bot');
+                console.error('Error:', error);
+            })
+            .finally(() => {
+                chatInFlight = false;
+                input.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
+                input.focus();
+            });
+        });
+
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.innerHTML = `
+                <div class="message-avatar">
+                    <i class="fas fa-${sender === 'bot' ? 'robot' : 'user'}"></i>
+                </div>
+                <div class="message-content">
+                    <p>${text}</p>
+                </div>
+            `;
+            document.getElementById('chat-messages').appendChild(messageDiv);
+            document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+        }
+    </script>
+    <style>
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+        }
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #667eea;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+    </style>
+    <script>
+        // Add loading overlay when form is submitted
+         document.getElementById('filter-form').addEventListener('submit', function(e) {
+             const loadingOverlay = document.getElementById('plot-loading');
+             loadingOverlay.classList.remove('hidden');
+             
+             // Add fade out effect to current plot
+             const plotContent = document.getElementById('plot-content');
+             plotContent.style.opacity = '0.5';
+
+             // If a filter has all values selected, omit it from the URL by disabling inputs (server defaults to all).
+             document.querySelectorAll('.filter-section').forEach(section => {
+                 const checkboxes = section.querySelectorAll('input[type="checkbox"]');
+                 if (!checkboxes.length) return;
+                 let checked = 0;
+                 checkboxes.forEach(cb => { if (cb.checked) checked += 1; });
+                 if (checked === checkboxes.length) {
+                     checkboxes.forEach(cb => { cb.disabled = true; });
+                 }
+             });
+             
+              // The form will submit normally after this
+          });
+
+         function updateFilterCount(section) {
+             const checkboxes = section.querySelectorAll('input[type="checkbox"]');
+             const total = checkboxes.length;
+             let checked = 0;
+             checkboxes.forEach(cb => { if (cb.checked) checked += 1; });
+             // "0 selected" isn't representable in backend (it defaults to all), so treat it as "all selected".
+             if (total > 0 && checked === 0) {
+                 checkboxes.forEach(cb => { cb.checked = true; });
+                 checked = total;
+             }
+             const badge = section.querySelector('.filter-count');
+             if (badge) badge.textContent = `${checked}/${total}`;
+             const btnText = section.querySelector('.filter-dropdown-text');
+             if (btnText) btnText.textContent = (checked === total) ? 'All selected' : `${checked} selected`;
+         }
+
+        // Per-filter "All" button: select all values (removes that filter)
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.filter-reset');
+            if (!btn) return;
+            const section = btn.closest('.filter-section');
+            if (!section) return;
+            const checkboxes = section.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => { cb.checked = true; });
+            updateFilterCount(section);
+            e.preventDefault();
+        });
+
+         // Live count updates while checking/unchecking
+         document.querySelectorAll('.filter-section').forEach(section => {
+             updateFilterCount(section);
+             const search = section.querySelector('.filter-search');
+             const options = Array.from(section.querySelectorAll('.filter-option'));
+             options.forEach(opt => {
+                 opt.dataset.label = (opt.textContent || '').trim().toLowerCase();
+             });
+             if (search) {
+                 search.addEventListener('keydown', function(ev) {
+                     if (ev.key === 'Enter') ev.preventDefault();
+                 });
+                 let t = null;
+                 search.addEventListener('input', function() {
+                     if (t) clearTimeout(t);
+                     t = setTimeout(() => {
+                         const q = (search.value || '').trim().toLowerCase();
+                         options.forEach(opt => {
+                             const label = opt.dataset.label || '';
+                             opt.style.display = (!q || label.includes(q)) ? '' : 'none';
+                         });
+                     }, 80);
+                 });
+             }
+             section.addEventListener('change', function(ev) {
+                 if (ev.target && ev.target.matches('input[type="checkbox"]')) {
+                     updateFilterCount(section);
+                 }
+             });
+         });
+         
+         // Hide loading overlay when page loads (in case it was shown)
+         window.addEventListener('load', function() {
+             const loadingOverlay = document.getElementById('plot-loading');
+            loadingOverlay.classList.add('hidden');
+            
+            // Fade in the plot when page loads
+            const plotContent = document.getElementById('plot-content');
+            plotContent.style.opacity = '1';
+        });
+    </script>
+</body>
+</html>

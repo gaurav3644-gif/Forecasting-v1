@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Environment Variables
+.env
+*.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Data files (don't commit user data)
+*.csv
+*.xlsx
+*.xls
+sales_forecasting_data.csv
+
+# Temporary files
+*.tmp
+*.bak
+fix_retriever.py
+create_package.py
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

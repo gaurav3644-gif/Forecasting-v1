@@ -1,0 +1,849 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<style>
+  .card-soft {
+    border-radius: 16px;
+    border: 1px solid rgba(18,24,39,0.10);
+    background: rgba(255,255,255,0.92);
+  }
+  .filter-dropdown-btn {
+    background: #fff;
+    border: 1px solid rgba(18,24,39,0.12);
+    border-radius: 12px;
+    padding: 0.55rem 0.75rem;
+  }
+  .filter-dropdown-menu {
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid rgba(18,24,39,0.12);
+  }
+  .filter-dropdown-menu .filter-options {
+    max-height: 280px;
+    overflow: auto;
+  }
+  .filter-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 10px;
+  }
+  .filter-option:hover { background: rgba(18,24,39,0.04); }
+  .filter-count {
+    background: rgba(13,110,253,0.10);
+    color: #0d6efd;
+    padding: 0.18rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid rgba(13,110,253,0.18);
+  }
+  .filter-search { border-radius: 10px; }
+  .driver-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.18rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    border: 1px solid rgba(18,24,39,0.12);
+    background: rgba(18,24,39,0.04);
+  }
+  .pill-up { background: rgba(25,135,84,0.10); border-color: rgba(25,135,84,0.18); color: #198754; }
+  .pill-down { background: rgba(220,53,69,0.10); border-color: rgba(220,53,69,0.18); color: #dc3545; }
+  .pill-mixed { background: rgba(13,110,253,0.08); border-color: rgba(13,110,253,0.18); color: #0d6efd; }
+  .strength-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(18,24,39,0.08);
+    overflow: hidden;
+  }
+  .strength-fill {
+    height: 100%;
+    background: rgba(13,110,253,0.55);
+  }
+
+  /* Modern smooth transitions */
+  .page-content {
+    animation: fadeInUp 0.5s ease-out;
+    opacity: 1;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .page-content.fade-out {
+    animation: fadeOut 0.3s ease-in forwards;
+  }
+
+  @keyframes fadeOut {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  /* Modern loading overlay */
+  #loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  #loading-overlay.show {
+    display: flex;
+    opacity: 1;
+  }
+
+  .loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(13, 110, 253, 0.1);
+    border-top-color: #0d6efd;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .loading-text {
+    margin-top: 1rem;
+    color: #0d6efd;
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Modern Loading Overlay -->
+<div id="loading-overlay">
+  <div class="text-center">
+    <div class="loading-spinner mx-auto"></div>
+    <div class="loading-text">Updating results...</div>
+  </div>
+</div>
+
+<div class="page-content py-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-1" style="letter-spacing:-0.02em;">Results</h2>
+      <div class="text-muted small">Forecast visualization, drivers, and exports.</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge text-bg-light border">{{ current_date }}</span>
+      {% if forecast_start_month and forecast_months %}
+      <span class="badge text-bg-light border">Horizon: {{ forecast_start_month }} ({{ forecast_months }} months)</span>
+      {% endif %}
+      <span class="badge text-bg-light border">Grain: {{ grain|join(" · ") }}</span>
+      <a href="/supply_plan" class="btn btn-outline-primary btn-sm">Supply Plan</a>
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal">AI Assistant</button>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4 col-xl-3">
+      <div class="position-sticky" style="top: 1rem;">
+        <div class="card card-soft shadow-sm">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <div class="fw-semibold">Filters</div>
+              <div class="text-muted small">Multi-select</div>
+            </div>
+
+            <form action="/results" method="get" id="filter-form" class="d-grid gap-3">
+              {% for col in grain %}
+                {% if col in all_grain_values %}
+                  <div class="filter-section">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div class="fw-semibold">{{ col|capitalize }}</div>
+                      <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-link btn-sm p-0 filter-reset" data-filter-col="{{ col }}">All</button>
+                        <span class="filter-count">{{ selected_grain_values[col]|length }}/{{ all_grain_values[col]|length }}</span>
+                      </div>
+                    </div>
+
+                    <div class="dropdown w-100">
+                      <button class="btn filter-dropdown-btn w-100 d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <span class="filter-dropdown-text text-truncate">Select</span>
+                        <span class="text-muted small">▼</span>
+                      </button>
+                      <div class="dropdown-menu p-2 filter-dropdown-menu">
+                        <input type="search" class="form-control form-control-sm mb-2 filter-search" placeholder="Search {{ col }}..." autocomplete="off">
+                        <div class="filter-options">
+                          {% for val in all_grain_values[col] %}
+                            <div class="filter-option">
+                              <input
+                                class="form-check-input"
+                                type="checkbox"
+                                name="{{ col }}"
+                                value="{{ val }}"
+                                id="{{ col }}-{{ loop.index }}"
+                                {% if val in selected_grain_values[col] %}checked{% endif %}
+                              >
+                              <label class="form-check-label small" for="{{ col }}-{{ loop.index }}">{{ val }}</label>
+                            </div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+
+              <div class="pt-2 border-top">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <div class="fw-semibold">Overlay (raw)</div>
+                  <div class="text-muted small">Monthly</div>
+                </div>
+                {% if raw_numeric_cols and raw_numeric_cols|length > 0 %}
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">Numeric column</label>
+                    <select class="form-select form-select-sm" name="raw_metric">
+                      <option value="" {% if not selected_raw_metric %}selected{% endif %}>None</option>
+                      {% for c in raw_numeric_cols %}
+                        <option value="{{ c }}" {% if selected_raw_metric == c %}selected{% endif %}>{{ c }}</option>
+                      {% endfor %}
+                    </select>
+                    <div class="text-muted small mt-1">Adds a trace from raw data (e.g., <code>price</code>, <code>promo</code>).</div>
+                  </div>
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <label class="form-label small mb-1">Agg</label>
+                      <select class="form-select form-select-sm" name="raw_metric_agg">
+                        {% for a in ["mean","sum","median","min","max"] %}
+                          <option value="{{ a }}" {% if raw_metric_agg == a %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small mb-1">Axis</label>
+                      <select class="form-select form-select-sm" name="raw_metric_axis">
+                        <option value="secondary" {% if raw_metric_axis != "primary" %}selected{% endif %}>Right</option>
+                        <option value="primary" {% if raw_metric_axis == "primary" %}selected{% endif %}>Left</option>
+                      </select>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="text-muted small">No numeric raw columns found. Upload a dataset with extra numeric fields (price, promo, inventory, etc.).</div>
+                {% endif %}
+              </div>
+
+              <button type="submit" class="btn btn-primary">Apply</button>
+              <div class="text-muted small">Tip: clicking “All” removes that filter.</div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8 col-xl-9">
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <div class="card card-soft shadow-sm">
+            <div class="card-body">
+              <div class="text-muted small">Historical Sales</div>
+              <div id="kpi-actual-total" class="h5 mb-0">{{ actual_total }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card card-soft shadow-sm">
+            <div class="card-body">
+              <div class="text-muted small">Forecast Total</div>
+              <div id="kpi-forecast-total" class="h5 mb-0">{{ forecast_total }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card card-soft shadow-sm">
+            <div class="card-body">
+              <div class="text-muted small">Delta</div>
+              <div id="kpi-delta-pct" class="h5 mb-0">{{ delta_pct }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-soft shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Forecast Chart</div>
+            <div class="d-flex align-items-center gap-2">
+              <span id="oos-badge" class="badge text-bg-light border" {% if not oos_imputed %}style="display:none;"{% endif %}>
+                {% if oos_imputed %}OOS imputation applied{% endif %}
+              </span>
+              <div id="rows-count" class="text-muted small">Rows: {{ filtered_df|length }}</div>
+            </div>
+          </div>
+
+          <!-- Quantile Toggle Checkboxes -->
+          <div class="mb-3 p-2 bg-light rounded d-flex flex-wrap align-items-center gap-3" style="border: 1px solid rgba(18,24,39,0.08);">
+            <div class="small fw-semibold text-muted">Show Quantiles:</div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input quantile-toggle" type="checkbox" id="toggle_p10" value="P10" checked>
+              <label class="form-check-label small" for="toggle_p10">P10</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input quantile-toggle" type="checkbox" id="toggle_p30" value="P30" checked>
+              <label class="form-check-label small" for="toggle_p30">P30</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input quantile-toggle" type="checkbox" id="toggle_p60" value="P60" checked>
+              <label class="form-check-label small" for="toggle_p60">P60</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input quantile-toggle" type="checkbox" id="toggle_p90" value="P90" checked>
+              <label class="form-check-label small" for="toggle_p90">P90</label>
+            </div>
+          </div>
+
+          <!-- Original Sales Toggle (only shown when OOS imputation was performed) -->
+          {% if oos_imputed %}
+          <div class="mb-3 p-2 bg-light rounded d-flex flex-wrap align-items-center gap-3" style="border: 1px solid rgba(18,24,39,0.08);">
+            <div class="small fw-semibold text-muted">Show Original Sales:</div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" id="toggle_original_sales" checked>
+              <label class="form-check-label small" for="toggle_original_sales">Sales (reported)</label>
+              <span class="small text-muted ms-1">- shows unimputed sales data</span>
+            </div>
+          </div>
+          {% endif %}
+
+          <div id="plot-content">{{ plot_html | safe }}</div>
+        </div>
+      </div>
+
+      <div class="card card-soft shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="fw-semibold">Local drivers</div>
+            {% if local_driver_meta %}
+            <span class="text-muted small">{{ local_driver_meta.date }}</span>
+            {% endif %}
+          </div>
+          <div class="text-muted small mb-2">What drove this specific forecast point (SHAP contributions).</div>
+
+          {% if local_driver_error %}
+            <div class="text-muted small">{{ local_driver_error }}</div>
+          {% else %}
+            {% if local_driver_meta %}
+              <div class="small mb-2">
+                <span class="text-muted">Explaining</span>
+                <span class="fw-semibold">{{ local_driver_meta.forecast_col }}</span>
+                <span class="text-muted">prediction:</span>
+                <span class="fw-semibold">{{ '%.0f'|format(local_driver_meta.prediction) }}</span>
+              </div>
+            {% endif %}
+
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr class="text-muted small">
+                    <th>Driver</th>
+                    <th class="text-end">Contribution</th>
+                    <th class="text-end">Direction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for d in local_drivers %}
+                  <tr>
+                    <td>
+                      <div class="fw-semibold">{{ d.label }}</div>
+                      <div class="text-muted small">{{ d.feature }}</div>
+                    </td>
+                    <td class="text-end fw-semibold">
+                      {{ '%+.1f'|format(d.contribution) }}
+                      {% if d.pct is not none %}
+                        <span class="text-muted small">({{ '%+.0f'|format(d.pct) }}%)</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">
+                      {% if d.direction == '↑' %}
+                        <span class="driver-pill pill-up">↑ Positive</span>
+                      {% elif d.direction == '↓' %}
+                        <span class="driver-pill pill-down">↓ Negative</span>
+                      {% else %}
+                        <span class="driver-pill pill-mixed">— Neutral</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card card-soft shadow-sm mb-3">
+        <div class="card-body">
+          <div class="fw-semibold mb-1">Directional impact</div>
+          <div class="text-muted small mb-2">High/Medium/Low strength + whether a feature tends to push forecasts up or down.</div>
+
+          {% if directional_view and directional_view|length > 0 %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr class="text-muted small">
+                  <th>Feature</th>
+                  <th style="width: 42%;">Effect</th>
+                  <th class="text-end">Direction</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in directional_view[:18] %}
+                <tr>
+                  <td>
+                    <div class="fw-semibold">{{ r.label }}</div>
+                    <div class="text-muted small">{{ r.feature }}</div>
+                  </td>
+                  <td>
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="strength-bar flex-grow-1">
+                        <div class="strength-fill" style="width: {{ (r.strength_norm * 100)|round(0) }}%;"></div>
+                      </div>
+                      <span class="text-muted small">{{ r.effect }}</span>
+                    </div>
+                  </td>
+                  <td class="text-end">
+                    {% if '↑' in r.direction %}
+                      <span class="driver-pill pill-up">{{ r.direction }}</span>
+                    {% elif '↓' in r.direction %}
+                      <span class="driver-pill pill-down">{{ r.direction }}</span>
+                    {% else %}
+                      <span class="driver-pill pill-mixed">{{ r.direction }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+            <div class="text-muted small">Directional impact isn’t available yet (rerun forecast to enable drivers).</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card card-soft shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <div class="fw-semibold">Export</div>
+              <div class="text-muted small">Download the filtered dataset as CSV.</div>
+            </div>
+            <button type="button" class="btn btn-outline-success btn-sm" id="downloadCsvBtn">Download CSV</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Assistant modal -->
+<div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="chatModalLabel">AI Assistant</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="chatMessages" class="d-grid gap-2">
+          <div class="border rounded-3 p-2 small bg-light">
+            Ask about your raw data, forecast, or supply plan.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <form id="chatForm" class="w-100 d-flex gap-2">
+          <input type="text" class="form-control" id="chatInput" placeholder="Type a question..." required>
+          <button class="btn btn-primary" type="submit" id="chatSendBtn">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // CSV download
+  document.getElementById('downloadCsvBtn')?.addEventListener('click', function() {
+    const csv = {{ csv_data | tojson }};
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'forecast_filtered.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // Quantile toggle functionality
+  function toggleQuantileTrace(quantileName, isVisible) {
+    const plotDiv = document.querySelector('#plot-content .js-plotly-plot');
+    if (!plotDiv) {
+      console.warn('Plot div not found for quantile toggle');
+      return false;
+    }
+
+    try {
+      // Find the trace index for this quantile
+      const data = plotDiv.data;
+      if (!data || data.length === 0) {
+        console.warn('Plot data not available yet');
+        return false;
+      }
+
+      const traceIndices = [];
+      data.forEach((trace, index) => {
+        if (trace.name && trace.name === quantileName) {
+          traceIndices.push(index);
+        }
+      });
+
+      if (traceIndices.length > 0) {
+        // Toggle visibility using Plotly.restyle
+        const update = { visible: isVisible };
+        Plotly.restyle(plotDiv, update, traceIndices);
+        console.log(`Toggled ${quantileName} to ${isVisible ? 'visible' : 'hidden'}`);
+        return true;
+      } else {
+        console.warn(`No trace found for quantile: ${quantileName}`);
+        return false;
+      }
+    } catch (err) {
+      console.error('Error toggling quantile:', err);
+      return false;
+    }
+  }
+
+  // Wait for Plotly plot to be ready and then apply quantile toggles
+  function initializeQuantileToggles() {
+    const plotDiv = document.querySelector('#plot-content .js-plotly-plot');
+
+    if (!plotDiv || !plotDiv.data || plotDiv.data.length === 0) {
+      // Plot not ready yet, retry in 100ms
+      setTimeout(initializeQuantileToggles, 100);
+      return;
+    }
+
+    console.log('Plotly plot ready, initializing quantile toggles');
+
+    // Load saved preferences from localStorage and apply them
+    const quantileToggles = document.querySelectorAll('.quantile-toggle');
+    quantileToggles.forEach(checkbox => {
+      const quantileName = checkbox.value; // e.g., "P10"
+      const storageKey = `quantile_visible_${quantileName}`;
+      const savedState = localStorage.getItem(storageKey);
+
+      // If saved state exists, use it; otherwise default to checked
+      if (savedState !== null) {
+        checkbox.checked = savedState === 'true';
+      }
+
+      // Apply initial visibility state
+      toggleQuantileTrace(quantileName, checkbox.checked);
+
+      // Add event listener for future changes
+      checkbox.addEventListener('change', function() {
+        const isVisible = this.checked;
+        toggleQuantileTrace(quantileName, isVisible);
+        localStorage.setItem(storageKey, isVisible.toString());
+      });
+    });
+  }
+
+  // Initialize original sales toggle
+  function initializeOriginalSalesToggle() {
+    const toggleCheckbox = document.getElementById('toggle_original_sales');
+    if (!toggleCheckbox) return; // Not shown if OOS imputation wasn't performed
+
+    const plotDiv = document.querySelector('#plot-content .js-plotly-plot');
+    if (!plotDiv || !plotDiv.data || plotDiv.data.length === 0) {
+      setTimeout(initializeOriginalSalesToggle, 100);
+      return;
+    }
+
+    console.log('Initializing original sales toggle');
+
+    toggleCheckbox.addEventListener('change', function() {
+      const isVisible = this.checked;
+      const traceName = "Sales (reported)";
+
+      // Find the trace index by name
+      const traceIndices = [];
+      plotDiv.data.forEach((trace, idx) => {
+        if (trace.name === traceName) {
+          traceIndices.push(idx);
+        }
+      });
+
+      if (traceIndices.length > 0) {
+        const visibility = isVisible ? true : 'legendonly';
+        const update = { visible: visibility };
+        Plotly.restyle(plotDiv, update, traceIndices);
+        console.log(`Toggled ${traceName} to ${isVisible ? 'visible' : 'hidden'}`);
+      }
+    });
+  }
+
+  // Initialize quantile toggles after DOM is loaded
+  document.addEventListener('DOMContentLoaded', function() {
+    // Start checking for plot availability
+    initializeQuantileToggles();
+    initializeOriginalSalesToggle();
+  });
+
+  function updateFilterCount(section) {
+    const checkboxes = section.querySelectorAll('input[type=\"checkbox\"]');
+    const total = checkboxes.length;
+    let checked = 0;
+    checkboxes.forEach(cb => { if (cb.checked) checked += 1; });
+    if (total > 0 && checked === 0) {
+      // backend defaults missing filter to "all", so keep UI consistent
+      checkboxes.forEach(cb => { cb.checked = true; });
+      checked = total;
+    }
+    const badge = section.querySelector('.filter-count');
+    if (badge) badge.textContent = `${checked}/${total}`;
+    const btnText = section.querySelector('.filter-dropdown-text');
+    if (btnText) btnText.textContent = (checked === total) ? 'All selected' : `${checked} selected`;
+  }
+
+  // Per-filter "All": select everything
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.filter-reset');
+    if (!btn) return;
+    const section = btn.closest('.filter-section');
+    if (!section) return;
+    section.querySelectorAll('input[type=\"checkbox\"]').forEach(cb => { cb.checked = true; });
+    updateFilterCount(section);
+    e.preventDefault();
+  });
+
+  // Search within dropdown + live counts
+  document.querySelectorAll('.filter-section').forEach(section => {
+    updateFilterCount(section);
+    const search = section.querySelector('.filter-search');
+    const options = Array.from(section.querySelectorAll('.filter-option'));
+    options.forEach(opt => { opt.dataset.label = (opt.textContent || '').trim().toLowerCase(); });
+
+    if (search) {
+      search.addEventListener('keydown', ev => { if (ev.key === 'Enter') ev.preventDefault(); });
+      let t = null;
+      search.addEventListener('input', function() {
+        if (t) clearTimeout(t);
+        t = setTimeout(() => {
+          const q = (search.value || '').trim().toLowerCase();
+          options.forEach(opt => {
+            const label = opt.dataset.label || '';
+            opt.style.display = (!q || label.includes(q)) ? '' : 'none';
+          });
+        }, 80);
+      });
+    }
+
+    section.addEventListener('change', function(ev) {
+      if (ev.target && ev.target.matches('input[type=\"checkbox\"]')) {
+        updateFilterCount(section);
+      }
+    });
+  });
+
+  // AJAX form submission - only refresh plot, not entire page
+  document.getElementById('filter-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault(); // Prevent full page reload
+
+    // Show modern loading overlay
+    const overlay = document.getElementById('loading-overlay');
+    const plotContent = document.getElementById('plot-content');
+
+    if (overlay) {
+      overlay.classList.add('show');
+    }
+
+    // Build query string from form
+    const formData = new FormData(this);
+    const params = new URLSearchParams();
+
+    // Add all form values to params
+    for (const [key, value] of formData.entries()) {
+      params.append(key, value);
+    }
+
+    try {
+      // Make AJAX call to update plot
+      const response = await fetch('/api/update_plot?' + params.toString());
+      const data = await response.json();
+
+      if (data.success) {
+        // Update plot using Plotly.react() (same as supply plan page)
+        if (data.plot_json && plotContent) {
+          try {
+            const plotObj = JSON.parse(data.plot_json);
+
+            // Load saved quantile preferences from localStorage and apply to checkboxes
+            const quantileToggles = document.querySelectorAll('.quantile-toggle');
+            quantileToggles.forEach(checkbox => {
+              const quantileName = checkbox.value; // e.g., "P10"
+              const storageKey = `quantile_visible_${quantileName}`;
+              const savedState = localStorage.getItem(storageKey);
+
+              // Update checkbox state from localStorage (if exists)
+              if (savedState !== null) {
+                checkbox.checked = savedState === 'true';
+              }
+
+              const isVisible = checkbox.checked;
+
+              // Find matching traces and set visibility
+              if (plotObj.data && Array.isArray(plotObj.data)) {
+                plotObj.data.forEach(trace => {
+                  if (trace.name === quantileName) {
+                    trace.visible = isVisible;
+                  }
+                });
+              }
+            });
+
+            // Apply original sales toggle state (if it exists)
+            const originalSalesToggle = document.getElementById('toggle_original_sales');
+            if (originalSalesToggle && plotObj.data && Array.isArray(plotObj.data)) {
+              const isVisible = originalSalesToggle.checked;
+              plotObj.data.forEach(trace => {
+                if (trace.name === "Sales (reported)") {
+                  trace.visible = isVisible;
+                }
+              });
+            }
+
+            Plotly.react('plot-content', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+          } catch (err) {
+            console.error('Error rendering plot:', err);
+            plotContent.innerHTML = '<div class="p-3 text-danger small">Error rendering plot</div>';
+          }
+        }
+
+        // Update KPIs using specific IDs
+        const actualTotal = document.getElementById('kpi-actual-total');
+        const forecastTotal = document.getElementById('kpi-forecast-total');
+        const deltaPct = document.getElementById('kpi-delta-pct');
+
+        if (actualTotal) actualTotal.textContent = data.actual_total;
+        if (forecastTotal) forecastTotal.textContent = data.forecast_total;
+        if (deltaPct) deltaPct.textContent = data.delta_pct;
+
+        // Update filtered rows count
+        const rowsCount = document.getElementById('rows-count');
+        if (rowsCount) {
+          rowsCount.textContent = `Rows: ${data.filtered_rows}`;
+        }
+
+      } else {
+        console.error('Error updating plot:', data.error);
+        alert('Error updating results: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error fetching updated plot:', error);
+      alert('Error updating results. Please try again.');
+    } finally {
+      // Hide loading overlay
+      if (overlay) {
+        overlay.classList.remove('show');
+      }
+    }
+  });
+
+  // Chat assistant
+  let chatInFlight = false;
+  function getSingleCheckedValue(name) {
+    const cbs = document.querySelectorAll(`input[type="checkbox"][name="${name}"]`);
+    if (!cbs || !cbs.length) return null;
+    const checked = Array.from(cbs).filter(cb => cb && cb.checked);
+    if (checked.length !== 1) return null;
+    return checked[0].value || null;
+  }
+  function computeComboKey() {
+    const sku = getSingleCheckedValue('item') || getSingleCheckedValue('sku_id');
+    const loc = getSingleCheckedValue('store') || getSingleCheckedValue('location');
+    if (sku && loc) return `${sku}|||${loc}`;
+    return null;
+  }
+  function addChat(text, who) {
+    const wrap = document.createElement('div');
+    wrap.className = `border rounded-3 p-2 small ${who === 'user' ? 'bg-white' : 'bg-light'}`;
+    wrap.textContent = text;
+    const box = document.getElementById('chatMessages');
+    box.appendChild(wrap);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  document.getElementById('chatForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (chatInFlight) return;
+    const input = document.getElementById('chatInput');
+    const btn = document.getElementById('chatSendBtn');
+    const q = (input.value || '').trim();
+    if (!q) return;
+
+    chatInFlight = true;
+    input.disabled = true;
+    if (btn) btn.disabled = true;
+    addChat(q, 'user');
+    input.value = '';
+
+    const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2));
+    try {
+      const comboKey = computeComboKey();
+      const payload = { message: q, request_id: requestId };
+      if (comboKey) payload.combo_key = comboKey;
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      addChat(data.answer || 'No answer.', 'bot');
+    } catch (err) {
+      addChat('Error contacting assistant. Try again.', 'bot');
+      console.error(err);
+    } finally {
+      chatInFlight = false;
+      input.disabled = false;
+      if (btn) btn.disabled = false;
+      input.focus();
+    }
+  });
+</script>
+{% endblock %}
