@@ -555,12 +555,10 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         DataFrame with columns: date | item | store | actual | forecast
     """
     from config import GROUP_COLS, FORECAST_HORIZON_DAYS
-    # Use user-selected grain columns if provided
-    # Only use grouping columns that exist in df
-    if grain is not None and len(grain) > 0:
-        group_cols = [col for col in grain if col in df.columns]
-    else:
-        group_cols = [col for col in (GROUP_COLS if 'GROUP_COLS' in locals() or 'GROUP_COLS' in globals() else ["item", "store"]) if col in df.columns]
+    grain = [col for col in (grain or []) if col and col in df.columns]
+    if not grain:
+        grain = [col for col in (GROUP_COLS if 'GROUP_COLS' in locals() or 'GROUP_COLS' in globals() else ["item", "store"]) if col in df.columns]
+    group_cols = grain[:]
 
     # Handle extra features from raw data
     extra_features = extra_features or []
