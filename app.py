@@ -1424,6 +1424,9 @@ async def generate_forecast():
             print(f"OOS imputation skipped (enabled={oos_enabled}, column={oos_col})")
 
         # print("gg 3 forecast df unique country", df['Country'].unique())
+        if not grain or len(grain) == 0:
+            grain = [col for col in ["item", "store"] if col in df.columns]
+
         forecast_df, feature_importance = forecast_all_combined(df, start_date=start_date, months=months, grain=grain)
         
         # print("df head gg", df.head(3))
