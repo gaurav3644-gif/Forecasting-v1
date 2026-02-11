@@ -1314,6 +1314,8 @@ async def run_forecast(
             set_forecast_progress(session_id, 0.05, "Preparing data...")
             df = data_store[session_id]["df"]
             extra_features = data_store[session_id].get("extra_features", [])
+            grain = data_store[session_id].get("grain", [])
+
             logging.debug(f"[DEBUG] DF retrieved from data_store. Shape: {df.shape if df is not None else None}")
             logging.debug(f"[DEBUG] DF columns: {df.columns.tolist() if df is not None else None}")
             logging.debug(f"[DEBUG] Grain parameter: {grain}")
