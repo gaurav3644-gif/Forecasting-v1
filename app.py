@@ -1313,6 +1313,7 @@ async def run_forecast(
         try:
             set_forecast_progress(session_id, 0.05, "Preparing data...")
             df = data_store[session_id]["df"]
+            extra_features = data_store[session_id].get("extra_features", [])
             logging.debug(f"[DEBUG] DF retrieved from data_store. Shape: {df.shape if df is not None else None}")
             logging.debug(f"[DEBUG] DF columns: {df.columns.tolist() if df is not None else None}")
             logging.debug(f"[DEBUG] Grain parameter: {grain}")
@@ -1322,7 +1323,6 @@ async def run_forecast(
                 logging.debug(f"[LOG] Forecast thread: No data available, exiting.")
                 return
             start_date = pd.to_datetime(start_month + "-01")
-            extra_features = data_store[session_id].get("extra_features", [])
             from run_forecast2 import forecast_all_combined_prob, impute_oos_sales
 
             # Conditional OOS imputation
