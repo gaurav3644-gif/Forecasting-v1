@@ -1353,6 +1353,10 @@ async def run_forecast(
                 logging.debug(f"[LOG] OOS imputation skipped (enabled={oos_enabled}, column={oos_col})")
 
             set_forecast_progress(session_id, 0.35, "Running forecast model...")
+            df = data_store[session_id]["df"].copy()
+            extra_features = data_store[session_id].get("extra_features", [])
+            grain = data_store[session_id].get("grain", [])
+
             forecast_df, feature_importance, driver_artifacts = forecast_all_combined_prob(
                 df, start_date=start_date, months=months, grain=grain, extra_features=extra_features,
                 progress_callback=lambda p, msg=None: set_forecast_progress(session_id, 0.35 + 0.6 * p, msg or "Forecasting...")
