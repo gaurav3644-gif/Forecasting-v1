@@ -418,20 +418,46 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     forecast_cols = [col for col in (["date"] + (grain or [])) if col in forecast_df.columns]
     forecast_df_renamed = forecast_df[forecast_cols + [f"forecast_p{int(q*100)}" for q in quantiles]].copy()
 
+    # Normalize item/store columns to str for both DataFrames
+    def _normalize_grain_cols(df_obj):
+        for col in ["item", "store"]:
+            if col in df_obj.columns:
+                df_obj[col] = df_obj[col].astype(str).fillna("ALL")
+    _normalize_grain_cols(actual_df)
+    _normalize_grain_cols(forecast_df_renamed)
+
     # Merge quantile and classic forecast
+    merge_keys = ["date"] + [col for col in ["item", "store"] if col in actual_df.columns and col in forecast_df_renamed.columns]
     if grain_cols_in_forecast:
-        merge_cols = [col for col in grain_cols_in_forecast if col in actual_df.columns and col in forecast_df_renamed.columns]
-    else:
-        merge_cols = ["date"] if "date" in actual_df.columns and "date" in forecast_df_renamed.columns else []
-    if "date" in actual_df.columns and "date" in forecast_df_renamed.columns and "date" not in merge_cols:
-        merge_cols = ["date"] + merge_cols
+        for col in grain_cols_in_forecast:
+            if col not in merge_keys and col in actual_df.columns and col in forecast_df_renamed.columns:
+                merge_keys.append(col)
+    merge_cols = merge_keys
 
     result = pd.merge(
         actual_df,
         forecast_df_renamed,
         on=merge_cols,
-        how="outer"
+        how="left",
+        suffixes=(None, "_forecast")
     )
+    # Fallback: if merge didn't find per item/store forecast, map date-level forecast where available
+    all_forecast_map = {}
+    if "item" in forecast_df_renamed.columns and "store" in forecast_df_renamed.columns:
+        special = forecast_df_renamed[
+            (forecast_df_renamed["item"] == "ALL") &
+            (forecast_df_renamed["store"] == "ALL")
+        ]
+        if not special.empty:
+            for _, row in special.iterrows():
+                all_forecast_map[row["date"]] = row.to_dict()
+    if all_forecast_map:
+        quantile_cols = [f"forecast_p{int(q*100)}" for q in quantiles]
+        for col in quantile_cols:
+            if col in result.columns:
+                result[col] = result[col].fillna(result["date"].map(lambda d: all_forecast_map.get(d, {}).get(col)))
+        if "forecast" in result.columns:
+            result["forecast"] = result["forecast"].fillna(result["date"].map(lambda d: all_forecast_map.get(d, {}).get("forecast")))
     # Merge in the classic forecast column
     if "forecast" in classic_result.columns:
         # Merge on date + grain columns
@@ -627,34 +653,6 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         raise ValueError(f"Failed to parse date column: {str(e)}")
     
 
-    # # Impute sales for out-of-stock days (if columns exist)
-    # if "out_of_stock" in df.columns and "sales" in df.columns:
-    #     print("Imputing sales for out-of-stock days...")
-    #     group_cols_for_impute = [col for col in (grain if grain else ["item", "store"]) if col in df.columns]
-    #     sales_dtype = df["sales"].dtype
-    #     def impute_sales(group):
-    #         mask = (group["out_of_stock"] == 1) & (group["sales"] == 0)
-    #         rolling_mean = group["sales"].shift(1).rolling(7, min_periods=1).mean()
-    #         # Replace non-finite values with zero before casting
-    #         rolling_mean = rolling_mean.replace([np.inf, -np.inf], np.nan).fillna(0)
-    #         group.loc[mask, "sales"] = rolling_mean[mask].astype(sales_dtype)
-    #         return group
-    #     # Only drop grouping columns if they exist in the group
-    #     def safe_drop_group_cols(g):
-    #         drop_cols = [col for col in group_cols_for_impute if col in g.columns]
-    #         return g.drop(columns=drop_cols) if drop_cols else g
-    #     if group_cols_for_impute:
-    #         df = df.groupby(group_cols_for_impute, group_keys=False).apply(lambda g: impute_sales(safe_drop_group_cols(g)))
-    #         # Merge grain columns back if missing
-    #         for col in group_cols_for_impute:
-    #             if col not in df.columns:
-    #                 df[col] = df[col] if col in df.columns else ""
-    #     else:
-    #         df = impute_sales(df)
-    #     print("Imputation complete.")
-
-    # print("gg after imputation df head")
-    # print(df.head(2))
     # Sort data
     df = df.sort_values("date").reset_index(drop=True)
     if progress_callback:
