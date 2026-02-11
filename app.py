@@ -1315,6 +1315,14 @@ async def run_forecast(
             df = data_store[session_id]["df"]
             extra_features = data_store[session_id].get("extra_features", [])
             grain = data_store[session_id].get("grain", [])
+            df = data_store[session_id]["df"]
+            extra_features = data_store[session_id].get("extra_features", [])
+            grain = data_store[session_id].get("grain", [])
+
+            # 🔥 FIX: Auto-detect grain if empty
+            if not grain:
+                grain = [col for col in ["item", "store"] if col in df.columns]
+                logging.debug(f"[FIX] Grain auto-detected as: {grain}")
 
             logging.debug(f"[DEBUG] DF retrieved from data_store. Shape: {df.shape if df is not None else None}")
             logging.debug(f"[DEBUG] DF columns: {df.columns.tolist() if df is not None else None}")
