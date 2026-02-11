@@ -77,18 +77,18 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     # Update grain to include item/store if we added them
     if added_default_grain:
         logging.debug(f"[PROB] DEBUG: grain value before update: {grain}, type: {type(grain)}")
-        # Check if grain is effectively empty (None, [], or list of empty strings)
+        # If grain is empty, set it to default item/store
         is_empty_grain = (grain is None or
                          len(grain) == 0 or
                          (isinstance(grain, list) and all(not str(g).strip() for g in grain)))
         if is_empty_grain:
             grain = ["item", "store"]
             logging.debug("[PROB] Updated grain to include default item/store columns")
-            # Recalculate group_cols now that grain has been updated
-            group_cols = [col for col in grain if col in df.columns]
-            logging.debug(f"[PROB] Recalculated group_cols: {group_cols}")
-        else:
-            logging.debug(f"[PROB] WARNING: grain is not empty ({grain}), not updating")
+
+        # Recalculate group_cols now that item/store columns exist in df
+        # This handles the case where grain was already set but columns didn't exist
+        group_cols = [col for col in (grain if grain else []) if col in df.columns]
+        logging.debug(f"[PROB] Recalculated group_cols after adding columns: {group_cols}")
 
     # Ensure date column is datetime
     if not pd.api.types.is_datetime64_any_dtype(df["date"]):
@@ -601,18 +601,18 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     # Update grain to include item/store if we added them
     if added_default_grain:
         print(f"[LOG] DEBUG: grain value before update: {grain}, type: {type(grain)}")
-        # Check if grain is effectively empty (None, [], or list of empty strings)
+        # If grain is empty, set it to default item/store
         is_empty_grain = (grain is None or
                          len(grain) == 0 or
                          (isinstance(grain, list) and all(not str(g).strip() for g in grain)))
         if is_empty_grain:
             grain = ["item", "store"]
             print("[LOG] Updated grain to include default item/store columns")
-            # Recalculate group_cols now that grain has been updated
-            group_cols = [col for col in grain if col in df.columns]
-            print(f"[LOG] Recalculated group_cols: {group_cols}")
-        else:
-            print(f"[LOG] WARNING: grain is not empty ({grain}), not updating")
+
+        # Recalculate group_cols now that item/store columns exist in df
+        # This handles the case where grain was already set but columns didn't exist
+        group_cols = [col for col in (grain if grain else []) if col in df.columns]
+        print(f"[LOG] Recalculated group_cols after adding columns: {group_cols}")
 
     # Ensure date column is datetime
     try:
