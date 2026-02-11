@@ -1011,6 +1011,20 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         on=grain_merge_cols,
         how="outer"
     )
+    
+    if grain is not None:
+        for col in grain:
+            if col in result.columns:
+                # If the column exists but has NaNs (common in outer joins), 
+                # fill it with the default "ALL" or the first valid value
+                result[col] = result[col].fillna("ALL").astype(str)
+
+    # Ensure 'actual' and 'forecast' also don't have NaNs which can break the UI
+    result["actual"] = result["actual"].fillna(0)
+    result["forecast"] = result["forecast"].fillna(0)
+
+
+
 
     # Ensure all grain columns are present in the result for filtering, and fill with values from source DataFrames if possible
     if grain is not None:
