@@ -1313,6 +1313,10 @@ async def run_forecast(
         try:
             set_forecast_progress(session_id, 0.05, "Preparing data...")
             df = data_store[session_id]["df"]
+            logging.debug(f"[DEBUG] DF retrieved from data_store. Shape: {df.shape if df is not None else None}")
+            logging.debug(f"[DEBUG] DF columns: {df.columns.tolist() if df is not None else None}")
+            logging.debug(f"[DEBUG] Grain parameter: {grain}")
+            logging.debug(f"[DEBUG] Extra features parameter: {extra_features}")
             if df is None or df.empty:
                 set_forecast_progress(session_id, 1.0, "No data available", done=True, error="No data available for forecasting")
                 logging.debug(f"[LOG] Forecast thread: No data available, exiting.")
