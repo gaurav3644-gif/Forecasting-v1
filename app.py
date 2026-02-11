@@ -1186,7 +1186,8 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Invalid date format in 'date' column: {str(e)}")
     
     session_id = "default"  # Replace with user session for SaaS
-    data_store[session_id] = {"df": df}
+    stored_df = df.copy()
+    data_store[session_id] = {"df": stored_df, "raw_df": stored_df.copy()}
     return RedirectResponse("/forecast", status_code=303)
 
 @app.get("/forecast", response_class=HTMLResponse)
@@ -1312,10 +1313,11 @@ async def run_forecast(
         logging.debug(f"[LOG] Forecast thread started for session_id={session_id}")
         try:
             set_forecast_progress(session_id, 0.05, "Preparing data...")
-            df = data_store[session_id]["df"]
-            extra_features = data_store[session_id].get("extra_features", [])
-            grain = data_store[session_id].get("grain", [])
-            df = data_store[session_id]["df"]
+            raw_df = data_store[session_id].get("raw_df")
+            if raw_df is None:
+                raw_df = data_store[session_id]["df"]
+            df = raw_df.copy()
+            data_store[session_id]["df"] = df
             extra_features = data_store[session_id].get("extra_features", [])
             grain = data_store[session_id].get("grain", [])
 
@@ -3554,4 +3556,3 @@ async def chat_endpoint(payload: Dict = Body(...)):
                 return {"answer": local, "provider": "local", "llm_provider": provider, "llm_error": msg, "cached": False}
             except Exception:
                 return {"answer": f"Assistant error: {e}", "provider": "local", "cached": False}
-

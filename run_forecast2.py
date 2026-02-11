@@ -404,7 +404,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     # classic_result: columns include 'date', 'item', 'store', 'actual', 'forecast', ...
 
     grain_cols_in_forecast = [col for col in (grain if grain else ["item", "store"]) if col in forecast_df.columns]
-    actual_cols = [col for col in (["date", "sales"] + (grain or [])) if col in df.columns]
+    actual_cols = [col for col in (["date", "sales"] + [c for c in ["item", "store"] if c in df.columns] + (grain or [])) if col in df.columns]
     actual_df = df[actual_cols].copy()
     if "sales" in actual_df.columns:
         actual_df.rename(columns={"sales": "actual"}, inplace=True)
