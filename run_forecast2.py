@@ -62,14 +62,22 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
         raise ValueError(f"Missing required columns: {missing_cols}")
 
     # Add item/store if missing (for ungrouped forecasts)
+    added_default_grain = False
     if "item" not in df.columns:
         df = df.copy()
         df["item"] = "ALL"
+        added_default_grain = True
         logging.debug("[PROB] Added missing 'item' column with default value 'ALL'")
     if "store" not in df.columns:
         df = df.copy()
         df["store"] = "ALL"
+        added_default_grain = True
         logging.debug("[PROB] Added missing 'store' column with default value 'ALL'")
+
+    # Update grain to include item/store if we added them and grain was empty
+    if added_default_grain and (grain is None or len(grain) == 0):
+        grain = ["item", "store"]
+        logging.debug("[PROB] Updated grain to include default item/store columns")
 
     # Ensure date column is datetime
     if not pd.api.types.is_datetime64_any_dtype(df["date"]):
@@ -567,15 +575,23 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         raise ValueError(f"Missing required columns: {missing_cols}")
 
     # Add item/store if missing (for ungrouped forecasts)
+    added_default_grain = False
     if "item" not in df.columns:
         df = df.copy()
         df["item"] = "ALL"
+        added_default_grain = True
         print("[LOG] Added missing 'item' column with default value 'ALL'")
     if "store" not in df.columns:
         df = df.copy()
         df["store"] = "ALL"
+        added_default_grain = True
         print("[LOG] Added missing 'store' column with default value 'ALL'")
-    
+
+    # Update grain to include item/store if we added them and grain was empty
+    if added_default_grain and (grain is None or len(grain) == 0):
+        grain = ["item", "store"]
+        print("[LOG] Updated grain to include default item/store columns")
+
     # Ensure date column is datetime
     try:
         if not pd.api.types.is_datetime64_any_dtype(df["date"]):
