@@ -78,6 +78,9 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     if added_default_grain and (grain is None or len(grain) == 0):
         grain = ["item", "store"]
         logging.debug("[PROB] Updated grain to include default item/store columns")
+        # Recalculate group_cols now that grain has been updated
+        group_cols = [col for col in grain if col in df.columns]
+        logging.debug(f"[PROB] Recalculated group_cols: {group_cols}")
 
     # Ensure date column is datetime
     if not pd.api.types.is_datetime64_any_dtype(df["date"]):
@@ -591,6 +594,9 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     if added_default_grain and (grain is None or len(grain) == 0):
         grain = ["item", "store"]
         print("[LOG] Updated grain to include default item/store columns")
+        # Recalculate group_cols now that grain has been updated
+        group_cols = [col for col in grain if col in df.columns]
+        print(f"[LOG] Recalculated group_cols: {group_cols}")
 
     # Ensure date column is datetime
     try:
