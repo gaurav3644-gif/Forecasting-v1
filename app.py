@@ -1434,7 +1434,7 @@ async def generate_forecast():
         start_month_str = data_store[session_id]["start_month"]
         months = data_store[session_id]["months"]
         start_date = pd.to_datetime(start_month_str + "-01")  # First day of the month
-        print(f"Starting forecast generation with start_date: {start_date}, months: {months}")
+        print("Starting forecast generation with start_date: {start_date}, months: {months}")
         grain = data_store[session_id].get("grain", ["item", "store"])
         print(f"Forecasting at grain: {grain}")
 
@@ -1457,7 +1457,7 @@ async def generate_forecast():
         # print("gg 3 forecast df unique country", df['Country'].unique())
         if not grain or len(grain) == 0:
             grain = [col for col in ["item", "store"] if col in df.columns]
-
+        print("gg grain before all combined called ", grain)
         forecast_df, feature_importance = forecast_all_combined(df, start_date=start_date, months=months, grain=grain)
         
         # print("df head gg", df.head(3))
