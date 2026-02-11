@@ -1197,6 +1197,10 @@ async def forecast_page(request: Request):
         return RedirectResponse("/?error=no_data", status_code=303)
 
     df = data_store[session_id]["df"]
+    logging.error("===== BEFORE FORECAST DF =====")
+    logging.error(df.columns.tolist())
+    logging.error(df.shape)
+
     max_date = df['date'].max()
     last_month = max_date.strftime('%Y-%m')
 
@@ -1318,6 +1322,12 @@ async def run_forecast(
                 raw_df = data_store[session_id]["df"]
             df = raw_df.copy()
             data_store[session_id]["df"] = df
+            import logging
+
+            logging.error("===== UPLOAD STORED DF =====")
+            logging.error(data_store[session_id]["df"].columns.tolist())
+            logging.error(data_store[session_id]["df"].shape)
+
             extra_features = data_store[session_id].get("extra_features", [])
             grain = data_store[session_id].get("grain", [])
 
@@ -1405,6 +1415,9 @@ async def generate_forecast():
 
     try:
         df = data_store[session_id]["df"]
+        logging.error("===== BEFORE FORECAST DF =====")
+        logging.error(df.columns.tolist())
+        logging.error(df.shape)
 
         # Additional validation
         if df is None or df.empty:
