@@ -1457,7 +1457,7 @@ async def generate_forecast():
         # print("gg 3 forecast df unique country", df['Country'].unique())
         if not grain or len(grain) == 0:
             grain = [col for col in ["item", "store"] if col in df.columns]
-        print("gg grain before all combined called ", grain)
+        logging.info("gg grain before all combined called %s", grain)
         forecast_df, feature_importance = forecast_all_combined(df, start_date=start_date, months=months, grain=grain)
         
         # print("df head gg", df.head(3))
