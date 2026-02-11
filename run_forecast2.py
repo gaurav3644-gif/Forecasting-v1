@@ -591,18 +591,18 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     if not grain:
         grain = [col for col in (GROUP_COLS if 'GROUP_COLS' in locals() or 'GROUP_COLS' in globals() else ["item", "store"]) if col in df.columns]
     group_cols = grain[:]
-
+    print(f"gg Using group columns for forecasting: {group_cols}")
     # Handle extra features from raw data
     extra_features = extra_features or []
     extra_features = [col for col in extra_features if col in df.columns and col not in ['date', 'sales']]
-    print(f"Using extra features for training: {extra_features}")
+    # print(f"Using extra features for training: {extra_features}")
     if progress_callback:
         progress_callback(0.01, "Validating input data...")
-    print(f"Using group columns for forecasting: {group_cols}")
+    # print(f"Using group columns for forecasting: {group_cols}")
     
-    print(f"forecast_all_combined called with df shape: {df.shape}")
-    print(f"df columns: {df.columns.tolist()}")
-    print(f"df dtypes: {df.dtypes.to_dict()}")
+    # print(f"forecast_all_combined called with df shape: {df.shape}")
+    # print(f"df columns: {df.columns.tolist()}")
+    # print(f"df dtypes: {df.dtypes.to_dict()}")
     # print(f"First 2 rows of df:")
     # print(df.head(2))
     
@@ -621,12 +621,12 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         df = df.copy()
         df["item"] = "ALL"
         added_default_grain = True
-        print("[LOG] Added missing 'item' column with default value 'ALL'")
+        # print("[LOG] Added missing 'item' column with default value 'ALL'")
     if "store" not in df.columns:
         df = df.copy()
         df["store"] = "ALL"
         added_default_grain = True
-        print("[LOG] Added missing 'store' column with default value 'ALL'")
+        # print("[LOG] Added missing 'store' column with default value 'ALL'")
 
     # Update grain to include item/store if we added them
     if added_default_grain:
@@ -637,12 +637,12 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
                          (isinstance(grain, list) and all(not str(g).strip() for g in grain)))
         if is_empty_grain:
             grain = ["item", "store"]
-            print("[LOG] Updated grain to include default item/store columns")
+            # print("[LOG] Updated grain to include default item/store columns")
 
         # Recalculate group_cols now that item/store columns exist in df
         # This handles the case where grain was already set but columns didn't exist
         group_cols = [col for col in (grain if grain else []) if col in df.columns]
-        print(f"[LOG] Recalculated group_cols after adding columns: {group_cols}")
+        # print(f"[LOG] Recalculated group_cols after adding columns: {group_cols}")
 
     # Ensure date column is datetime
     try:
@@ -678,7 +678,7 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
             try:
                 df = df.groupby(group_cols_for_clean, group_keys=False).apply(clean_sales)
             except KeyError as e:
-                print(f"Warning: Skipping groupby cleaning due to missing columns: {e}")
+                # print(f"Warning: Skipping groupby cleaning due to missing columns: {e}")
                 df = clean_sales(df)
         else:
             df = clean_sales(df)
@@ -764,7 +764,7 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     print(f"Historical data shape: {df_feat_history.shape}")
     
     if df_feat_history.empty:
-        print("Warning: No historical data available for forecasting. Using all available data.")
+        # print("Warning: No historical data available for forecasting. Using all available data.")
         # Fall back to using all data if no historical data is available
         df_feat_history = df_feat.copy()
     
@@ -956,7 +956,7 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         feature_importance = {}
         return result, feature_importance
     
-    print(f"Forecast date range: {forecast_df['date'].min()} to {forecast_df['date'].max()}")
+    # print(f"Forecast date range: {forecast_df['date'].min()} to {forecast_df['date'].max()}")
     grain_cols_in_forecast = [col for col in (grain if grain else ["item", "store"]) if col in forecast_df.columns]
     if grain_cols_in_forecast:
         print(f"Unique grain pairs in forecast: {forecast_df[grain_cols_in_forecast].drop_duplicates().shape[0]}")
@@ -970,8 +970,8 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     if "sales" in actual_df.columns:
         actual_df.rename(columns={"sales": "actual"}, inplace=True)
 
-    print(f"Actual DF shape: {actual_df.shape}")
-    print(f"Actual date range: {actual_df['date'].min()} to {actual_df['date'].max()}")
+    # print(f"Actual DF shape: {actual_df.shape}")
+    # print(f"Actual date range: {actual_df['date'].min()} to {actual_df['date'].max()}")
 
     # Prepare forecast data
     forecast_cols = [col for col in (["date", "sales"] + (grain or [])) if col in forecast_df.columns]
