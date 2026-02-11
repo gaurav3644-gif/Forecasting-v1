@@ -591,7 +591,7 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     if not grain:
         grain = [col for col in (GROUP_COLS if 'GROUP_COLS' in locals() or 'GROUP_COLS' in globals() else ["item", "store"]) if col in df.columns]
     group_cols = grain[:]
-    print(f"gg Using group columns for forecasting: {group_cols}")
+    print(f"gg Using grain received for forecasting: {grain}")
     # Handle extra features from raw data
     extra_features = extra_features or []
     extra_features = [col for col in extra_features if col in df.columns and col not in ['date', 'sales']]
