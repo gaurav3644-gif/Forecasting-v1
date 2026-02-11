@@ -1066,6 +1066,10 @@ def set_forecast_progress(session_id, progress, status=None, done=False, error=N
 @app.get("/forecast_status")
 async def forecast_status():
     session_id = "default"
+    if session_id in data_store:
+        logging.error("===== STATUS ROUTE DF =====")
+        logging.error(data_store[session_id]["df"].columns.tolist())
+        logging.error(data_store[session_id]["df"].shape)
     prog = data_store.get(session_id, {}).get("forecast_progress", None)
     forecast_ready = (
         session_id in data_store and
@@ -1322,8 +1326,6 @@ async def run_forecast(
                 raw_df = data_store[session_id]["df"]
             df = raw_df.copy()
             data_store[session_id]["df"] = df
-            import logging
-
             logging.error("===== UPLOAD STORED DF =====")
             logging.error(data_store[session_id]["df"].columns.tolist())
             logging.error(data_store[session_id]["df"].shape)
