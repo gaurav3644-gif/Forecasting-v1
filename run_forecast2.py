@@ -592,7 +592,9 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         DataFrame with columns: date | item | store | actual | forecast
     """
     from config import GROUP_COLS, FORECAST_HORIZON_DAYS
+    print("gg grain in line 595", grain)
     grain = [col for col in (grain or []) if col and col in df.columns]
+    print("gg grain in line 597", grain)
     if not grain:
         grain = [col for col in (GROUP_COLS if 'GROUP_COLS' in locals() or 'GROUP_COLS' in globals() else ["item", "store"]) if col in df.columns]
     group_cols = grain[:]
