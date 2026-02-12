@@ -116,6 +116,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
         if group_cols_for_clean:
             try:
                 df = df.groupby(group_cols_for_clean, group_keys=False).apply(clean_sales)
+                df = df.reset_index(drop=True)
             except KeyError as e:
                 logging.debug(f"[PROB] Warning: Skipping groupby cleaning due to missing columns: {e}")
                 df = clean_sales(df)
