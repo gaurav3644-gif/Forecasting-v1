@@ -992,7 +992,7 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     
     # Prepare actual data
     actual_cols = [col for col in (["date", "sales"] + (grain or [])) if col in df.columns]
-    # print("gg df columns",df.columns)
+    print("gg line 995",df.columns, grain)
     actual_df = df[actual_cols].copy()
     if "sales" in actual_df.columns:
         actual_df.rename(columns={"sales": "actual"}, inplace=True)
@@ -1023,6 +1023,7 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
     print(actual_df.head(5))
     print(forecast_df_renamed.head(5))
     # Always merge on all grain columns that exist in both DataFrames (plus date)
+    # print("gg line 1026 ", grain, actual_df.columns.tolist(), forecast_df_renamed.columns.tolist())
     grain_merge_cols = [col for col in (grain or []) if col in actual_df.columns and col in forecast_df_renamed.columns]
     # Always include 'date' if present in both
     if "date" in actual_df.columns and "date" in forecast_df_renamed.columns and "date" not in grain_merge_cols:
