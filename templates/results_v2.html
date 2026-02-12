@@ -137,6 +137,71 @@
     font-weight: 500;
     font-size: 0.95rem;
   }
+  .chat-bubble-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    max-height: 420px;
+    overflow-y: auto;
+    padding-right: 0.35rem;
+  }
+  .chat-bubble {
+    padding: 0.75rem 0.95rem;
+    border-radius: 18px;
+    font-size: 0.95rem;
+    border: 1px solid rgba(18, 24, 39, 0.08);
+    line-height: 1.4;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  }
+  .chat-bubble.user {
+    background: #0d6efd;
+    color: #fff;
+    align-self: flex-end;
+    border-color: rgba(13, 110, 253, 0.3);
+  }
+  .chat-bubble.bot {
+    background: #f8f9fa;
+    color: #1c2530;
+    align-self: flex-start;
+  }
+  .chat-input-wrapper {
+    position: sticky;
+    bottom: 0;
+    background: transparent;
+  }
+  .chat-input {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .chat-input .form-control {
+    border-radius: 999px;
+    box-shadow: none;
+  }
+  .chat-input .btn {
+    border-radius: 999px;
+    padding: 0.55rem 1.1rem;
+    font-weight: 600;
+  }
+  #aiAssistantPanel .offcanvas-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding-bottom: 1rem;
+  }
+  #decision-intelligence .decision-table th,
+  #decision-intelligence .decision-table td {
+    font-size: 0.85rem;
+  }
+  #decision-status-summary {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .ai-recommendation-highlight {
+    font-size: 1rem;
+    color: #0d6efd;
+    line-height: 1.5;
+  }
 </style>
 {% endblock %}
 
@@ -162,7 +227,7 @@
       {% endif %}
       <span class="badge text-bg-light border">Grain: {{ grain|join(" · ") }}</span>
       <a href="/supply_plan" class="btn btn-outline-primary btn-sm">Supply Plan</a>
-      <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal">AI Assistant</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="offcanvas" data-bs-target="#aiAssistantPanel" aria-controls="aiAssistantPanel">AI Assistant</button>
     </div>
   </div>
 
@@ -286,6 +351,45 @@
               <div class="text-muted small">Delta</div>
               <div id="kpi-delta-pct" class="h5 mb-0">{{ delta_pct }}</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="decision-intelligence" class="card card-soft shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="fw-semibold">Decision Intelligence</div>
+            <span id="decision-status-pill" class="badge text-bg-light border small">Loading</span>
+          </div>
+          <div id="decision-context-helper" class="text-muted small mb-2">
+            Select one item + store combination to view decision options and AI recommendations.
+          </div>
+          <div id="decision-options-container" style="display:none;">
+            <div class="table-responsive">
+              <table class="table table-sm decision-table mb-0">
+                <thead>
+                  <tr class="text-muted small">
+                    <th>Option</th>
+                    <th>Order Qty</th>
+                    <th class="text-end">Stock-out</th>
+                    <th class="text-end">Service</th>
+                    <th class="text-end">Inventory</th>
+                  </tr>
+                </thead>
+                <tbody id="decision-options-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="decision-options-error" class="text-muted small mb-2" style="display:none;"></div>
+          <div id="ai-recommendation-panel" class="pt-3 mt-3 border-top">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <div class="small fw-semibold text-muted text-uppercase">AI Recommendation</div>
+              <span id="ai-confidence" class="text-muted small"></span>
+            </div>
+            <div id="ai-statement" class="ai-recommendation-highlight mb-1">LLM summary will appear here.</div>
+            <div id="ai-impact" class="text-muted small fst-italic mb-2">Expected impact will live here.</div>
+            <ul id="ai-tradeoffs" class="list-unstyled ms-2 mb-0 text-muted small"></ul>
+            <div id="ai-error" class="text-danger small mt-2" style="display:none;"></div>
           </div>
         </div>
       </div>
@@ -466,28 +570,29 @@
   </div>
 </div>
 
-<!-- AI Assistant modal -->
-<div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="chatModalLabel">AI Assistant</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div id="chatMessages" class="d-grid gap-2">
-          <div class="border rounded-3 p-2 small bg-light">
-            Ask about your raw data, forecast, or supply plan.
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <form id="chatForm" class="w-100 d-flex gap-2">
-          <input type="text" class="form-control" id="chatInput" placeholder="Type a question..." required>
-          <button class="btn btn-primary" type="submit" id="chatSendBtn">Send</button>
-        </form>
+<div class="offcanvas offcanvas-end" tabindex="-1" id="aiAssistantPanel" aria-labelledby="aiAssistantPanelLabel">
+  <div class="offcanvas-header border-bottom">
+    <div>
+      <div class="h5 mb-0" id="aiAssistantPanelLabel">AI Assistant</div>
+      <div class="text-muted small">Explain forecasts, supply plans, or decision options.</div>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" data-bs-dismiss="offcanvas" aria-label="Close">
+      ×
+    </button>
+  </div>
+  <div class="offcanvas-body">
+    <div id="chatMessages" class="chat-bubble-stack mb-2">
+      <div class="chat-bubble bot">
+        Start by asking about trends, risks, or ordering decisions.
       </div>
     </div>
+    <div id="chatStatus" class="text-muted small" aria-live="polite"></div>
+    <form id="chatForm" class="chat-input-wrapper">
+      <div class="chat-input w-100 align-items-center">
+        <input type="text" class="form-control form-control-sm" id="chatInput" placeholder="Ask a question (e.g., Why is there a stockout?)" required autocomplete="off">
+        <button class="btn btn-primary btn-sm" type="submit" id="chatSendBtn">Send</button>
+      </div>
+    </form>
   </div>
 </div>
 {% endblock %}
@@ -508,6 +613,166 @@
     a.remove();
     URL.revokeObjectURL(url);
   });
+
+  const decisionPeriod = "{{ decision_period|default('')|e }}";
+  const decisionInitialSku = "{{ decision_initial_sku|default('')|e }}";
+  const decisionInitialLocation = "{{ decision_initial_location|default('')|e }}";
+
+  function getFirstCheckedValue(name) {
+    const checked = document.querySelectorAll(`input[name="${name}"]:checked`);
+    if (checked.length) {
+      return checked[0].value || "";
+    }
+    const all = document.querySelectorAll(`input[name="${name}"]`);
+    if (all.length) {
+      return all[0].value || "";
+    }
+    return "";
+  }
+
+  function buildDecisionPayload() {
+    const sku = (getFirstCheckedValue("item") || getFirstCheckedValue("sku_id") || decisionInitialSku || "").trim();
+    const location = (getFirstCheckedValue("store") || getFirstCheckedValue("location") || decisionInitialLocation || "").trim();
+    return { sku, location, period: decisionPeriod };
+  }
+
+  function formatNumber(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+      return "—";
+    }
+    return Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
+  function renderDecisionOptionsTable(options) {
+    const tableBody = document.getElementById("decision-options-body");
+    if (!tableBody) return;
+    tableBody.innerHTML = "";
+    options.slice(0, 4).forEach(opt => {
+      const row = document.createElement("tr");
+      const stockout = opt.stockout_risk ? (Number(opt.stockout_risk) * 100).toFixed(1) : "0.0";
+      const service = opt.service_level ? (Number(opt.service_level) * 100).toFixed(1) : "0.0";
+      row.innerHTML = `
+        <td class="fw-semibold">Option ${opt.option_id || "—"}</td>
+        <td>${formatNumber(opt.order_qty)}</td>
+        <td class="text-end ${Number(opt.stockout_risk || 0) > 0.1 ? "text-danger" : "text-success"}">${stockout}%</td>
+        <td class="text-end">${service}%</td>
+        <td class="text-end">${formatNumber(opt.ending_inventory)}</td>
+      `;
+      tableBody.appendChild(row);
+    });
+  }
+
+  function showDecisionError(message) {
+    const errorEl = document.getElementById("decision-options-error");
+    const container = document.getElementById("decision-options-container");
+    if (container) container.style.display = "none";
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.style.display = "block";
+    }
+  }
+
+  function renderAIRecommendation(decision) {
+    const statementEl = document.getElementById("ai-statement");
+    const impactEl = document.getElementById("ai-impact");
+    const tradeoffsEl = document.getElementById("ai-tradeoffs");
+    const confidenceEl = document.getElementById("ai-confidence");
+    const aiError = document.getElementById("ai-error");
+    if (!decision) {
+      if (statementEl) statementEl.textContent = "AI recommendation unavailable.";
+      return;
+    }
+    if (aiError) {
+      aiError.style.display = "none";
+      aiError.textContent = "";
+    }
+    if (statementEl) {
+      statementEl.textContent = decision.decision_statement || "No recommendation returned.";
+    }
+    if (impactEl) {
+      impactEl.textContent = decision.expected_impact || "";
+    }
+    if (tradeoffsEl) {
+      tradeoffsEl.innerHTML = "";
+      (decision.tradeoffs || []).forEach(t => {
+        const li = document.createElement("li");
+        li.textContent = t;
+        tradeoffsEl.appendChild(li);
+      });
+    }
+    if (confidenceEl) {
+      if (decision.confidence !== undefined && decision.confidence !== null) {
+        confidenceEl.textContent = `Confidence: ${(Number(decision.confidence) * 100).toFixed(0)}%`;
+      } else {
+        confidenceEl.textContent = "";
+      }
+    }
+  }
+
+  async function refreshDecisionIntelligence(reason = "initial") {
+    const statusBadge = document.getElementById("decision-status-pill");
+    const helper = document.getElementById("decision-context-helper");
+    const optionsContainer = document.getElementById("decision-options-container");
+    const optionsError = document.getElementById("decision-options-error");
+    const aiError = document.getElementById("ai-error");
+    if (!statusBadge || !helper) return;
+    const payload = buildDecisionPayload();
+    if (!payload.sku || !payload.period) {
+      if (optionsError) {
+        optionsError.textContent = "Awaiting a single SKU/store combination.";
+        optionsError.style.display = "block";
+      }
+      if (optionsContainer) optionsContainer.style.display = "none";
+      statusBadge.textContent = "Idle";
+      helper.textContent = "Select one item and store to unlock decision intelligence.";
+      renderAIRecommendation(null);
+      return;
+    }
+    helper.textContent = `Loading decisions for ${payload.sku}${payload.location ? " / " + payload.location : ""}...`;
+    statusBadge.textContent = "Loading";
+    if (optionsError) optionsError.style.display = "none";
+    if (aiError) aiError.style.display = "none";
+    try {
+      const headers = { "Content-Type": "application/json" };
+      const body = JSON.stringify({
+        sku: payload.sku,
+        period: payload.period,
+        location: payload.location || undefined
+      });
+      const [scoreRes, aiRes] = await Promise.all([
+        fetch("/score-options", { method: "POST", headers, body }),
+        fetch("/ai-decision", { method: "POST", headers, body })
+      ]);
+      if (!scoreRes.ok) {
+        throw new Error("Decision options are unavailable.");
+      }
+      if (!aiRes.ok) {
+        throw new Error("AI recommendation is unavailable.");
+      }
+      const scoreData = await scoreRes.json();
+      const aiDecision = await aiRes.json();
+      if (!Array.isArray(scoreData.options) || !scoreData.options.length) {
+        showDecisionError("No ranked options returned. Generate the supply plan first and ensure a single selection.");
+        renderAIRecommendation(null);
+        statusBadge.textContent = "Unavailable";
+        return;
+      }
+      renderDecisionOptionsTable(scoreData.options);
+      if (optionsContainer) optionsContainer.style.display = "";
+      if (optionsError) optionsError.style.display = "none";
+      renderAIRecommendation(aiDecision);
+      statusBadge.textContent = "Connected";
+      helper.textContent = `Decision intelligence ready for ${payload.sku}${payload.location ? " • " + payload.location : ""}`;
+    } catch (err) {
+      console.error("Decision intelligence error:", err);
+      showDecisionError(err.message || "Unable to load decision intelligence.");
+      if (aiError) {
+        aiError.textContent = err.message || "AI recommendation unavailable.";
+        aiError.style.display = "block";
+      }
+      statusBadge.textContent = "Unavailable";
+    }
+  }
 
   // Quantile toggle functionality
   function toggleQuantileTrace(quantileName, isVisible) {
@@ -623,6 +888,7 @@
     // Start checking for plot availability
     initializeQuantileToggles();
     initializeOriginalSalesToggle();
+    refreshDecisionIntelligence();
   });
 
   function updateFilterCount(section) {
@@ -769,6 +1035,7 @@
         if (rowsCount) {
           rowsCount.textContent = `Rows: ${data.filtered_rows}`;
         }
+        refreshDecisionIntelligence();
 
       } else {
         console.error('Error updating plot:', data.error);
@@ -802,11 +1069,20 @@
   }
   function addChat(text, who) {
     const wrap = document.createElement('div');
-    wrap.className = `border rounded-3 p-2 small ${who === 'user' ? 'bg-white' : 'bg-light'}`;
+    wrap.className = `chat-bubble ${who === 'user' ? 'user' : 'bot'}`;
     wrap.textContent = text;
     const box = document.getElementById('chatMessages');
-    box.appendChild(wrap);
-    box.scrollTop = box.scrollHeight;
+    if (box) {
+      box.appendChild(wrap);
+      box.scrollTop = box.scrollHeight;
+    }
+  }
+
+  function setChatStatus(text) {
+    const statusEl = document.getElementById('chatStatus');
+    if (statusEl) {
+      statusEl.textContent = text || "";
+    }
   }
 
   document.getElementById('chatForm')?.addEventListener('submit', async function(e) {
@@ -821,6 +1097,7 @@
     input.disabled = true;
     if (btn) btn.disabled = true;
     addChat(q, 'user');
+    setChatStatus('Thinking...');
     input.value = '';
 
     const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2));
@@ -835,15 +1112,16 @@
       });
       const data = await res.json();
       addChat(data.answer || 'No answer.', 'bot');
-    } catch (err) {
-      addChat('Error contacting assistant. Try again.', 'bot');
-      console.error(err);
-    } finally {
-      chatInFlight = false;
-      input.disabled = false;
-      if (btn) btn.disabled = false;
-      input.focus();
-    }
+      } catch (err) {
+        addChat('Error contacting assistant. Try again.', 'bot');
+        console.error(err);
+      } finally {
+        chatInFlight = false;
+        input.disabled = false;
+        if (btn) btn.disabled = false;
+        input.focus();
+        setChatStatus('');
+      }
   });
 </script>
 {% endblock %}
