@@ -37,7 +37,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     from model import train_quantile_model
     import numpy as np
     import pandas as pd
-    print("gg inside combined_prob: ", grain)
+    print("gg inside combined_prob: ", df.columns.tolist())
     # Use user-selected grain columns if provided
     if grain is not None and len(grain) > 0:
         group_cols = [col for col in grain if col in df.columns]
@@ -90,7 +90,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
         group_cols = [col for col in (grain if grain else []) if col in df.columns]
         logging.debug(f"[PROB] Recalculated group_cols after adding columns: {group_cols}")
 
-    print("gg grain line 93", grain)
+    print("gg df line 93", df.columns.tolist())
 
     # Ensure date column is datetime
     if not pd.api.types.is_datetime64_any_dtype(df["date"]):
@@ -121,6 +121,8 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
                 df = clean_sales(df)
         else:
             df = clean_sales(df)
+
+    print("gg df line 125", df.columns.tolist())
 
     # Add features (respect seasonal flags from config)
     df_feat = add_features(df, seasonal_flags=_config.SEASONAL_FLAGS)
@@ -241,7 +243,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     if grain_cols:
         observed_combinations = df[grain_cols].drop_duplicates().dropna().to_dict(orient="records")
 
-    print("gg grain line 242", grain)
+    # print("gg grain line 242", grain)
 
     # Calculate historical statistics for dampening
     historical_sales = df_feat_history["sales"]
@@ -402,7 +404,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
         feature_importance = {}
         return actual_df, feature_importance, driver_artifacts
 
-    print("gg grain line 401", grain)
+    print("gg df line 407", df.columns.tolist())
     # --- Classic forecast for 'forecast' column ---
     from run_forecast2 import forecast_all_combined
     classic_result, _ = forecast_all_combined(df, start_date=start_date, months=months, grain=grain)
@@ -592,10 +594,10 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         DataFrame with columns: date | item | store | actual | forecast
     """
     from config import GROUP_COLS, FORECAST_HORIZON_DAYS
-    print("gg grain in line 595", grain)
+    # print("gg grain in line 595", grain)
     print("gg line 596 df columns", df.columns.tolist())
     grain = [col for col in (grain or []) if col and col in df.columns]
-    print("gg grain in line 597", grain)
+    # print("gg grain in line 597", grain)
     if not grain:
         grain = [col for col in (GROUP_COLS if 'GROUP_COLS' in locals() or 'GROUP_COLS' in globals() else ["item", "store"]) if col in df.columns]
     group_cols = grain[:]
