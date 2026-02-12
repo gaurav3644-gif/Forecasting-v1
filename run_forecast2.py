@@ -113,17 +113,33 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
             # cap = group["sales"].quantile(0.99)
             # group["sales"] = np.where(group["sales"] > cap, cap, group["sales"])
             return group
+        # if group_cols_for_clean:
+        #     try:
+        #         df = df.groupby(group_cols_for_clean, group_keys=False).apply(clean_sales)
+        #         df = df.reset_index()
+        #     except KeyError as e:
+        #         logging.debug(f"[PROB] Warning: Skipping groupby cleaning due to missing columns: {e}")
+        #         df = clean_sales(df)
+        # else:
+        #     df = clean_sales(df)
         if group_cols_for_clean:
-            try:
-                df = df.groupby(group_cols_for_clean, group_keys=False).apply(clean_sales)
-                df = df.reset_index()
-            except KeyError as e:
-                logging.debug(f"[PROB] Warning: Skipping groupby cleaning due to missing columns: {e}")
-                df = clean_sales(df)
+            rolling_mean = (
+                df.groupby(group_cols_for_clean)["sales"]
+                .shift(1)
+                .rolling(7, min_periods=1)
+                .mean()
+            )
+            df["sales"] = df["sales"].fillna(rolling_mean)
+            df["sales"] = df["sales"].fillna(0)
         else:
-            df = clean_sales(df)
+            rolling_mean = df["sales"].shift(1).rolling(7, min_periods=1).mean()
+            df["sales"] = df["sales"].fillna(rolling_mean)
+            df["sales"] = df["sales"].fillna(0)
 
-    print("gg df line 125", df.columns.tolist())
+
+
+
+    print("gg df line 142", df.columns.tolist())
 
     # Add features (respect seasonal flags from config)
     df_feat = add_features(df, seasonal_flags=_config.SEASONAL_FLAGS)
