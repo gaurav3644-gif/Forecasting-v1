@@ -37,7 +37,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     from model import train_quantile_model
     import numpy as np
     import pandas as pd
-
+    print("gg inside combined_prob: ", grain)
     # Use user-selected grain columns if provided
     if grain is not None and len(grain) > 0:
         group_cols = [col for col in grain if col in df.columns]
@@ -397,6 +397,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
             actual_df[f"forecast_p{int(q*100)}"] = 0
         feature_importance = {}
         return actual_df, feature_importance, driver_artifacts
+
 
     # --- Classic forecast for 'forecast' column ---
     from run_forecast2 import forecast_all_combined

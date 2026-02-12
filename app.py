@@ -1368,7 +1368,7 @@ async def run_forecast(
             df = data_store[session_id]["df"].copy()
             extra_features = data_store[session_id].get("extra_features", [])
             grain = data_store[session_id].get("grain", [])
-
+            print("gg grain before calling combined prob", grain)
             forecast_df, feature_importance, driver_artifacts = forecast_all_combined_prob(
                 df, start_date=start_date, months=months, grain=grain, extra_features=extra_features,
                 progress_callback=lambda p, msg=None: set_forecast_progress(session_id, 0.35 + 0.6 * p, msg or "Forecasting...")
@@ -1402,7 +1402,7 @@ async def run_forecast(
 @app.post("/generate_forecast")
 async def generate_forecast():
     session_id = "default"
-
+    print(f"=== gg GENERATE_FORECAST ENDPOINT CALLED ===")
     # Debug logging
     logging.debug("=== GENERATE_FORECAST STARTED ===")
     logging.debug(f"Session ID: {session_id}")
@@ -1436,7 +1436,7 @@ async def generate_forecast():
         start_date = pd.to_datetime(start_month_str + "-01")  # First day of the month
         print("Starting forecast generation with start_date: {start_date}, months: {months}")
         grain = data_store[session_id].get("grain", ["item", "store"])
-        print(f"Forecasting at grain: {grain}")
+        print(f"gg Forecasting at grain: {grain}")
 
         from run_forecast2 import forecast_all_combined, impute_oos_sales
 
