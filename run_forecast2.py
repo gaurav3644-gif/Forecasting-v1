@@ -462,7 +462,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
         actual_df,
         forecast_df_renamed,
         on=merge_cols,
-        how="left",
+        how="outer",
         suffixes=(None, "_forecast")
     )
     # Fallback: if merge didn't find per item/store forecast, map date-level forecast where available
