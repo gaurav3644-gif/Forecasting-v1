@@ -1174,11 +1174,10 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Could not parse CSV file or missing required columns: date, item, store, sales")
     
     # Debug logging
-    print(f"Uploaded file: {file.filename}")
-    print(f"DataFrame shape: {df.shape}")
-    print(f"Columns found: {df.columns.tolist()}")
-    print(f"First few rows:")
-    print(df.head(3))
+    logging.debug(f"Uploaded file: {file.filename}")
+    logging.debug(f"DataFrame shape: {df.shape}")
+    logging.debug(f"Columns found: {df.columns.tolist()}")
+    logging.debug("First few rows:\n%s", df.head(3))
     
     # Additional validation
     if df.empty:
