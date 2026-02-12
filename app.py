@@ -1622,6 +1622,8 @@ async def get_results(request: Request):
         print(f"Warning: could not compute OOS reported sales overlay: {e}")
 
     decision_period = None
+    forecast_for_accuracy = None
+    first_forecast_date = None
     try:
         # Find actual/forecast date ranges
         last_actual_date = monthly_agg[monthly_agg['actual'] > 0]['date'].max() if not monthly_agg[monthly_agg['actual'] > 0].empty else monthly_agg['date'].max()
@@ -1649,16 +1651,17 @@ async def get_results(request: Request):
     else:
         decision_period = str(decision_period) if decision_period else ""
 
-        def calculate_accuracy(row):
-            if row['actual'] > 0 and forecast_for_accuracy and row[forecast_for_accuracy] > 0:
-                mape = abs(row['actual'] - row[forecast_for_accuracy]) / row['actual'] * 100
-                return 100 - mape
-            return None
+    def calculate_accuracy(row):
+        if row['actual'] > 0 and forecast_for_accuracy and row[forecast_for_accuracy] > 0:
+            mape = abs(row['actual'] - row[forecast_for_accuracy]) / row['actual'] * 100
+            return 100 - mape
+        return None
 
-        monthly_agg['accuracy'] = monthly_agg.apply(calculate_accuracy, axis=1)
-        monthly_agg_actual = monthly_agg[monthly_agg['date'] <= last_actual_date].copy()
-        monthly_agg_forecast = monthly_agg[monthly_agg['date'] >= first_forecast_date].copy()
+    monthly_agg['accuracy'] = monthly_agg.apply(calculate_accuracy, axis=1)
+    monthly_agg_actual = monthly_agg[monthly_agg['date'] <= last_actual_date].copy()
+    monthly_agg_forecast = monthly_agg[monthly_agg['date'] >= first_forecast_date].copy()
 
+    try:
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=monthly_agg_actual["date"],
@@ -1955,16 +1958,6 @@ async def get_results(request: Request):
     csv_data = filtered_df.to_csv(index=False)
     # Prepare quantile columns for table/plot
     quantile_cols = [col for col in filtered_df.columns if col.startswith("forecast_p")]
-    def _pick_first(src_list, fallback_list):
-        if src_list:
-            return src_list[0]
-        if fallback_list:
-            return fallback_list[0]
-        return ""
-
-    decision_initial_sku = _pick_first(selected_grain_values.get("item"), all_grain_values.get("item"))
-    decision_initial_location = _pick_first(selected_grain_values.get("store"), all_grain_values.get("store"))
-
     return templates.TemplateResponse("results_v2.html", {
         "request": request,
         "actual_total": f"{actual_total:,.0f}",
@@ -1987,9 +1980,6 @@ async def get_results(request: Request):
         "current_date": datetime.now().strftime("%B %d, %Y"),
         "forecast_start_month": data_store.get(session_id, {}).get("start_month"),
         "forecast_months": data_store.get(session_id, {}).get("months"),
-        "decision_period": decision_period,
-        "decision_initial_sku": decision_initial_sku,
-        "decision_initial_location": decision_initial_location,
         "quantile_cols": quantile_cols,
         "filtered_df": filtered_df
     })
