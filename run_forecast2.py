@@ -686,29 +686,45 @@ def forecast_all_combined(df, start_date=None, months=12, grain=None, extra_feat
         progress_callback(0.10, "Cleaning sales data...")
     
 
+    # # Clean sales column: remove NaN and inf values
+    # if "sales" in df.columns:
+    #     # Replace inf with NaN
+    #     df["sales"] = df["sales"].replace([np.inf, -np.inf], np.nan)
+    #     # Impute NaN sales with rolling mean (or zero if not enough history)
+    #     group_cols_for_clean = grain if grain else ["item", "store"]
+    #     def clean_sales(group):
+    #         # Impute NaN with rolling mean, then zero if still NaN
+    #         rolling_mean = group["sales"].shift(1).rolling(7, min_periods=1).mean()
+    #         group["sales"] = group["sales"].fillna(rolling_mean)
+    #         group["sales"] = group["sales"].fillna(0)
+    #         # Outlier capping removed - preserve extreme values
+    #         # cap = group["sales"].quantile(0.99)
+    #         # group["sales"] = np.where(group["sales"] > cap, cap, group["sales"])
+    #         return group
+    #     if group_cols_for_clean:
+    #         try:
+    #             df = df.groupby(group_cols_for_clean, group_keys=False).apply(clean_sales)
+    #         except KeyError as e:
+    #             # print(f"Warning: Skipping groupby cleaning due to missing columns: {e}")
+    #             df = clean_sales(df)
+    #     else:
+    #         df = clean_sales(df)
+
     # Clean sales column: remove NaN and inf values
     if "sales" in df.columns:
-        # Replace inf with NaN
         df["sales"] = df["sales"].replace([np.inf, -np.inf], np.nan)
-        # Impute NaN sales with rolling mean (or zero if not enough history)
         group_cols_for_clean = grain if grain else ["item", "store"]
-        def clean_sales(group):
-            # Impute NaN with rolling mean, then zero if still NaN
-            rolling_mean = group["sales"].shift(1).rolling(7, min_periods=1).mean()
-            group["sales"] = group["sales"].fillna(rolling_mean)
-            group["sales"] = group["sales"].fillna(0)
-            # Outlier capping removed - preserve extreme values
-            # cap = group["sales"].quantile(0.99)
-            # group["sales"] = np.where(group["sales"] > cap, cap, group["sales"])
-            return group
-        if group_cols_for_clean:
-            try:
-                df = df.groupby(group_cols_for_clean, group_keys=False).apply(clean_sales)
-            except KeyError as e:
-                # print(f"Warning: Skipping groupby cleaning due to missing columns: {e}")
-                df = clean_sales(df)
+        if group_cols_for_clean and all(col in df.columns for col in group_cols_for_clean):
+            rolling_mean = (
+                df.groupby(group_cols_for_clean)["sales"]
+                .transform(lambda x: x.shift(1).rolling(7, min_periods=1).mean())
+            )
+            df["sales"] = df["sales"].fillna(rolling_mean)
+            df["sales"] = df["sales"].fillna(0)
         else:
-            df = clean_sales(df)
+            rolling_mean = df["sales"].shift(1).rolling(7, min_periods=1).mean()
+            df["sales"] = df["sales"].fillna(rolling_mean)
+            df["sales"] = df["sales"].fillna(0)
 
     # Add features (respect seasonal flags from config)
     df_feat = add_features(df, seasonal_flags=_config.SEASONAL_FLAGS)
