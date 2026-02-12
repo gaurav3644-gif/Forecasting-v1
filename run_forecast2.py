@@ -90,6 +90,8 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
         group_cols = [col for col in (grain if grain else []) if col in df.columns]
         logging.debug(f"[PROB] Recalculated group_cols after adding columns: {group_cols}")
 
+    print("gg grain line 93", grain)
+
     # Ensure date column is datetime
     if not pd.api.types.is_datetime64_any_dtype(df["date"]):
         df = df.copy()
@@ -238,6 +240,8 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
     grain_cols = [col for col in (grain or []) if col in df.columns]
     if grain_cols:
         observed_combinations = df[grain_cols].drop_duplicates().dropna().to_dict(orient="records")
+
+    print("gg grain line 242", grain)
 
     # Calculate historical statistics for dampening
     historical_sales = df_feat_history["sales"]
@@ -398,7 +402,7 @@ def forecast_all_combined_prob(df, start_date=None, months=12, grain=None, extra
         feature_importance = {}
         return actual_df, feature_importance, driver_artifacts
 
-
+    print("gg grain line 401", grain)
     # --- Classic forecast for 'forecast' column ---
     from run_forecast2 import forecast_all_combined
     classic_result, _ = forecast_all_combined(df, start_date=start_date, months=months, grain=grain)
