@@ -534,7 +534,7 @@ async def _openai_chat(user_message: str, context: str) -> str:
     timeout_s = float(os.getenv("OPENAI_TIMEOUT_S", "30"))
 
     system_prompt = (
-        "You are ForecastAI, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
+        "You are PiTensor, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
         "Use the provided context only. If the answer is not in the context, say what extra info you need.\n\n"
         f"CONTEXT:\n{_safe_text(context)}"
     )
@@ -574,7 +574,7 @@ async def _gemini_chat(user_message: str, context: str) -> str:
     temperature = float(os.getenv("GEMINI_TEMPERATURE", "0.2"))
 
     system_text = (
-        "You are ForecastAI, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
+        "You are PiTensor, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
         "Use the provided context only. If the answer is not in the context, say what extra info you need."
     )
     # Keep the schema conservative (single user content); works even if system_instruction is not supported.
@@ -625,7 +625,7 @@ async def _ollama_chat(user_message: str, context: str) -> str:
     timeout_s = float(os.getenv("OLLAMA_TIMEOUT_S", "180"))
 
     system_prompt = (
-        "You are ForecastAI, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
+        "You are PiTensor, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
         "Use the provided context only. If the answer is not in the context, say what extra info you need.\n\n"
         f"CONTEXT:\n{_safe_text(context)}"
     )
@@ -683,7 +683,7 @@ async def _huggingface_chat(user_message: str, context: str) -> str:
         base_url = "https://router.huggingface.co"
 
     system_prompt = (
-        "You are ForecastAI, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
+        "You are PiTensor, an expert assistant for interpreting uploaded sales data, forecast outputs, and supply planning outputs. "
         "Use the provided context only. If the answer is not in the context, say what extra info you need."
     )
 
@@ -2536,7 +2536,7 @@ async def supply_plan_submit(
 
         def _build_sku_location_columns(df: pd.DataFrame, grain_cols: list[str]) -> tuple[pd.DataFrame, str | None, str | None, list[str]]:
             """
-            Convert ForecastAI grain columns into supply-planning keys:
+            Convert PiTensor grain columns into supply-planning keys:
             - sku_id (prefer 'item')
             - location (prefer 'store', plus any extra grain columns for uniqueness)
             """
@@ -2694,7 +2694,7 @@ async def supply_plan_submit(
 
         def _harmonize_sku_ids_to_constraints(df: pd.DataFrame, constraints: pd.DataFrame) -> pd.DataFrame:
             """
-            Make df['sku_id'] match constraints['sku_id'] when ForecastAI item IDs are numeric
+            Make df['sku_id'] match constraints['sku_id'] when PiTensor item IDs are numeric
             but constraints use a prefixed/zero-padded format like SKU_001 (or vice versa).
             """
             if "sku_id" not in df.columns or "sku_id" not in constraints.columns:
@@ -2795,7 +2795,7 @@ async def supply_plan_submit(
             horizon_months = int(months_val)
             horizon_months = max(1, min(horizon_months, 120))
 
-            # Map ForecastAI output -> supply planning forecast schema (weekly buckets)
+            # Map PiTensor output -> supply planning forecast schema (weekly buckets)
             if "date" not in forecast_df.columns:
                 raise ValueError("Latest forecast is missing required column: date")
             if "forecast" not in forecast_df.columns:
