@@ -1661,6 +1661,25 @@ async def get_results(request: Request):
     monthly_agg_actual = monthly_agg[monthly_agg['date'] <= last_actual_date].copy()
     monthly_agg_forecast = monthly_agg[monthly_agg['date'] >= first_forecast_date].copy()
 
+    latest_sales_date = monthly_agg_actual['date'].max() if not monthly_agg_actual.empty else None
+    latest_sales_value = float(monthly_agg_actual[monthly_agg_actual['date'] == latest_sales_date]['actual'].sum()) if latest_sales_date is not None else 0.0
+    latest_sales_month = latest_sales_date.strftime("%B %Y") if isinstance(latest_sales_date, pd.Timestamp) else ""
+
+    latest_raw_sales_value = 0.0
+    if reported_sales_month is not None and not reported_sales_month.empty and latest_sales_date is not None:
+        match = reported_sales_month[reported_sales_month['date'] == latest_sales_date]
+        if not match.empty:
+            latest_raw_sales_value = float(match['sales'].sum())
+
+    forecast_month_date = monthly_agg_forecast['date'].max() if not monthly_agg_forecast.empty else None
+    latest_forecast_value = float(monthly_agg_forecast[monthly_agg_forecast['date'] == forecast_month_date]['forecast'].sum()) if forecast_month_date is not None and 'forecast' in monthly_agg_forecast.columns else 0.0
+    forecast_month_label = forecast_month_date.strftime("%B %Y") if isinstance(forecast_month_date, pd.Timestamp) else ""
+
+    latest_accuracy = None
+    accuracy_series = monthly_agg['accuracy'].dropna()
+    if not accuracy_series.empty:
+        latest_accuracy = float(accuracy_series.iloc[-1])
+
     try:
         fig = go.Figure()
         fig.add_trace(go.Scatter(
@@ -1980,6 +1999,12 @@ async def get_results(request: Request):
         "current_date": datetime.now().strftime("%B %d, %Y"),
         "forecast_start_month": data_store.get(session_id, {}).get("start_month"),
         "forecast_months": data_store.get(session_id, {}).get("months"),
+        "latest_sales_month": latest_sales_month,
+        "latest_sales_value": latest_sales_value,
+        "latest_raw_sales_value": latest_raw_sales_value,
+        "forecast_month_label": forecast_month_label,
+        "latest_forecast_value": latest_forecast_value,
+        "latest_accuracy": latest_accuracy,
         "quantile_cols": quantile_cols,
         "filtered_df": filtered_df
     })

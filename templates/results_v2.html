@@ -267,24 +267,31 @@
         <div class="col-md-4">
           <div class="card card-soft shadow-sm">
             <div class="card-body">
-              <div class="text-muted small">Historical Sales</div>
-              <div id="kpi-actual-total" class="h5 mb-0">{{ actual_total }}</div>
+              <div class="text-muted small">Actual Sales</div>
+              <div class="h5 mb-0">{{ "{:,.0f}".format(latest_sales_value) if latest_sales_value is not none else "0" }}</div>
+              <div class="text-muted small">{{ latest_sales_month or "—" }}</div>
             </div>
           </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <div class="card card-soft shadow-sm">
             <div class="card-body">
-              <div class="text-muted small">Forecast Total</div>
-              <div id="kpi-forecast-total" class="h5 mb-0">{{ forecast_total }}</div>
+              <div class="text-muted small">Forecast ({{ forecast_month_label or "next month" }})</div>
+              <div class="h5 mb-0">{{ "{:,.0f}".format(latest_forecast_value) if latest_forecast_value is not none else "0" }}</div>
             </div>
           </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-5">
           <div class="card card-soft shadow-sm">
             <div class="card-body">
-              <div class="text-muted small">Delta</div>
-              <div id="kpi-delta-pct" class="h5 mb-0">{{ delta_pct }}</div>
+              <div class="text-muted small">Forecast accuracy</div>
+              <div class="h5 mb-0">
+                {% if latest_accuracy is not none %}
+                  {{ latest_accuracy | round(1) }}%
+                {% else %}
+                  N/A
+                {% endif %}
+              </div>
             </div>
           </div>
         </div>
