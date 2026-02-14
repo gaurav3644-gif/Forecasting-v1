@@ -7,11 +7,302 @@
     {% block head %}{% endblock %}
     <style>
         .zoom-wrapper {
-            transform: scale(0.75);
+            transform: scale(0.8);
             transform-origin: top left;
-            width: 133.333%;
+            width: 125%;
+        }
+        .lang-toggle {
+            display: inline-flex;
+            gap: 6px;
+            padding: 6px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.65);
+            border: 1px solid rgba(18,24,39,0.12);
+        }
+        .lang-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 0.25rem 0.55rem;
+            border: 1px solid rgba(18,24,39,0.12);
+            background: #fff;
+            color: rgba(18,24,39,0.72);
+            font-size: 0.8rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .lang-btn:hover {
+            border-color: rgba(18,24,39,0.18);
+            color: rgba(18,24,39,0.85);
+        }
+        .lang-btn.active {
+            background: rgba(13,110,253,0.08);
+            border-color: rgba(13,110,253,0.22);
+            color: #0d6efd;
+        }
+        .lang-flag {
+            width: 18px;
+            height: 12px;
+            border-radius: 3px;
+            display: inline-block;
+            border: 1px solid rgba(18,24,39,0.18);
+            box-shadow: 0 1px 0 rgba(18,24,39,0.06);
+            font-size: 0; /* hide emoji text if present */
+            line-height: 0;
+        }
+        .lang-btn[data-lang="id"] .lang-flag {
+            background: linear-gradient(#ce1126 0 50%, #ffffff 50% 100%);
+        }
+        /* Use England flag for "EN" (simple + reliable rendering). */
+        .lang-btn[data-lang="en"] .lang-flag {
+            background:
+              linear-gradient(to right, transparent 0 44%, #ce1126 44% 56%, transparent 56% 100%),
+              linear-gradient(to bottom, transparent 0 44%, #ce1126 44% 56%, transparent 56% 100%),
+              #ffffff;
         }
     </style>
+
+    <script>
+      (function() {
+        const STORAGE_KEY = 'pitensor_lang';
+        const COOKIE_KEY = 'pitensor_lang';
+        const translations = {
+          en: {
+            nav_sign_in: 'Sign in',
+            nav_sign_out: 'Sign out',
+            lang_en: 'EN',
+            lang_id: 'ID',
+            results_supply_plan: 'Supply Plan',
+            results_ai_assistant: 'AI Assistant',
+            results_filters: 'Filters',
+            results_multi_select: 'Multi-select',
+            results_overlay_raw: 'Overlay (raw)',
+            results_numeric_column: 'Numeric column',
+            results_none: 'None',
+            results_apply: 'Apply',
+            results_rows_count: 'Rows: {n}',
+            sp_title: 'Supply Plan',
+            sp_subtitle: 'Filters + inputs on the left. Graph and table on the right.',
+            sp_edit_inputs: 'Edit Inputs (Selected Series)',
+            sp_generate: 'Generate',
+            sp_tip_followups: 'Tip: Click Generate first to load context, then ask follow-ups.',
+            sp_terms_title: 'Supply Planning - Terms',
+            sp_generate_chart: 'Generate a supply plan to see the sawtooth chart.',
+            sp_generate_table: 'Generate a supply plan to see the month-by-month table.',
+            forecast_configure: 'Configure Forecast',
+            forecast_grain: 'Forecast Grain',
+            forecast_months: 'Number of Months to Forecast',
+            forecast_run: 'Run Forecast',
+            loading_title: 'Generating Your Forecast',
+            loading_hint: 'This may take a few moments',
+            landing_features: 'Features',
+            landing_how: 'How It Works',
+            landing_pricing: 'Pricing',
+            landing_contact: 'Contact',
+            landing_start_trial: 'Start Free Trial',
+            landing_connectors: 'Connectors',
+            landing_insights: 'Insights',
+            auth_sign_in: 'Sign in',
+            auth_sign_up: 'Sign up',
+            auth_continue: 'Continue',
+            auth_continue_google: 'Continue with Google',
+            auth_continue_github: 'Continue with GitHub',
+            auth_create_account: 'Create account',
+            // Supply Plan Terms modal
+            sp_terms_intro: 'This page uses a <strong>monthly</strong> time-phased simulation. Some inputs (like lead time in days) are bucketed to months.',
+            sp_terms_th_term: 'Term',
+            sp_terms_th_meaning: 'Meaning',
+            sp_terms_close: 'Close',
+            sp_term_projected_oh: 'The blue sawtooth line: simulated inventory over time using <code>beginning_on_hand</code> and <code>ending_on_hand</code>.',
+            sp_term_forecast_demand: 'Forecasted demand for the month (monthly bucket).',
+            sp_term_beginning_oh: 'On-hand at the start of the month after adding <code>receipts</code> arriving that month.',
+            sp_term_receipts: 'Quantity arriving this month from orders placed in prior months (after lead time).',
+            sp_term_order_qty: 'Order placed this month. It is scheduled to arrive after lead time via the pipeline.',
+            sp_term_ending_oh: 'On-hand after consuming <code>forecast_demand</code> for the month (0 if stockout).',
+            sp_term_inv_position: '<code>on_hand + sum(pipeline)</code>: what you have plus what is already on order.',
+            sp_term_lt_days: 'Supplier lead time input in days (your override).',
+            sp_term_lt_months: '<code>ceil(lead_time_days / 30)</code> (minimum 1). Used by the monthly simulation to time receipts and demand coverage.',
+            sp_term_safety_stock: 'Buffer stock based on <code>service_level</code> and monthly demand variability (scaled by <code>sqrt(lead_time_months)</code>).',
+            sp_term_reorder_point: '<code>safety_stock + lead_time_demand</code> where lead-time demand is the sum of forecast over the next <code>lead_time_months</code>.',
+            sp_term_target_level: 'Order-up-to target: <code>safety_stock + cover_demand</code>, where cover demand is the next <code>lead_time_months + 1</code> months.',
+            sp_term_service_level: 'Target in-stock probability (0\u20131). Higher values increase <code>safety_stock</code> and tend to increase ordering.',
+            sp_term_moq: 'Minimum Order Quantity. If an order is needed, the model orders at least this many units.',
+            sp_term_order_multiple: 'Order quantity is rounded up to this multiple (e.g., 5 means 825 is valid, 822 is not).',
+            sp_term_max_capacity: 'Optional supplier capacity. Converted roughly to monthly capacity as <code>* 4</code> and used as an upper bound.',
+            sp_term_input_oh: 'Raw inventory snapshot input (before subtracting allocations/backorders).',
+            sp_term_input_allocated: 'Units reserved/committed elsewhere (reduces what\u2019s available).',
+            sp_term_input_backorders: 'Units already owed (past unmet demand) (reduces what\u2019s available).',
+            sp_term_starting_net: '<code>max(0, input_on_hand - input_allocated - input_backorders)</code>: usable starting inventory for the simulation.',
+            sp_term_stockout_qty: 'How much demand could not be satisfied in that month.',
+            sp_term_risk_flag: '<code>OK</code> if no stockout, <code>STOCKOUT</code> if inventory hit 0 before demand was fully met.',
+          },
+          id: {
+            nav_sign_in: 'Masuk',
+            nav_sign_out: 'Keluar',
+            lang_en: 'EN',
+            lang_id: 'ID',
+            results_supply_plan: 'Rencana Pasokan',
+            results_ai_assistant: 'Asisten AI',
+            results_filters: 'Filter',
+            results_multi_select: 'Pilih banyak',
+            results_overlay_raw: 'Overlay (mentah)',
+            results_numeric_column: 'Kolom numerik',
+            results_none: 'Tidak ada',
+            results_apply: 'Terapkan',
+            results_rows_count: 'Baris: {n}',
+            sp_title: 'Rencana Pasokan',
+            sp_subtitle: 'Filter + input di kiri. Grafik dan tabel di kanan.',
+            sp_edit_inputs: 'Ubah Input (Seri Dipilih)',
+            sp_generate: 'Buat',
+            sp_tip_followups: 'Tips: Klik Buat dulu untuk memuat konteks, lalu ajukan pertanyaan lanjutan.',
+            sp_terms_title: 'Istilah Perencanaan Pasokan',
+            sp_generate_chart: 'Buat rencana pasokan untuk melihat grafik gigi gergaji.',
+            sp_generate_table: 'Buat rencana pasokan untuk melihat tabel per bulan.',
+            forecast_configure: 'Konfigurasi Peramalan',
+            forecast_grain: 'Tingkat Peramalan',
+            forecast_months: 'Jumlah Bulan untuk Diramalkan',
+            forecast_run: 'Jalankan Peramalan',
+            loading_title: 'Membuat Peramalan Anda',
+            loading_hint: 'Ini mungkin memerlukan beberapa saat',
+            landing_features: 'Fitur',
+            landing_how: 'Cara Kerja',
+            landing_pricing: 'Harga',
+            landing_contact: 'Kontak',
+            landing_start_trial: 'Mulai Uji Coba Gratis',
+            landing_connectors: 'Konektor',
+            landing_insights: 'Wawasan',
+            auth_sign_in: 'Masuk',
+            auth_sign_up: 'Daftar',
+            auth_continue: 'Lanjutkan',
+            auth_continue_google: 'Lanjutkan dengan Google',
+            auth_continue_github: 'Lanjutkan dengan GitHub',
+            auth_create_account: 'Buat akun',
+            // Supply Plan Terms modal
+            sp_terms_intro: 'Halaman ini menggunakan simulasi bertahap <strong>bulanan</strong>. Beberapa input (seperti waktu tunggu dalam hari) dibulatkan ke bulan.',
+            sp_terms_th_term: 'Istilah',
+            sp_terms_th_meaning: 'Arti',
+            sp_terms_close: 'Tutup',
+            sp_term_projected_oh: 'Garis sawtooth biru: simulasi inventaris dari waktu ke waktu menggunakan <code>beginning_on_hand</code> dan <code>ending_on_hand</code>.',
+            sp_term_forecast_demand: 'Perkiraan permintaan untuk bulan tersebut (periode bulanan).',
+            sp_term_beginning_oh: 'Stok di awal bulan setelah menambahkan <code>receipts</code> yang tiba bulan itu.',
+            sp_term_receipts: 'Jumlah yang tiba bulan ini dari pesanan yang dibuat di bulan sebelumnya (setelah waktu tunggu).',
+            sp_term_order_qty: 'Pesanan yang dibuat bulan ini. Dijadwalkan tiba setelah waktu tunggu melalui pipeline.',
+            sp_term_ending_oh: 'Stok setelah mengonsumsi <code>forecast_demand</code> untuk bulan tersebut (0 jika kehabisan stok).',
+            sp_term_inv_position: '<code>on_hand + sum(pipeline)</code>: apa yang Anda miliki ditambah apa yang sudah dipesan.',
+            sp_term_lt_days: 'Input waktu tunggu pemasok dalam hari (pengaturan Anda).',
+            sp_term_lt_months: '<code>ceil(lead_time_days / 30)</code> (minimum 1). Digunakan oleh simulasi bulanan untuk mengatur waktu penerimaan dan cakupan permintaan.',
+            sp_term_safety_stock: 'Stok pengaman berdasarkan <code>service_level</code> dan variabilitas permintaan bulanan (diskalakan dengan <code>sqrt(lead_time_months)</code>).',
+            sp_term_reorder_point: '<code>safety_stock + lead_time_demand</code> di mana permintaan waktu tunggu adalah jumlah peramalan selama <code>lead_time_months</code> berikutnya.',
+            sp_term_target_level: 'Target isi ulang: <code>safety_stock + cover_demand</code>, di mana cover demand adalah <code>lead_time_months + 1</code> bulan berikutnya.',
+            sp_term_service_level: 'Target probabilitas stok tersedia (0\u20131). Nilai lebih tinggi meningkatkan <code>safety_stock</code> dan cenderung meningkatkan pemesanan.',
+            sp_term_moq: 'Jumlah Pesanan Minimum. Jika pesanan diperlukan, model memesan setidaknya sejumlah ini.',
+            sp_term_order_multiple: 'Jumlah pesanan dibulatkan ke kelipatan ini (misal, 5 berarti 825 valid, 822 tidak).',
+            sp_term_max_capacity: 'Kapasitas pemasok opsional. Dikonversi secara kasar ke kapasitas bulanan sebagai <code>* 4</code> dan digunakan sebagai batas atas.',
+            sp_term_input_oh: 'Input snapshot inventaris mentah (sebelum mengurangi alokasi/backorder).',
+            sp_term_input_allocated: 'Unit yang dicadangkan/dialokasikan di tempat lain (mengurangi ketersediaan).',
+            sp_term_input_backorders: 'Unit yang sudah dijanjikan (permintaan belum terpenuhi) (mengurangi ketersediaan).',
+            sp_term_starting_net: '<code>max(0, input_on_hand - input_allocated - input_backorders)</code>: inventaris awal yang dapat digunakan untuk simulasi.',
+            sp_term_stockout_qty: 'Berapa banyak permintaan yang tidak dapat dipenuhi pada bulan tersebut.',
+            sp_term_risk_flag: '<code>OK</code> jika tidak ada kehabisan stok, <code>STOCKOUT</code> jika inventaris mencapai 0 sebelum permintaan terpenuhi sepenuhnya.',
+          }
+        };
+
+        function getCookie(name) {
+          try {
+            const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '=([^;]*)'));
+            return m ? decodeURIComponent(m[1]) : '';
+          } catch (e) {
+            return '';
+          }
+        }
+
+        function setCookie(name, value) {
+          try {
+            document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        function storageGet(key) {
+          try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+        }
+
+        function storageSet(key, value) {
+          try { localStorage.setItem(key, value); return true; } catch (e) { return false; }
+        }
+
+        function getLang() {
+          const saved = (storageGet(STORAGE_KEY) || getCookie(COOKIE_KEY) || (window.__pitensor_lang || '')).toLowerCase();
+          return (saved === 'id' || saved === 'en') ? saved : 'en';
+        }
+
+        function fmt(template, vars) {
+          return String(template).replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] != null) ? String(vars[k]) : `{${k}}`);
+        }
+
+        function t(key) {
+          const lang = getLang();
+          return (translations[lang] && translations[lang][key]) || (translations.en && translations.en[key]) || key;
+        }
+
+        function apply() {
+          const lang = getLang();
+          document.documentElement.setAttribute('lang', lang);
+          document.querySelectorAll('.lang-btn[data-lang]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
+          });
+          document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (key) el.textContent = t(key);
+          });
+          document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            const key = el.getAttribute('data-i18n-placeholder');
+            if (key) el.setAttribute('placeholder', t(key));
+          });
+          document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            const key = el.getAttribute('data-i18n-title');
+            if (key) el.setAttribute('title', t(key));
+          });
+          document.querySelectorAll('[data-i18n-html]').forEach(el => {
+            const key = el.getAttribute('data-i18n-html');
+            if (key) el.innerHTML = t(key);
+          });
+        }
+
+        function setLang(lang) {
+          const next = (lang || '').toLowerCase();
+          if (next !== 'en' && next !== 'id') return;
+          window.__pitensor_lang = next;
+          storageSet(STORAGE_KEY, next);
+          setCookie(COOKIE_KEY, next);
+          apply();
+          try { window.dispatchEvent(new CustomEvent('pitensor:lang', { detail: { lang: next } })); } catch (e) {}
+        }
+
+        function bindToggle() {
+          // Capture early so other handlers don't interfere.
+          document.addEventListener('pointerdown', function(e) {
+            const btn = e.target.closest('.lang-btn[data-lang]');
+            if (!btn) return;
+            setLang(btn.getAttribute('data-lang'));
+          });
+        }
+
+        window.PiTensorI18n = { t, fmt, getLang, setLang, apply };
+        bindToggle();
+        function applyWhenReady() {
+          try { apply(); } catch (e) {}
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', applyWhenReady);
+        } else {
+          applyWhenReady();
+        }
+        window.addEventListener('pageshow', applyWhenReady);
+      })();
+    </script>
 </head>
 <body>
     <div class="zoom-wrapper">
@@ -20,12 +311,20 @@
         <div class="container-fluid">
             <a class="navbar-brand" href="/">PiTensor</a>
             <div class="ms-auto d-flex align-items-center gap-2">
+                <div class="lang-toggle" aria-label="Language toggle">
+                    <button type="button" class="lang-btn" data-lang="en" data-i18n-title="lang_en" title="EN">
+                        <span class="lang-flag" aria-hidden="true">🇬🇧</span><span data-i18n="lang_en">EN</span>
+                    </button>
+                    <button type="button" class="lang-btn" data-lang="id" data-i18n-title="lang_id" title="ID">
+                        <span class="lang-flag" aria-hidden="true">🇮🇩</span><span data-i18n="lang_id">ID</span>
+                    </button>
+                </div>
                 {% set user_email = request.state.user_email if request and request.state is not none else None %}
                 {% if user_email %}
                     <span class="small text-muted d-none d-sm-inline">{{ user_email }}</span>
-                    <a class="btn btn-outline-secondary btn-sm" href="/signout">Sign out</a>
+                    <a class="btn btn-outline-secondary btn-sm" href="/signout"><span data-i18n="nav_sign_out">Sign out</span></a>
                 {% else %}
-                    <a class="btn btn-outline-primary btn-sm" href="/signin">Sign in</a>
+                    <a class="btn btn-outline-primary btn-sm" href="/signin"><span data-i18n="nav_sign_in">Sign in</span></a>
                 {% endif %}
             </div>
         </div>

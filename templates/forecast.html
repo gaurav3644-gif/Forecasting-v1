@@ -8,9 +8,61 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .zoom-wrapper {
-            transform: scale(0.75);
+            transform: scale(0.8);
             transform-origin: top left;
-            width: 133.333%;
+            width: 125%;
+        }
+        .lang-toggle {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 1060;
+            display: inline-flex;
+            gap: 6px;
+            padding: 6px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.85);
+            border: 1px solid rgba(18,24,39,0.12);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 12px 30px rgba(18,24,39,0.08);
+        }
+        .lang-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 0.25rem 0.55rem;
+            border: 1px solid rgba(18,24,39,0.12);
+            background: #fff;
+            color: rgba(18,24,39,0.72);
+            font-size: 0.8rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .lang-btn.active {
+            background: rgba(13,110,253,0.08);
+            border-color: rgba(13,110,253,0.22);
+            color: #0d6efd;
+        }
+        .lang-flag {
+            width: 18px;
+            height: 12px;
+            border-radius: 3px;
+            display: inline-block;
+            border: 1px solid rgba(18,24,39,0.18);
+            box-shadow: 0 1px 0 rgba(18,24,39,0.06);
+            font-size: 0;
+            line-height: 0;
+        }
+        .lang-btn[data-lang="id"] .lang-flag {
+            background: linear-gradient(#ce1126 0 50%, #ffffff 50% 100%);
+        }
+        .lang-btn[data-lang="en"] .lang-flag {
+            background:
+              linear-gradient(to right, transparent 0 44%, #ce1126 44% 56%, transparent 56% 100%),
+              linear-gradient(to bottom, transparent 0 44%, #ce1126 44% 56%, transparent 56% 100%),
+              #ffffff;
         }
         body {
             background: #f8f9fa;
@@ -34,21 +86,82 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
     </style>
+    <script>
+      (function() {
+        const STORAGE_KEY = 'pitensor_lang';
+        const translations = {
+          en: { lang_en: 'EN', lang_id: 'ID', forecast_configure: 'Configure Forecast', forecast_grain: 'Forecast Grain', forecast_months: 'Number of Months to Forecast', forecast_run: 'Run Forecast' },
+          id: { lang_en: 'EN', lang_id: 'ID', forecast_configure: 'Konfigurasi Peramalan', forecast_grain: 'Tingkat Peramalan', forecast_months: 'Jumlah Bulan untuk Diramalkan', forecast_run: 'Jalankan Peramalan' }
+        };
+        function getCookie(name) {
+          try {
+            const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '=([^;]*)'));
+            return m ? decodeURIComponent(m[1]) : '';
+          } catch (e) { return ''; }
+        }
+        function setCookie(name, value) {
+          try { document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=31536000; SameSite=Lax`; } catch (e) {}
+        }
+        function storageGet(key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } }
+        function storageSet(key, value) { try { localStorage.setItem(key, value); return true; } catch (e) { return false; } }
+        function getLang() {
+          const saved = (storageGet(STORAGE_KEY) || getCookie(STORAGE_KEY) || (window.__pitensor_lang || '')).toLowerCase();
+          return (saved === 'id' || saved === 'en') ? saved : 'en';
+        }
+        function t(key) {
+          const lang = getLang();
+          return (translations[lang] && translations[lang][key]) || (translations.en && translations.en[key]) || key;
+        }
+        function apply() {
+          const lang = getLang();
+          document.documentElement.setAttribute('lang', lang);
+          document.querySelectorAll('.lang-btn[data-lang]').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-lang') === lang));
+          document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.getAttribute('data-i18n'); if (k) el.textContent = t(k); });
+        }
+        function setLang(lang) {
+          const next = (lang || '').toLowerCase();
+          if (next !== 'en' && next !== 'id') return;
+          window.__pitensor_lang = next;
+          storageSet(STORAGE_KEY, next);
+          setCookie(STORAGE_KEY, next);
+          apply();
+        }
+        document.addEventListener('pointerdown', function(e) {
+          const btn = e.target.closest('.lang-btn[data-lang]');
+          if (!btn) return;
+          setLang(btn.getAttribute('data-lang'));
+        });
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', apply);
+        } else {
+          apply();
+        }
+        window.addEventListener('pageshow', apply);
+      })();
+    </script>
 </head>
 <body>
     <div class="zoom-wrapper">
+        <div class="lang-toggle" aria-label="Language toggle">
+            <button type="button" class="lang-btn" data-lang="en" title="EN">
+                <span class="lang-flag" aria-hidden="true">🇬🇧</span><span data-i18n="lang_en">EN</span>
+            </button>
+            <button type="button" class="lang-btn" data-lang="id" title="ID">
+                <span class="lang-flag" aria-hidden="true">🇮🇩</span><span data-i18n="lang_id">ID</span>
+            </button>
+        </div>
         <div class="container-fluid min-vh-100 d-flex align-items-center justify-content-center">
         <div class="row justify-content-center w-100">
             <div class="col-12 d-flex justify-content-center">
                 <div class="card p-5" style="max-width: 600px; width: 100%; margin: 2rem auto;">
                     <div class="text-center mb-4">
                         <i class="fas fa-cogs fa-3x text-success mb-3"></i>
-                        <h1 class="h3 mb-3 font-weight-normal">⚙️ Configure Forecast</h1>
+                        <h1 class="h3 mb-3 font-weight-normal"><span aria-hidden="true">⚙️</span> <span data-i18n="forecast_configure">Configure Forecast</span></h1>
                         <p class="text-muted">Set your forecast parameters</p>
                     </div>
                     <form action="/forecast" method="post" id="forecastForm" autocomplete="off">
                                                 <div class="mb-3">
-                                                    <label class="form-label"><i class="fas fa-layer-group"></i> Forecast Grain</label>
+                                                    <label class="form-label"><i class="fas fa-layer-group"></i> <span data-i18n="forecast_grain">Forecast Grain</span></label>
                                                     <div class="form-text mb-2">Select one or more columns to define the level of forecasting (e.g. Country, Store, Item)</div>
                                                     <div class="row">
                                                         {% for col in columns %}
@@ -88,7 +201,7 @@
                             <div class="form-text">Choose the month from which to start forecasting (default: 3 months before last data month)</div>
                         </div>
                         <div class="mb-3">
-                            <label for="months" class="form-label"><i class="fas fa-clock"></i> Number of Months to Forecast</label>
+                            <label for="months" class="form-label"><i class="fas fa-clock"></i> <span data-i18n="forecast_months">Number of Months to Forecast</span></label>
                             <input type="number" class="form-control" id="months" name="months" value="7" min="1" max="24" step="1" required>
                             <div class="form-text">How many months ahead to forecast</div>
                         </div>
@@ -116,7 +229,7 @@
 
                         <div class="d-grid">
                                 <button id="runForecastBtn" type="submit" class="btn btn-success btn-lg">
-                                    <i class="fas fa-rocket me-2"></i>🚀 Run Forecast
+                                    <i class="fas fa-rocket me-2"></i><span aria-hidden="true">🚀</span> <span data-i18n="forecast_run">Run Forecast</span>
                                 </button>
                                 <div id="progressContainer" style="display:none; margin-top:2rem;">
                                     <div class="progress" style="height: 2rem;">

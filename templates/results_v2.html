@@ -26,11 +26,39 @@
   .filter-option {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
     padding: 0.35rem 0.4rem;
     border-radius: 10px;
   }
   .filter-option:hover { background: rgba(18,24,39,0.04); }
+  .filter-option-main {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1;
+  }
+  .filter-only {
+    border: 0;
+    background: transparent;
+    color: rgba(18,24,39,0.55);
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.1rem 0.25rem;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+    flex: 0 0 auto;
+  }
+  .filter-option:hover .filter-only,
+  .filter-only:focus {
+    opacity: 1;
+  }
+  .filter-only:hover {
+    background: rgba(13,110,253,0.08);
+    color: #0d6efd;
+  }
   .filter-count {
     background: rgba(13,110,253,0.10);
     color: #0d6efd;
@@ -161,8 +189,8 @@
       <span class="badge text-bg-light border">Horizon: {{ forecast_start_month }} ({{ forecast_months }} months)</span>
       {% endif %}
       <span class="badge text-bg-light border">Grain: {{ grain|join(" · ") }}</span>
-      <a href="/supply_plan" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener">Supply Plan</a>
-      <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal">AI Assistant</button>
+      <a href="/supply_plan" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener"><span data-i18n="results_supply_plan">Supply Plan</span></a>
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal"><span data-i18n="results_ai_assistant">AI Assistant</span></button>
     </div>
   </div>
 
@@ -172,8 +200,8 @@
         <div class="card card-soft shadow-sm">
           <div class="card-body">
             <div class="d-flex align-items-center justify-content-between mb-2">
-              <div class="fw-semibold">Filters</div>
-              <div class="text-muted small">Multi-select</div>
+              <div class="fw-semibold" data-i18n="results_filters">Filters</div>
+              <div class="text-muted small" data-i18n="results_multi_select">Multi-select</div>
             </div>
 
             <form action="/results" method="get" id="filter-form" class="d-grid gap-3">
@@ -198,15 +226,18 @@
                         <div class="filter-options">
                           {% for val in all_grain_values[col] %}
                             <div class="filter-option">
-                              <input
-                                class="form-check-input"
-                                type="checkbox"
-                                name="{{ col }}"
-                                value="{{ val }}"
-                                id="{{ col }}-{{ loop.index }}"
-                                {% if val in selected_grain_values[col] %}checked{% endif %}
-                              >
-                              <label class="form-check-label small" for="{{ col }}-{{ loop.index }}">{{ val }}</label>
+                              <div class="filter-option-main">
+                                <input
+                                  class="form-check-input"
+                                  type="checkbox"
+                                  name="{{ col }}"
+                                  value="{{ val }}"
+                                  id="{{ col }}-{{ loop.index }}"
+                                  {% if val in selected_grain_values[col] %}checked{% endif %}
+                                >
+                                <label class="form-check-label small text-truncate" for="{{ col }}-{{ loop.index }}">{{ val }}</label>
+                              </div>
+                              <button type="button" class="filter-only" title="Select only this {{ col }}">Only</button>
                             </div>
                           {% endfor %}
                         </div>
@@ -218,14 +249,14 @@
 
               <div class="pt-2 border-top">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                  <div class="fw-semibold">Overlay (raw)</div>
+                  <div class="fw-semibold" data-i18n="results_overlay_raw">Overlay (raw)</div>
                   <div class="text-muted small">Monthly</div>
                 </div>
                 {% if raw_numeric_cols and raw_numeric_cols|length > 0 %}
                   <div class="mb-2">
-                    <label class="form-label small mb-1">Numeric column</label>
+                    <label class="form-label small mb-1" data-i18n="results_numeric_column">Numeric column</label>
                     <select class="form-select form-select-sm" name="raw_metric">
-                      <option value="" {% if not selected_raw_metric %}selected{% endif %}>None</option>
+                      <option value="" {% if not selected_raw_metric %}selected{% endif %} data-i18n="results_none">None</option>
                       {% for c in raw_numeric_cols %}
                         <option value="{{ c }}" {% if selected_raw_metric == c %}selected{% endif %}>{{ c }}</option>
                       {% endfor %}
@@ -254,7 +285,7 @@
                 {% endif %}
               </div>
 
-              <button type="submit" class="btn btn-primary">Apply</button>
+              <button type="submit" class="btn btn-primary"><span data-i18n="results_apply">Apply</span></button>
               <div class="text-muted small">Tip: clicking “All” removes that filter.</div>
             </form>
           </div>
@@ -305,7 +336,7 @@
               <span id="oos-badge" class="badge text-bg-light border" {% if not oos_imputed %}style="display:none;"{% endif %}>
                 {% if oos_imputed %}OOS imputation applied{% endif %}
               </span>
-              <div id="rows-count" class="text-muted small">Rows: {{ filtered_df|length }}</div>
+              <div id="rows-count" class="text-muted small" data-rows-count="{{ filtered_df|length }}">Rows: {{ filtered_df|length }}</div>
             </div>
           </div>
 
@@ -478,7 +509,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="chatModalLabel">AI Assistant</h5>
+        <h5 class="modal-title" id="chatModalLabel" data-i18n="results_ai_assistant">AI Assistant</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -502,6 +533,55 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+  // Bootstrap modals can misbehave when nested inside a transformed (scaled) container
+  // like our `.zoom-wrapper`. Portal the chat modal to <body> so close/backdrop works reliably.
+  (function setupChatModalPortal() {
+    function parseScaleFromTransform(transform) {
+      if (!transform || transform === 'none') return 1;
+      const m = transform.match(/^matrix\(([^)]+)\)$/);
+      const m3 = transform.match(/^matrix3d\(([^)]+)\)$/);
+      const parts = m ? m[1].split(',') : (m3 ? m3[1].split(',') : null);
+      if (!parts || !parts.length) return 1;
+      const a = parseFloat(parts[0]);
+      return (!Number.isNaN(a) && a > 0) ? a : 1;
+    }
+
+    function run() {
+      const modalEl = document.getElementById('chatModal');
+      if (!modalEl) return;
+
+      try {
+        if (modalEl.parentElement !== document.body) {
+          document.body.appendChild(modalEl);
+        }
+
+        const zoomWrapper = document.querySelector('.zoom-wrapper');
+        const scale = zoomWrapper ? parseScaleFromTransform(window.getComputedStyle(zoomWrapper).transform) : 1;
+        const dialog = modalEl.querySelector('.modal-dialog');
+        if (dialog && scale !== 1) {
+          // Use the `scale` property so we don't override Bootstrap's own transforms/animations.
+          try { dialog.style.scale = String(scale); } catch (e) { /* ignore */ }
+          dialog.style.transformOrigin = 'center';
+        }
+
+        if (window.bootstrap && window.bootstrap.Modal) {
+          const instance = window.bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: true, keyboard: true });
+          modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((btn) => {
+            btn.addEventListener('click', function() { instance.hide(); });
+          });
+        }
+      } catch (e) {
+        // fall back to default bootstrap behavior
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', run);
+    } else {
+      run();
+    }
+  })();
+
   // CSV download
   document.getElementById('downloadCsvBtn')?.addEventListener('click', function() {
     const csv = {{ csv_data | tojson }};
@@ -659,12 +739,32 @@
     e.preventDefault();
   });
 
+  // Per-option "Only": select just one value without manually unchecking others
+  document.addEventListener('click', function(e) {
+    const onlyBtn = e.target.closest('.filter-only');
+    if (!onlyBtn) return;
+    const section = onlyBtn.closest('.filter-section');
+    const option = onlyBtn.closest('.filter-option');
+    const targetCb = option ? option.querySelector('input[type=\"checkbox\"]') : null;
+    if (!section || !targetCb) return;
+
+    section.querySelectorAll('input[type=\"checkbox\"]').forEach(cb => { cb.checked = false; });
+    targetCb.checked = true;
+    updateFilterCount(section);
+
+    e.preventDefault();
+    e.stopPropagation(); // keep dropdown open unless user clicks outside
+  });
+
   // Search within dropdown + live counts
   document.querySelectorAll('.filter-section').forEach(section => {
     updateFilterCount(section);
     const search = section.querySelector('.filter-search');
     const options = Array.from(section.querySelectorAll('.filter-option'));
-    options.forEach(opt => { opt.dataset.label = (opt.textContent || '').trim().toLowerCase(); });
+    options.forEach(opt => {
+      const labelEl = opt.querySelector('label');
+      opt.dataset.label = (labelEl ? labelEl.textContent : opt.textContent || '').trim().toLowerCase();
+    });
 
     if (search) {
       search.addEventListener('keydown', ev => { if (ev.key === 'Enter') ev.preventDefault(); });
@@ -774,7 +874,10 @@
         // Update filtered rows count
         const rowsCount = document.getElementById('rows-count');
         if (rowsCount) {
-          rowsCount.textContent = `Rows: ${data.filtered_rows}`;
+          const t = (window.PiTensorI18n && window.PiTensorI18n.t) ? window.PiTensorI18n.t : ((k) => k);
+          const fmt = (window.PiTensorI18n && window.PiTensorI18n.fmt) ? window.PiTensorI18n.fmt : ((tpl, v) => String(tpl).replace('{n}', String(v.n)));
+          rowsCount.textContent = fmt(t('results_rows_count'), { n: data.filtered_rows });
+          rowsCount.setAttribute('data-rows-count', String(data.filtered_rows));
         }
 
       } else {
@@ -791,6 +894,18 @@
       }
     }
   });
+
+  // Keep "Rows: N" label translated when language changes
+  function refreshRowsCountLabel() {
+    const rowsCount = document.getElementById('rows-count');
+    if (!rowsCount) return;
+    const n = rowsCount.getAttribute('data-rows-count') || '';
+    const t = (window.PiTensorI18n && window.PiTensorI18n.t) ? window.PiTensorI18n.t : ((k) => k);
+    const fmt = (window.PiTensorI18n && window.PiTensorI18n.fmt) ? window.PiTensorI18n.fmt : ((tpl, v) => String(tpl).replace('{n}', String(v.n)));
+    rowsCount.textContent = fmt(t('results_rows_count'), { n });
+  }
+  window.addEventListener('pitensor:lang', refreshRowsCountLabel);
+  document.addEventListener('DOMContentLoaded', refreshRowsCountLabel);
 
   // Chat assistant
   let chatInFlight = false;

@@ -82,7 +82,7 @@
     <div class="auth-logo" aria-hidden="true">
       <span style="font-size: 26px;">&#129433;</span>
     </div>
-    <h2 class="auth-title">Sign in</h2>
+    <h2 class="auth-title" data-i18n="auth_sign_in">Sign in</h2>
 
     {% if error %}
     <div class="alert alert-danger small">{{ error }}</div>
@@ -94,17 +94,17 @@
         <label class="form-label fw-semibold">Email</label>
         <input class="form-control form-control-lg" type="email" name="email" placeholder="Your email address" required>
       </div>
-      <button type="submit" class="btn btn-black w-100">Continue</button>
+      <button type="submit" class="btn btn-black w-100"><span data-i18n="auth_continue">Continue</span></button>
     </form>
 
     <div class="divider">OR</div>
 
     <div class="d-grid gap-2">
       <a class="btn btn-outline-soft" href="/auth/google?next={{ next or '' }}">
-        Continue with Google
+        <span data-i18n="auth_continue_google">Continue with Google</span>
       </a>
       <a class="btn btn-outline-soft" href="/auth/github?next={{ next or '' }}">
-        Continue with GitHub
+        <span data-i18n="auth_continue_github">Continue with GitHub</span>
       </a>
     </div>
 

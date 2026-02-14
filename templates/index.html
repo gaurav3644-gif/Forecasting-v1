@@ -8,7 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { zoom: 0.75; }
+        body { zoom: 0.8; }
                 :root {
                     --bg: #f6f8ff;
                     --panel: #ffffff;
@@ -29,8 +29,73 @@
                 .card,
                 .insight-card,
                 .stat-box,
-                .chart-container {
-                    color: #181a23 !important;
+                 .chart-container {
+                     color: #181a23 !important;
+                 }
+
+                .contact-phones {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    flex-wrap: wrap; /* wrap on small screens so nothing disappears */
+                }
+                @media (min-width: 768px) {
+                    .contact-phones { flex-wrap: nowrap; } /* keep one line on desktop */
+                }
+                .contact-phones span {
+                    display: inline-flex;
+                    align-items: center;
+                    white-space: nowrap; /* keep icon + number together */
+                }
+                .contact-phones i { margin-right: 6px; }
+
+                .lang-toggle-inline {
+                    display: inline-flex;
+                    gap: 6px;
+                    padding: 6px;
+                    border-radius: 999px;
+                    background: rgba(255,255,255,0.65);
+                    border: 1px solid rgba(18,24,39,0.12);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                }
+                .lang-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    border-radius: 999px;
+                    padding: 0.2rem 0.5rem;
+                    border: 1px solid rgba(18,24,39,0.12);
+                    background: #fff;
+                    color: rgba(18,24,39,0.72);
+                    font-size: 0.78rem;
+                    font-weight: 800;
+                    line-height: 1;
+                }
+                .lang-btn.active {
+                    background: rgba(13,110,253,0.08);
+                    border-color: rgba(13,110,253,0.22);
+                    color: #0d6efd;
+                }
+                .lang-flag {
+                    width: 18px;
+                    height: 12px;
+                    border-radius: 3px;
+                    display: inline-block;
+                    border: 1px solid rgba(18,24,39,0.18);
+                    box-shadow: 0 1px 0 rgba(18,24,39,0.06);
+                    font-size: 0;
+                    line-height: 0;
+                }
+                .lang-btn[data-lang="id"] .lang-flag {
+                    background: linear-gradient(#ce1126 0 50%, #ffffff 50% 100%);
+                }
+                .lang-btn[data-lang="en"] .lang-flag {
+                    background:
+                        linear-gradient(to right, transparent 0 44%, #ce1126 44% 56%, transparent 56% 100%),
+                        linear-gradient(to bottom, transparent 0 44%, #ce1126 44% 56%, transparent 56% 100%),
+                        #ffffff;
                 }
                 .section[style*="#f8f9fa"] h2,
                 .section[style*="#f8f9fa"] h3,
@@ -686,18 +751,28 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#connectors">Connectors</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#insights">Insights</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#how-it-works">How It Works</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#pricing">Pricing</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#contact-anchor">Contact</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#features" data-i18n="landing_features">Features</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#connectors" data-i18n="landing_connectors">Connectors</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#insights" data-i18n="landing_insights">Insights</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#how-it-works" data-i18n="landing_how">How It Works</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#pricing" data-i18n="landing_pricing">Pricing</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#contact-anchor" data-i18n="landing_contact">Contact</a></li>
+                    <li class="nav-item d-flex align-items-center ms-lg-2 mt-2 mt-lg-0">
+                        <div class="lang-toggle-inline" aria-label="Language toggle">
+                            <button type="button" class="lang-btn" data-lang="en" title="EN">
+                                <span class="lang-flag" aria-hidden="true">🇬🇧</span><span data-i18n="lang_en">EN</span>
+                            </button>
+                            <button type="button" class="lang-btn" data-lang="id" title="ID">
+                                <span class="lang-flag" aria-hidden="true">🇮🇩</span><span data-i18n="lang_id">ID</span>
+                            </button>
+                        </div>
+                    </li>
                     <li class="nav-item ms-lg-3">
                         {% set user_email = request.state.user_email if request and request.state is not none else None %}
                         {% if user_email %}
-                            <a class="btn btn-outline-secondary btn-sm px-3" href="/signout">Sign out</a>
+                            <a class="btn btn-outline-secondary btn-sm px-3" href="/signout"><span data-i18n="nav_sign_out">Sign out</span></a>
                         {% else %}
-                            <a class="btn btn-outline-primary btn-sm px-3" href="/signin">Sign in</a>
+                            <a class="btn btn-outline-primary btn-sm px-3" href="/signin"><span data-i18n="nav_sign_in">Sign in</span></a>
                         {% endif %}
                     </li>
                 </ul>
@@ -711,29 +786,29 @@
             <div class="row align-items-center">
                 <div class="col-lg-6 text-lg-start text-center mb-4 mb-lg-0">
                     <div class="hero-badges justify-content-lg-start justify-content-center">
-                        <span class="pill"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Forecasting</span>
-                        <span class="pill"><i class="fa-solid fa-truck-fast"></i> Supply Planning</span>
-                        <span class="pill"><i class="fa-solid fa-shield-halved"></i> Enterprise-ready</span>
+                        <span class="pill"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="hero_badge_ai">AI Forecasting</span></span>
+                        <span class="pill"><i class="fa-solid fa-truck-fast"></i> <span data-i18n="hero_badge_supply">Supply Planning</span></span>
+                        <span class="pill"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="hero_badge_enterprise">Enterprise-ready</span></span>
                     </div>
-                    <h1>Retail's <span class="headline-accent">AI Forecasting</span> Partner</h1>
-                    <p class="lead">Upload sales data, generate accurate forecasts, and turn them into clear order recommendations—fast. Built for real retail operations: items, stores, lead times, MOQs, and service levels.</p>
+                    <h1><span data-i18n="hero_title_prefix">Retail's</span> <span class="headline-accent" data-i18n="hero_title_accent">AI Forecasting</span> <span data-i18n="hero_title_suffix">Partner</span></h1>
+                    <p class="lead" data-i18n="hero_subtitle">Upload sales data, generate accurate forecasts, and turn them into clear order recommendations—fast. Built for real retail operations: items, stores, lead times, MOQs, and service levels.</p>
                     <div class="d-flex flex-column flex-sm-row gap-3 justify-content-lg-start justify-content-center">
-                        <a href="#upload" class="btn-hero">Start Forecasting</a>
-                        <a href="#features" class="btn-hero-secondary"><i class="fa-solid fa-circle-play"></i> Explore features</a>
+                        <a href="#upload" class="btn-hero" data-i18n="hero_btn_start">Start Forecasting</a>
+                        <a href="#features" class="btn-hero-secondary"><i class="fa-solid fa-circle-play"></i> <span data-i18n="hero_btn_explore">Explore features</span></a>
                     </div>
 
                     <div class="hero-kpis text-start mt-4">
                         <div class="kpi">
-                            <div class="kpi-value">Minutes</div>
-                            <div class="kpi-label">to first forecast</div>
+                            <div class="kpi-value" data-i18n="hero_kpi1_value">Minutes</div>
+                            <div class="kpi-label" data-i18n="hero_kpi1_label">to first forecast</div>
                         </div>
                         <div class="kpi">
                             <div class="kpi-value">CSV → Charts</div>
-                            <div class="kpi-label">no setup required</div>
+                            <div class="kpi-label" data-i18n="hero_kpi2_label">no setup required</div>
                         </div>
                         <div class="kpi">
                             <div class="kpi-value">Forecast → Orders</div>
-                            <div class="kpi-label">MVP supply engine</div>
+                            <div class="kpi-label" data-i18n="hero_kpi3_label">MVP supply engine</div>
                         </div>
                     </div>
                 </div>
@@ -742,7 +817,7 @@
                         <img src="https://wair.ai/wp-content/uploads/2025/06/Measuring-and-maximizing-ROI-with-AI-retail-demand-forecasting.webp" alt="AI Retail Demand Forecasting" class="img-fluid" style="max-height:360px; object-fit:cover; background:#eaf3f7;" loading="lazy">
                         <div class="hero-media-badge">
                             <i class="fa-solid fa-chart-line"></i>
-                            <span><strong>PiTensor</strong> • Upload → Forecast → Plan</span>
+                            <span><strong>PiTensor</strong> • <span data-i18n="hero_media_badge">Upload → Forecast → Plan</span></span>
                         </div>
                     </div>
                 </div>
@@ -755,13 +830,13 @@
         <div class="container">
             <div class="row align-items-center g-3">
                 <div class="col-lg-5 text-center text-lg-start">
-                    <p class="trust-title">Built for retail operators and analysts who need decisions, not dashboards.</p>
+                    <p class="trust-title" data-i18n="trust_title">Built for retail operators and analysts who need decisions, not dashboards.</p>
                 </div>
                 <div class="col-lg-7">
                     <div class="trust-logos justify-content-center justify-content-lg-end">
-                        <span class="pill"><i class="fa-solid fa-store"></i> Multi-store</span>
-                        <span class="pill"><i class="fa-solid fa-boxes-stacked"></i> SKU-level</span>
-                        <span class="pill"><i class="fa-solid fa-file-csv"></i> CSV-first</span>
+                        <span class="pill"><i class="fa-solid fa-store"></i> <span data-i18n="trust_multi_store">Multi-store</span></span>
+                        <span class="pill"><i class="fa-solid fa-boxes-stacked"></i> <span data-i18n="trust_sku">SKU-level</span></span>
+                        <span class="pill"><i class="fa-solid fa-file-csv"></i> <span data-i18n="trust_csv">CSV-first</span></span>
                         <span class="pill"><i class="fa-solid fa-bolt"></i> FastAPI</span>
                         <span class="pill"><i class="fa-solid fa-chart-simple"></i> Plotly</span>
                     </div>
@@ -775,15 +850,15 @@
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-lg-6">
-                    <h2 class="fw-bold mb-4">Built for retail operations.</h2>
+                    <h2 class="fw-bold mb-4" data-i18n="value_heading">Built for retail operations.</h2>
                     <div class="value-points">
                         <div class="value-point">
                             <div class="value-icon">
                                 <i class="fas fa-brain"></i>
                             </div>
                             <div class="value-content">
-                                <h5>Advanced ML forecasting models</h5>
-                                <p>Proprietary algorithms trained on millions of retail data points for unmatched accuracy.</p>
+                                <h5 data-i18n="value_title1">Advanced ML forecasting models</h5>
+                                <p data-i18n="value_desc1">Proprietary algorithms trained on millions of retail data points for unmatched accuracy.</p>
                             </div>
                         </div>
                         <div class="value-point">
@@ -791,8 +866,8 @@
                                 <i class="fas fa-chart-line"></i>
                             </div>
                             <div class="value-content">
-                                <h5>Real-time demand sensing</h5>
-                                <p>Continuous learning from sales patterns, seasonality, and market trends.</p>
+                                <h5 data-i18n="value_title2">Real-time demand sensing</h5>
+                                <p data-i18n="value_desc2">Continuous learning from sales patterns, seasonality, and market trends.</p>
                             </div>
                         </div>
                         <div class="value-point">
@@ -800,8 +875,8 @@
                                 <i class="fas fa-cogs"></i>
                             </div>
                             <div class="value-content">
-                                <h5>Seamless system integration</h5>
-                                <p>Connect directly to your POS, ERP, and e-commerce platforms for automated insights.</p>
+                                <h5 data-i18n="value_title3">Seamless system integration</h5>
+                                <p data-i18n="value_desc3">Connect directly to your POS, ERP, and e-commerce platforms for automated insights.</p>
                             </div>
                         </div>
                     </div>
@@ -810,15 +885,15 @@
                     <div class="stats-card">
                         <div class="stat">
                             <div class="stat-number">95%</div>
-                            <div class="stat-label">Forecast Accuracy</div>
+                            <div class="stat-label" data-i18n="stat_accuracy_label">Forecast Accuracy</div>
                         </div>
                         <div class="stat">
                             <div class="stat-number">60%</div>
-                            <div class="stat-label">Inventory Cost Reduction</div>
+                            <div class="stat-label" data-i18n="stat_cost_label">Inventory Cost Reduction</div>
                         </div>
                         <div class="stat">
                             <div class="stat-number">24/7</div>
-                            <div class="stat-label">Automated Updates</div>
+                            <div class="stat-label" data-i18n="stat_updates_label">Automated Updates</div>
                         </div>
                     </div>
                 </div>
@@ -831,8 +906,8 @@
         <div class="container">
             <div class="row">
                 <div class="col-12 text-center mb-5">
-                    <h2 class="fw-bold">Why Choose PiTensor?</h2>
-                    <p class="text-muted">Cutting-edge AI technology meets intuitive design</p>
+                    <h2 class="fw-bold" data-i18n="features_title">Why Choose PiTensor?</h2>
+                    <p class="text-muted" data-i18n="features_subtitle">Cutting-edge AI technology meets intuitive design</p>
                 </div>
             </div>
             <div class="row g-4">
@@ -842,8 +917,8 @@
                         <div class="feature-icon">
                             <i class="fas fa-robot"></i>
                         </div>
-                        <h4>Advanced AI Models</h4>
-                        <p>State-of-the-art machine learning algorithms trained on millions of data points for unparalleled accuracy.</p>
+                        <h4 data-i18n="feature1_title">Advanced AI Models</h4>
+                        <p data-i18n="feature1_desc">State-of-the-art machine learning algorithms trained on millions of data points for unparalleled accuracy.</p>
                     </div>
                 </div>
                 <div class="col-md-4">
@@ -852,8 +927,8 @@
                         <div class="feature-icon">
                             <i class="fas fa-chart-line"></i>
                         </div>
-                        <h4>Real-time Analytics</h4>
-                        <p>Interactive dashboards with live data visualization and predictive insights at your fingertips.</p>
+                        <h4 data-i18n="feature2_title">Real-time Analytics</h4>
+                        <p data-i18n="feature2_desc">Interactive dashboards with live data visualization and predictive insights at your fingertips.</p>
                     </div>
                 </div>
                 <div class="col-md-4">
@@ -862,8 +937,8 @@
                         <div class="feature-icon">
                             <i class="fas fa-shield-alt"></i>
                         </div>
-                        <h4>Enterprise Security</h4>
-                        <p>Bank-level encryption and compliance with GDPR, ensuring your data is always protected.</p>
+                        <h4 data-i18n="feature3_title">Enterprise Security</h4>
+                        <p data-i18n="feature3_desc">Bank-level encryption and compliance with GDPR, ensuring your data is always protected.</p>
                     </div>
                 </div>
             </div>
@@ -875,20 +950,20 @@
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <h2 class="fw-bold mb-4">See PiTensor in Action</h2>
-                    <p class="text-muted mb-4">Our AI models analyze historical data to predict future sales with remarkable accuracy. Watch as trends emerge and insights unfold.</p>
+                    <h2 class="fw-bold mb-4" data-i18n="demo_title">See PiTensor in Action</h2>
+                    <p class="text-muted mb-4" data-i18n="demo_subtitle">Our AI models analyze historical data to predict future sales with remarkable accuracy. Watch as trends emerge and insights unfold.</p>
                     <div class="d-flex gap-3">
                         <div class="stat-box">
                             <h4 style="color: #28a745;">95%</h4>
-                            <small>Accuracy Rate</small>
+                            <small data-i18n="demo_accuracy">Accuracy Rate</small>
                         </div>
                         <div class="stat-box">
                             <h4 style="color: #007bff;">2x</h4>
-                            <small>Faster Insights</small>
+                            <small data-i18n="demo_faster">Faster Insights</small>
                         </div>
                         <div class="stat-box">
                             <h4 style="color: #6c757d;">24/7</h4>
-                            <small>Automated</small>
+                            <small data-i18n="demo_automated">Automated</small>
                         </div>
                     </div>
                 </div>
@@ -927,30 +1002,30 @@
         <div class="container">
             <div class="row">
                 <div class="col-12 text-center mb-5">
-                    <h2 class="fw-bold">How It Works</h2>
-                    <p class="text-muted">Get accurate forecasts in three simple steps</p>
+                    <h2 class="fw-bold" data-i18n="how_title">How It Works</h2>
+                    <p class="text-muted" data-i18n="how_subtitle">Get accurate forecasts in three simple steps</p>
                 </div>
             </div>
             <div class="row">
                 <div class="col-md-4">
                     <div class="step animate-on-scroll">
                         <div class="step-number">1</div>
-                        <h4>Connect Your Data</h4>
-                        <p>Connect to your existing systems - databases, e-commerce platforms, POS systems, or upload CSV files.</p>
+                        <h4 data-i18n="step1_title">Connect Your Data</h4>
+                        <p data-i18n="step1_desc">Connect to your existing systems - databases, e-commerce platforms, POS systems, or upload CSV files.</p>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="step animate-on-scroll">
                         <div class="step-number">2</div>
-                        <h4>Configure Forecast</h4>
-                        <p>Set your forecast horizon and parameters. Our intelligent system optimizes automatically.</p>
+                        <h4 data-i18n="step2_title">Configure Forecast</h4>
+                        <p data-i18n="step2_desc">Set your forecast horizon and parameters. Our intelligent system optimizes automatically.</p>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="step animate-on-scroll">
                         <div class="step-number">3</div>
-                        <h4>Get Insights</h4>
-                        <p>Receive detailed forecasts, visualizations, and actionable business insights instantly.</p>
+                        <h4 data-i18n="step3_title">Get Insights</h4>
+                        <p data-i18n="step3_desc">Receive detailed forecasts, visualizations, and actionable business insights instantly.</p>
                     </div>
                 </div>
             </div>
@@ -962,8 +1037,8 @@
         <div class="container">
             <div class="row">
                 <div class="col-12 text-center mb-5">
-                    <h2 class="fw-bold">Connect to Your Retail Systems</h2>
-                    <p class="text-muted">Seamlessly integrate with the tools your business already uses</p>
+                    <h2 class="fw-bold" data-i18n="conn_title">Connect to Your Retail Systems</h2>
+                    <p class="text-muted" data-i18n="conn_subtitle">Seamlessly integrate with the tools your business already uses</p>
                 </div>
             </div>
             <div class="row g-4">
@@ -973,9 +1048,9 @@
                         <div class="connector-icon">
                             <i class="fas fa-database"></i>
                         </div>
-                        <h5>Databases</h5>
+                        <h5 data-i18n="conn_databases">Databases</h5>
                         <p>PostgreSQL, MySQL, SQL Server, Oracle</p>
-                        <div class="connector-status available">Available</div>
+                        <div class="connector-status available" data-i18n="conn_available">Available</div>
                     </div>
                 </div>
                 <!-- Cloud Warehouses -->
@@ -984,9 +1059,9 @@
                         <div class="connector-icon">
                             <i class="fas fa-cloud"></i>
                         </div>
-                        <h5>Cloud Warehouses</h5>
+                        <h5 data-i18n="conn_cloud">Cloud Warehouses</h5>
                         <p>BigQuery, Snowflake, Redshift, Azure Synapse</p>
-                        <div class="connector-status available">Available</div>
+                        <div class="connector-status available" data-i18n="conn_available">Available</div>
                     </div>
                 </div>
                 <!-- E-commerce -->
@@ -995,9 +1070,9 @@
                         <div class="connector-icon">
                             <i class="fas fa-shopping-cart"></i>
                         </div>
-                        <h5>E-commerce</h5>
+                        <h5 data-i18n="conn_ecommerce">E-commerce</h5>
                         <p>Shopify, WooCommerce, Magento, BigCommerce</p>
-                        <div class="connector-status coming-soon">Coming Soon</div>
+                        <div class="connector-status coming-soon" data-i18n="conn_coming_soon">Coming Soon</div>
                     </div>
                 </div>
                 <!-- POS Systems -->
@@ -1006,9 +1081,9 @@
                         <div class="connector-icon">
                             <i class="fas fa-cash-register"></i>
                         </div>
-                        <h5>POS Systems</h5>
+                        <h5 data-i18n="conn_pos">POS Systems</h5>
                         <p>Square, Toast, Clover, Lightspeed</p>
-                        <div class="connector-status coming-soon">Coming Soon</div>
+                        <div class="connector-status coming-soon" data-i18n="conn_coming_soon">Coming Soon</div>
                     </div>
                 </div>
                 <!-- ERP Systems -->
@@ -1017,9 +1092,9 @@
                         <div class="connector-icon">
                             <i class="fas fa-building"></i>
                         </div>
-                        <h5>ERP Systems</h5>
+                        <h5 data-i18n="conn_erp">ERP Systems</h5>
                         <p>SAP, Oracle ERP, Microsoft Dynamics</p>
-                        <div class="connector-status coming-soon">Coming Soon</div>
+                        <div class="connector-status coming-soon" data-i18n="conn_coming_soon">Coming Soon</div>
                     </div>
                 </div>
                 <!-- File Upload -->
@@ -1028,9 +1103,9 @@
                         <div class="connector-icon">
                             <i class="fas fa-file-csv"></i>
                         </div>
-                        <h5>File Upload</h5>
-                        <p>CSV, Excel, JSON files</p>
-                        <div class="connector-status available">Available</div>
+                        <h5 data-i18n="conn_file">File Upload</h5>
+                        <p data-i18n="conn_file_desc">CSV, Excel, JSON files</p>
+                        <div class="connector-status available" data-i18n="conn_available">Available</div>
                     </div>
                 </div>
             </div>
@@ -1048,45 +1123,45 @@
                                 <div class="mb-4 text-center text-lg-start">
                                     <div class="d-inline-flex align-items-center gap-2 mb-2">
                                         <i class="fas fa-upload text-primary"></i>
-                                        <span class="pill">CSV quick start</span>
+                                        <span class="pill" data-i18n="upload_pill">CSV quick start</span>
                                     </div>
-                                    <h3 class="upload-title mb-2">Quick Start with CSV</h3>
-                                    <p class="upload-subtitle mb-0">Upload sales data and get forecasts in minutes. Then convert forecasts into order recommendations.</p>
+                                    <h3 class="upload-title mb-2" data-i18n="upload_title">Quick Start with CSV</h3>
+                                    <p class="upload-subtitle mb-0" data-i18n="upload_subtitle">Upload sales data and get forecasts in minutes. Then convert forecasts into order recommendations.</p>
                                 </div>
 
                                 <form action="/upload" method="post" enctype="multipart/form-data">
                                     <div id="forecast-progress" class="progress mb-3" style="height: 18px; display: none;">
                                         <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">
-                                            <span id="progress-text" style="font-weight:600; letter-spacing:0.5px;">Generating forecast, please wait...</span>
+                                            <span id="progress-text" style="font-weight:600; letter-spacing:0.5px;" data-i18n="upload_progress">Generating forecast, please wait...</span>
                                         </div>
                                     </div>
 
                                     <div class="mb-3">
-                                        <label for="file" class="form-label fw-bold">Upload Sales CSV</label>
+                                        <label for="file" class="form-label fw-bold" data-i18n="upload_label">Upload Sales CSV</label>
                                         <input type="file" class="form-control form-control-lg" id="file" name="file" accept=".csv" required>
-                                        <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
+                                        <div class="form-text"><span data-i18n="upload_required_cols">Required columns:</span> <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
                                     </div>
 
                                     <div class="d-flex flex-column flex-sm-row gap-2">
                                         <button type="submit" class="btn btn-primary btn-lg flex-grow-1" id="forecast-btn">
-                                            <i class="fas fa-rocket me-2"></i>Generate Forecast
+                                            <i class="fas fa-rocket me-2"></i><span data-i18n="upload_btn">Generate Forecast</span>
                                         </button>
                                         <button type="button" class="btn btn-outline-secondary btn-lg" id="download-sample-btn">
-                                            <i class="fa-solid fa-download me-2"></i>Sample CSV
+                                            <i class="fa-solid fa-download me-2"></i><span data-i18n="upload_sample_btn">Sample CSV</span>
                                         </button>
                                     </div>
                                 </form>
 
                                 <div class="mt-3 text-muted small">
-                                    Need to connect to your existing systems? <a href="#connectors">View all connectors</a>
+                                    <span data-i18n="upload_connectors_link">Need to connect to your existing systems?</span> <a href="#connectors" data-i18n="upload_view_connectors">View all connectors</a>
                                 </div>
                             </div>
 
                             <div class="col-lg-5">
                                 <div class="upload-help">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
-                                        <strong>CSV format</strong>
-                                        <span class="pill"><i class="fa-solid fa-circle-info"></i> minimal</span>
+                                        <strong data-i18n="upload_format">CSV format</strong>
+                                        <span class="pill"><i class="fa-solid fa-circle-info"></i> <span data-i18n="upload_minimal">minimal</span></span>
                                     </div>
                                     <div class="sample-box" id="sample-csv-box">date,item,store,sales
 2026-01-01,1,1,120
@@ -1094,11 +1169,11 @@
 2026-01-03,1,1,98
 2026-01-01,2,1,42</div>
                                     <div class="d-flex gap-2 mt-3 flex-wrap">
-                                        <button type="button" class="btn btn-sm btn-light" id="copy-sample-btn"><i class="fa-regular fa-copy me-1"></i>Copy</button>
-                                        <a class="btn btn-sm btn-light" href="/supply_plan"><i class="fa-solid fa-truck-fast me-1"></i>Supply planning</a>
+                                        <button type="button" class="btn btn-sm btn-light" id="copy-sample-btn"><i class="fa-regular fa-copy me-1"></i><span data-i18n="upload_copy">Copy</span></button>
+                                        <a class="btn btn-sm btn-light" href="/supply_plan"><i class="fa-solid fa-truck-fast me-1"></i><span data-i18n="upload_supply_link">Supply planning</span></a>
                                     </div>
                                     <div class="mt-3 small text-muted">
-                                        After upload you can filter results and download forecasts. For order recommendations, use the Supply Planning page.
+                                        <span data-i18n="upload_after_info">After upload you can filter results and download forecasts. For order recommendations, use the Supply Planning page.</span>
                                     </div>
                                 </div>
                             </div>
@@ -1114,33 +1189,33 @@
         <div class="container">
             <div class="row">
                 <div class="col-12 text-center mb-5">
-                    <h2 class="fw-bold">From the PiTensor Lab</h2>
-                    <p class="text-muted">Latest insights on retail forecasting and AI trends</p>
+                    <h2 class="fw-bold" data-i18n="insights_title">From the PiTensor Lab</h2>
+                    <p class="text-muted" data-i18n="insights_subtitle">Latest insights on retail forecasting and AI trends</p>
                 </div>
             </div>
             <div class="row g-4">
                 <div class="col-md-6 col-lg-4">
                     <div class="insight-card">
-                        <div class="insight-type">WHITEPAPER</div>
-                        <h5>Seasonal Forecasting: Beat the Holiday Rush</h5>
-                        <p>How AI models predict seasonal demand spikes with 94% accuracy. Learn the techniques used by top retailers.</p>
-                        <a href="#" class="insight-link">Read More <i class="fas fa-arrow-right ms-1"></i></a>
+                        <div class="insight-type" data-i18n="insight1_type">WHITEPAPER</div>
+                        <h5 data-i18n="insight1_title">Seasonal Forecasting: Beat the Holiday Rush</h5>
+                        <p data-i18n="insight1_desc">How AI models predict seasonal demand spikes with 94% accuracy. Learn the techniques used by top retailers.</p>
+                        <a href="#" class="insight-link"><span data-i18n="insight_read_more">Read More</span> <i class="fas fa-arrow-right ms-1"></i></a>
                     </div>
                 </div>
                 <div class="col-md-6 col-lg-4">
                     <div class="insight-card">
-                        <div class="insight-type">CASE STUDY</div>
-                        <h5>$2.3M Saved: Fashion Retailer's Success Story</h5>
-                        <p>How a major fashion brand reduced inventory costs by 45% using our AI forecasting platform.</p>
-                        <a href="#" class="insight-link">Read More <i class="fas fa-arrow-right ms-1"></i></a>
+                        <div class="insight-type" data-i18n="insight2_type">CASE STUDY</div>
+                        <h5 data-i18n="insight2_title">$2.3M Saved: Fashion Retailer's Success Story</h5>
+                        <p data-i18n="insight2_desc">How a major fashion brand reduced inventory costs by 45% using our AI forecasting platform.</p>
+                        <a href="#" class="insight-link"><span data-i18n="insight_read_more">Read More</span> <i class="fas fa-arrow-right ms-1"></i></a>
                     </div>
                 </div>
                 <div class="col-md-6 col-lg-4">
                     <div class="insight-card">
-                        <div class="insight-type">ARTICLE</div>
-                        <h5>The Future of Retail: AI-Driven Inventory</h5>
-                        <p>Why 78% of retail executives believe AI forecasting will be critical to their success in 2026.</p>
-                        <a href="#" class="insight-link">Read More <i class="fas fa-arrow-right ms-1"></i></a>
+                        <div class="insight-type" data-i18n="insight3_type">ARTICLE</div>
+                        <h5 data-i18n="insight3_title">The Future of Retail: AI-Driven Inventory</h5>
+                        <p data-i18n="insight3_desc">Why 78% of retail executives believe AI forecasting will be critical to their success in 2026.</p>
+                        <a href="#" class="insight-link"><span data-i18n="insight_read_more">Read More</span> <i class="fas fa-arrow-right ms-1"></i></a>
                     </div>
                 </div>
             </div>
@@ -1152,17 +1227,17 @@
         <div class="container">
             <div class="row justify-content-center">
                 <div class="col-md-8 text-center">
-                    <h3 class="fw-bold mb-3">Stay Ahead of Retail Trends</h3>
-                    <p class="mb-4 opacity-75">Get weekly insights on AI forecasting, retail analytics, and industry best practices.</p>
+                    <h3 class="fw-bold mb-3" data-i18n="newsletter_title">Stay Ahead of Retail Trends</h3>
+                    <p class="mb-4 opacity-75" data-i18n="newsletter_subtitle">Get weekly insights on AI forecasting, retail analytics, and industry best practices.</p>
                     <form class="newsletter-form">
                         <div class="input-group input-group-lg">
-                            <input type="email" class="form-control" placeholder="Enter your email" required>
+                            <input type="email" class="form-control" placeholder="Enter your email" data-i18n-placeholder="newsletter_placeholder" required>
                             <button class="btn btn-outline-dark" type="submit">
-                                <i class="fas fa-paper-plane me-2"></i>Subscribe
+                                <i class="fas fa-paper-plane me-2"></i><span data-i18n="newsletter_subscribe">Subscribe</span>
                             </button>
                         </div>
                     </form>
-                    <small class="text-muted mt-2 d-block">No spam, unsubscribe anytime.</small>
+                    <small class="text-muted mt-2 d-block" data-i18n="newsletter_disclaimer">No spam, unsubscribe anytime.</small>
                 </div>
             </div>
         </div>
@@ -1171,9 +1246,9 @@
     <!-- CTA Section -->
     <section class="cta-section" style="background: #fff; color: #222; border-top: 1px solid #e9ecef;">
         <div class="container text-center py-5">
-            <h2 class="fw-bold mb-3">Ready to Revolutionize Your Sales Strategy?</h2>
-            <p class="mb-4">Join thousands of businesses using AI to predict the future</p>
-            <a href="#upload" class="btn btn-dark btn-lg px-5 py-3" style="border-radius: 16px; font-weight: 600;">Start Free Trial</a>
+            <h2 class="fw-bold mb-3" data-i18n="cta_title">Ready to Revolutionize Your Sales Strategy?</h2>
+            <p class="mb-4" data-i18n="cta_subtitle">Join thousands of businesses using AI to predict the future</p>
+            <a href="#upload" class="btn btn-dark btn-lg px-5 py-3" style="border-radius: 16px; font-weight: 600;" data-i18n="cta_btn">Start Free Trial</a>
         </div>
     </section>
 
@@ -1183,31 +1258,341 @@
             <div class="row">
                 <div class="col-md-4">
                     <h5>PiTensor</h5>
-                    <p>Empowering businesses with AI-driven sales forecasting since 2026.</p>
+                    <p data-i18n="footer_desc">Empowering businesses with AI-driven sales forecasting since 2026.</p>
                 </div>
                 <div class="col-md-4">
-                    <h5>Quick Links</h5>
+                    <h5 data-i18n="footer_quick_links">Quick Links</h5>
                     <ul class="list-unstyled">
-                        <li><a href="#features" class="text-white text-decoration-none">Features</a></li>
-                        <li><a href="#how-it-works" class="text-white text-decoration-none">How It Works</a></li>
-                        <li><a href="#pricing" class="text-white text-decoration-none">Pricing</a></li>
+                        <li><a href="#features" class="text-white text-decoration-none" data-i18n="landing_features">Features</a></li>
+                        <li><a href="#how-it-works" class="text-white text-decoration-none" data-i18n="landing_how">How It Works</a></li>
+                        <li><a href="#pricing" class="text-white text-decoration-none" data-i18n="landing_pricing">Pricing</a></li>
                     </ul>
                 </div>
                 <div class="col-md-4">
-                    <h5>Contact</h5>
+                    <h5 data-i18n="footer_contact">Contact</h5>
                     <p><i class="fas fa-envelope me-2"></i>support@pitensor.com</p>
-                    <p><i class="fab fa-whatsapp me-2"></i>+12052398219</p>
-                    <p><i class="fab fa-whatsapp me-2"></i>+6282218459081</p>
+                    <p class="contact-phones mb-0">
+                        <span><i class="fab fa-whatsapp"></i>+12052398219</span>
+                        <span><i class="fab fa-whatsapp"></i>+6282218459081</span>
+                    </p>
                 </div>
             </div>
             <hr>
-            <p class="mb-0">&copy; 2026 PiTensor. All rights reserved.</p>
+            <p class="mb-0" data-i18n="footer_copyright">&copy; 2026 PiTensor. All rights reserved.</p>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <div id="contact-anchor"></div>
     <script>
+        (function() {
+            const STORAGE_KEY = 'pitensor_lang';
+            const translations = {
+                en: {
+                    lang_en: 'EN',
+                    lang_id: 'ID',
+                    nav_sign_in: 'Sign in',
+                    nav_sign_out: 'Sign out',
+                    landing_features: 'Features',
+                    landing_connectors: 'Connectors',
+                    landing_insights: 'Insights',
+                    landing_how: 'How It Works',
+                    landing_pricing: 'Pricing',
+                    landing_contact: 'Contact',
+                    // Hero
+                    hero_badge_ai: 'AI Forecasting',
+                    hero_badge_supply: 'Supply Planning',
+                    hero_badge_enterprise: 'Enterprise-ready',
+                    hero_title_prefix: "Retail's",
+                    hero_title_accent: 'AI Forecasting',
+                    hero_title_suffix: 'Partner',
+                    hero_subtitle: 'Upload sales data, generate accurate forecasts, and turn them into clear order recommendations\u2014fast. Built for real retail operations: items, stores, lead times, MOQs, and service levels.',
+                    hero_btn_start: 'Start Forecasting',
+                    hero_btn_explore: 'Explore features',
+                    hero_kpi1_value: 'Minutes',
+                    hero_kpi1_label: 'to first forecast',
+                    hero_kpi2_label: 'no setup required',
+                    hero_kpi3_label: 'MVP supply engine',
+                    hero_media_badge: 'Upload \u2192 Forecast \u2192 Plan',
+                    // Trust strip
+                    trust_title: 'Built for retail operators and analysts who need decisions, not dashboards.',
+                    trust_multi_store: 'Multi-store',
+                    trust_sku: 'SKU-level',
+                    trust_csv: 'CSV-first',
+                    // Value proposition
+                    value_heading: 'Built for retail operations.',
+                    value_title1: 'Advanced ML forecasting models',
+                    value_desc1: 'Proprietary algorithms trained on millions of retail data points for unmatched accuracy.',
+                    value_title2: 'Real-time demand sensing',
+                    value_desc2: 'Continuous learning from sales patterns, seasonality, and market trends.',
+                    value_title3: 'Seamless system integration',
+                    value_desc3: 'Connect directly to your POS, ERP, and e-commerce platforms for automated insights.',
+                    stat_accuracy_label: 'Forecast Accuracy',
+                    stat_cost_label: 'Inventory Cost Reduction',
+                    stat_updates_label: 'Automated Updates',
+                    // Features
+                    features_title: 'Why Choose PiTensor?',
+                    features_subtitle: 'Cutting-edge AI technology meets intuitive design',
+                    feature1_title: 'Advanced AI Models',
+                    feature1_desc: 'State-of-the-art machine learning algorithms trained on millions of data points for unparalleled accuracy.',
+                    feature2_title: 'Real-time Analytics',
+                    feature2_desc: 'Interactive dashboards with live data visualization and predictive insights at your fingertips.',
+                    feature3_title: 'Enterprise Security',
+                    feature3_desc: 'Bank-level encryption and compliance with GDPR, ensuring your data is always protected.',
+                    // Demo chart
+                    demo_title: 'See PiTensor in Action',
+                    demo_subtitle: 'Our AI models analyze historical data to predict future sales with remarkable accuracy. Watch as trends emerge and insights unfold.',
+                    demo_accuracy: 'Accuracy Rate',
+                    demo_faster: 'Faster Insights',
+                    demo_automated: 'Automated',
+                    // How it works
+                    how_title: 'How It Works',
+                    how_subtitle: 'Get accurate forecasts in three simple steps',
+                    step1_title: 'Connect Your Data',
+                    step1_desc: 'Connect to your existing systems - databases, e-commerce platforms, POS systems, or upload CSV files.',
+                    step2_title: 'Configure Forecast',
+                    step2_desc: 'Set your forecast horizon and parameters. Our intelligent system optimizes automatically.',
+                    step3_title: 'Get Insights',
+                    step3_desc: 'Receive detailed forecasts, visualizations, and actionable business insights instantly.',
+                    // Connectors
+                    conn_title: 'Connect to Your Retail Systems',
+                    conn_subtitle: 'Seamlessly integrate with the tools your business already uses',
+                    conn_databases: 'Databases',
+                    conn_cloud: 'Cloud Warehouses',
+                    conn_ecommerce: 'E-commerce',
+                    conn_pos: 'POS Systems',
+                    conn_erp: 'ERP Systems',
+                    conn_file: 'File Upload',
+                    conn_file_desc: 'CSV, Excel, JSON files',
+                    conn_available: 'Available',
+                    conn_coming_soon: 'Coming Soon',
+                    // Upload
+                    upload_pill: 'CSV quick start',
+                    upload_title: 'Quick Start with CSV',
+                    upload_subtitle: 'Upload sales data and get forecasts in minutes. Then convert forecasts into order recommendations.',
+                    upload_label: 'Upload Sales CSV',
+                    upload_required_cols: 'Required columns:',
+                    upload_btn: 'Generate Forecast',
+                    upload_sample_btn: 'Sample CSV',
+                    upload_format: 'CSV format',
+                    upload_minimal: 'minimal',
+                    upload_copy: 'Copy',
+                    upload_supply_link: 'Supply planning',
+                    upload_after_info: 'After upload you can filter results and download forecasts. For order recommendations, use the Supply Planning page.',
+                    upload_connectors_link: 'Need to connect to your existing systems?',
+                    upload_view_connectors: 'View all connectors',
+                    upload_progress: 'Generating forecast, please wait...',
+                    // Insights
+                    insights_title: 'From the PiTensor Lab',
+                    insights_subtitle: 'Latest insights on retail forecasting and AI trends',
+                    insight1_type: 'WHITEPAPER',
+                    insight1_title: 'Seasonal Forecasting: Beat the Holiday Rush',
+                    insight1_desc: 'How AI models predict seasonal demand spikes with 94% accuracy. Learn the techniques used by top retailers.',
+                    insight2_type: 'CASE STUDY',
+                    insight2_title: '$2.3M Saved: Fashion Retailer\u2019s Success Story',
+                    insight2_desc: 'How a major fashion brand reduced inventory costs by 45% using our AI forecasting platform.',
+                    insight3_type: 'ARTICLE',
+                    insight3_title: 'The Future of Retail: AI-Driven Inventory',
+                    insight3_desc: 'Why 78% of retail executives believe AI forecasting will be critical to their success in 2026.',
+                    insight_read_more: 'Read More',
+                    // Newsletter
+                    newsletter_title: 'Stay Ahead of Retail Trends',
+                    newsletter_subtitle: 'Get weekly insights on AI forecasting, retail analytics, and industry best practices.',
+                    newsletter_placeholder: 'Enter your email',
+                    newsletter_subscribe: 'Subscribe',
+                    newsletter_disclaimer: 'No spam, unsubscribe anytime.',
+                    // CTA
+                    cta_title: 'Ready to Revolutionize Your Sales Strategy?',
+                    cta_subtitle: 'Join thousands of businesses using AI to predict the future',
+                    cta_btn: 'Start Free Trial',
+                    // Footer
+                    footer_desc: 'Empowering businesses with AI-driven sales forecasting since 2026.',
+                    footer_quick_links: 'Quick Links',
+                    footer_contact: 'Contact',
+                    footer_copyright: '\u00a9 2026 PiTensor. All rights reserved.'
+                },
+                id: {
+                    lang_en: 'EN',
+                    lang_id: 'ID',
+                    nav_sign_in: 'Masuk',
+                    nav_sign_out: 'Keluar',
+                    landing_features: 'Fitur',
+                    landing_connectors: 'Konektor',
+                    landing_insights: 'Wawasan',
+                    landing_how: 'Cara Kerja',
+                    landing_pricing: 'Harga',
+                    landing_contact: 'Kontak',
+                    // Hero
+                    hero_badge_ai: 'Peramalan AI',
+                    hero_badge_supply: 'Perencanaan Pasokan',
+                    hero_badge_enterprise: 'Siap Enterprise',
+                    hero_title_prefix: 'Mitra',
+                    hero_title_accent: 'Peramalan AI',
+                    hero_title_suffix: 'untuk Ritel',
+                    hero_subtitle: 'Unggah data penjualan, buat peramalan akurat, dan ubah menjadi rekomendasi pesanan yang jelas\u2014cepat. Dibuat untuk operasi ritel nyata: item, toko, waktu tunggu, MOQ, dan tingkat layanan.',
+                    hero_btn_start: 'Mulai Peramalan',
+                    hero_btn_explore: 'Jelajahi fitur',
+                    hero_kpi1_value: 'Menit',
+                    hero_kpi1_label: 'ke peramalan pertama',
+                    hero_kpi2_label: 'tanpa konfigurasi',
+                    hero_kpi3_label: 'mesin pasokan MVP',
+                    hero_media_badge: 'Unggah \u2192 Ramalkan \u2192 Rencanakan',
+                    // Trust strip
+                    trust_title: 'Dibuat untuk operator dan analis ritel yang butuh keputusan, bukan dasbor.',
+                    trust_multi_store: 'Multi-toko',
+                    trust_sku: 'Level SKU',
+                    trust_csv: 'CSV-first',
+                    // Value proposition
+                    value_heading: 'Dibuat untuk operasi ritel.',
+                    value_title1: 'Model peramalan ML canggih',
+                    value_desc1: 'Algoritma eksklusif yang dilatih pada jutaan data ritel untuk akurasi tak tertandingi.',
+                    value_title2: 'Penginderaan permintaan real-time',
+                    value_desc2: 'Pembelajaran berkelanjutan dari pola penjualan, musiman, dan tren pasar.',
+                    value_title3: 'Integrasi sistem yang mulus',
+                    value_desc3: 'Hubungkan langsung ke POS, ERP, dan platform e-commerce Anda untuk wawasan otomatis.',
+                    stat_accuracy_label: 'Akurasi Peramalan',
+                    stat_cost_label: 'Pengurangan Biaya Inventaris',
+                    stat_updates_label: 'Pembaruan Otomatis',
+                    // Features
+                    features_title: 'Mengapa Memilih PiTensor?',
+                    features_subtitle: 'Teknologi AI terdepan bertemu desain intuitif',
+                    feature1_title: 'Model AI Canggih',
+                    feature1_desc: 'Algoritma machine learning terkini yang dilatih pada jutaan titik data untuk akurasi tak tertandingi.',
+                    feature2_title: 'Analitik Real-time',
+                    feature2_desc: 'Dasbor interaktif dengan visualisasi data langsung dan wawasan prediktif di ujung jari Anda.',
+                    feature3_title: 'Keamanan Enterprise',
+                    feature3_desc: 'Enkripsi setara bank dan kepatuhan GDPR, memastikan data Anda selalu terlindungi.',
+                    // Demo chart
+                    demo_title: 'Lihat PiTensor Beraksi',
+                    demo_subtitle: 'Model AI kami menganalisis data historis untuk memprediksi penjualan masa depan dengan akurasi luar biasa. Lihat bagaimana tren muncul dan wawasan terungkap.',
+                    demo_accuracy: 'Tingkat Akurasi',
+                    demo_faster: 'Wawasan Lebih Cepat',
+                    demo_automated: 'Otomatis',
+                    // How it works
+                    how_title: 'Cara Kerja',
+                    how_subtitle: 'Dapatkan peramalan akurat dalam tiga langkah mudah',
+                    step1_title: 'Hubungkan Data Anda',
+                    step1_desc: 'Hubungkan ke sistem yang ada - database, platform e-commerce, sistem POS, atau unggah file CSV.',
+                    step2_title: 'Konfigurasi Peramalan',
+                    step2_desc: 'Atur horizon dan parameter peramalan Anda. Sistem cerdas kami mengoptimalkan secara otomatis.',
+                    step3_title: 'Dapatkan Wawasan',
+                    step3_desc: 'Terima peramalan detail, visualisasi, dan wawasan bisnis yang dapat ditindaklanjuti secara instan.',
+                    // Connectors
+                    conn_title: 'Hubungkan ke Sistem Ritel Anda',
+                    conn_subtitle: 'Integrasikan dengan mulus ke alat yang sudah digunakan bisnis Anda',
+                    conn_databases: 'Database',
+                    conn_cloud: 'Gudang Cloud',
+                    conn_ecommerce: 'E-commerce',
+                    conn_pos: 'Sistem POS',
+                    conn_erp: 'Sistem ERP',
+                    conn_file: 'Unggah File',
+                    conn_file_desc: 'File CSV, Excel, JSON',
+                    conn_available: 'Tersedia',
+                    conn_coming_soon: 'Segera Hadir',
+                    // Upload
+                    upload_pill: 'Mulai cepat CSV',
+                    upload_title: 'Mulai Cepat dengan CSV',
+                    upload_subtitle: 'Unggah data penjualan dan dapatkan peramalan dalam hitungan menit. Lalu ubah peramalan menjadi rekomendasi pesanan.',
+                    upload_label: 'Unggah CSV Penjualan',
+                    upload_required_cols: 'Kolom yang diperlukan:',
+                    upload_btn: 'Buat Peramalan',
+                    upload_sample_btn: 'CSV Contoh',
+                    upload_format: 'Format CSV',
+                    upload_minimal: 'minimal',
+                    upload_copy: 'Salin',
+                    upload_supply_link: 'Perencanaan pasokan',
+                    upload_after_info: 'Setelah mengunggah, Anda dapat memfilter hasil dan mengunduh peramalan. Untuk rekomendasi pesanan, gunakan halaman Perencanaan Pasokan.',
+                    upload_connectors_link: 'Perlu menghubungkan ke sistem yang ada?',
+                    upload_view_connectors: 'Lihat semua konektor',
+                    upload_progress: 'Membuat peramalan, harap tunggu...',
+                    // Insights
+                    insights_title: 'Dari Lab PiTensor',
+                    insights_subtitle: 'Wawasan terbaru tentang peramalan ritel dan tren AI',
+                    insight1_type: 'WHITEPAPER',
+                    insight1_title: 'Peramalan Musiman: Kalahkan Lonjakan Liburan',
+                    insight1_desc: 'Bagaimana model AI memprediksi lonjakan permintaan musiman dengan akurasi 94%. Pelajari teknik yang digunakan peritel terkemuka.',
+                    insight2_type: 'STUDI KASUS',
+                    insight2_title: '$2,3 Juta Dihemat: Kisah Sukses Peritel Fashion',
+                    insight2_desc: 'Bagaimana merek fashion besar mengurangi biaya inventaris sebesar 45% menggunakan platform peramalan AI kami.',
+                    insight3_type: 'ARTIKEL',
+                    insight3_title: 'Masa Depan Ritel: Inventaris Berbasis AI',
+                    insight3_desc: 'Mengapa 78% eksekutif ritel yakin peramalan AI akan menjadi kunci kesuksesan mereka di 2026.',
+                    insight_read_more: 'Baca Selengkapnya',
+                    // Newsletter
+                    newsletter_title: 'Tetap Terdepan dalam Tren Ritel',
+                    newsletter_subtitle: 'Dapatkan wawasan mingguan tentang peramalan AI, analitik ritel, dan praktik terbaik industri.',
+                    newsletter_placeholder: 'Masukkan email Anda',
+                    newsletter_subscribe: 'Berlangganan',
+                    newsletter_disclaimer: 'Tanpa spam, berhenti kapan saja.',
+                    // CTA
+                    cta_title: 'Siap Merevolusi Strategi Penjualan Anda?',
+                    cta_subtitle: 'Bergabunglah dengan ribuan bisnis yang menggunakan AI untuk memprediksi masa depan',
+                    cta_btn: 'Mulai Uji Coba Gratis',
+                    // Footer
+                    footer_desc: 'Memberdayakan bisnis dengan peramalan penjualan berbasis AI sejak 2026.',
+                    footer_quick_links: 'Tautan Cepat',
+                    footer_contact: 'Kontak',
+                    footer_copyright: '\u00a9 2026 PiTensor. Hak cipta dilindungi.'
+                }
+            };
+
+            function getCookie(name) {
+                try {
+                    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '=([^;]*)'));
+                    return m ? decodeURIComponent(m[1]) : '';
+                } catch (e) {
+                    return '';
+                }
+            }
+            function setCookie(name, value) {
+                try {
+                    document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+                } catch (e) {}
+            }
+            function storageGet(key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } }
+            function storageSet(key, value) { try { localStorage.setItem(key, value); return true; } catch (e) { return false; } }
+            function getLang() {
+                const saved = (storageGet(STORAGE_KEY) || getCookie(STORAGE_KEY) || (window.__pitensor_lang || '')).toLowerCase();
+                return (saved === 'id' || saved === 'en') ? saved : 'en';
+            }
+            function t(key) {
+                const lang = getLang();
+                return (translations[lang] && translations[lang][key]) || (translations.en && translations.en[key]) || key;
+            }
+            function apply() {
+                const lang = getLang();
+                document.documentElement.setAttribute('lang', lang);
+                document.querySelectorAll('.lang-btn[data-lang]').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-lang') === lang));
+                document.querySelectorAll('[data-i18n]').forEach(el => {
+                    const k = el.getAttribute('data-i18n');
+                    if (k) el.textContent = t(k);
+                });
+                document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                    const k = el.getAttribute('data-i18n-placeholder');
+                    if (k) el.setAttribute('placeholder', t(k));
+                });
+            }
+            function setLang(lang) {
+                const next = (lang || '').toLowerCase();
+                if (next !== 'en' && next !== 'id') return;
+                window.__pitensor_lang = next;
+                storageSet(STORAGE_KEY, next);
+                setCookie(STORAGE_KEY, next);
+                apply();
+            }
+            document.addEventListener('pointerdown', function(e) {
+                const btn = e.target.closest('.lang-btn[data-lang]');
+                if (!btn) return;
+                setLang(btn.getAttribute('data-lang'));
+            });
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', apply);
+            } else {
+                apply();
+            }
+            window.addEventListener('pageshow', apply);
+        })();
+
         // Smooth scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {

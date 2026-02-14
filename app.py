@@ -3310,7 +3310,10 @@ async def ai_recommendations(payload: Dict = Body(default={})):
     question = payload.get("question") or "Provide prioritized recommendations and next steps."
     request_id = payload.get("request_id")
     session = data_store.get(session_id, {})
-    provider = _default_provider()
+    # Planning recommendations are intended to use OpenAI when configured.
+    # If OPENAI_API_KEY isn't set, fall back deterministically to local (no external calls).
+    openai_configured = bool((os.getenv("OPENAI_API_KEY") or "").strip())
+    attempted_provider = "openai"
 
     context = payload.get("context") or build_planning_context(session, combo_key=combo_key)
     risks = payload.get("risks") or detect_risks(session, context=context)
@@ -3320,45 +3323,51 @@ async def ai_recommendations(payload: Dict = Body(default={})):
     context_packet = _build_llm_context_packet(session, combo_key=combo_key)
 
     cache_key = None
-    if isinstance(request_id, str) and request_id.strip():
-        cache_key = f"recs:{provider}:{session_id}:{request_id.strip()}"
+    if openai_configured and isinstance(request_id, str) and request_id.strip():
+        cache_key = f"recs:{attempted_provider}:{session_id}:{request_id.strip()}"
         cached = _cache_get(cache_key)
         if cached is not None:
-            return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": provider, "llm_provider": provider, "llm_error": None, "cached": True}
+            return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": attempted_provider, "llm_provider": attempted_provider, "llm_error": None, "cached": True}
 
     # De-dupe identical recommendation questions briefly (per session).
     rec_hash = hashlib.sha256(f"{combo_key}|{question}".encode("utf-8")).hexdigest()[:16]
-    hash_key = f"recsq:{provider}:{session_id}:{rec_hash}"
-    cached = _cache_get(hash_key)
-    if cached is not None:
-        return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": provider, "llm_provider": provider, "llm_error": None, "cached": True}
+    hash_key = f"recsq:{attempted_provider}:{session_id}:{rec_hash}"
+    if openai_configured:
+        cached = _cache_get(hash_key)
+        if cached is not None:
+            return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": attempted_provider, "llm_provider": attempted_provider, "llm_error": None, "cached": True}
 
     lock = _get_lock(session_id)
     async with lock:
         # Re-check cache after waiting for in-flight requests.
-        if cache_key:
+        if cache_key and openai_configured:
             cached = _cache_get(cache_key)
             if cached is not None:
-                return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": provider, "llm_provider": provider, "llm_error": None, "cached": True}
-        cached = _cache_get(hash_key)
-        if cached is not None:
-            return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": provider, "llm_provider": provider, "llm_error": None, "cached": True}
+                return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": attempted_provider, "llm_provider": attempted_provider, "llm_error": None, "cached": True}
+        if openai_configured:
+            cached = _cache_get(hash_key)
+            if cached is not None:
+                return {"context": context, "risks": risks, "actions": actions, "answer": cached, "provider": attempted_provider, "llm_provider": attempted_provider, "llm_error": None, "cached": True}
 
         try:
             try:
+                if not openai_configured:
+                    raise ValueError("OPENAI_API_KEY is not set.")
                 answer = await answer_question_openai(question, context_packet=context_packet)
-                provider_used = "openai"
-                llm_provider = "openai"
+                provider_used = attempted_provider
+                llm_provider = attempted_provider
                 llm_error = None
             except Exception as e:
                 # Keep this pipeline deterministic/safe: fall back to local (no extra LLM calls).
                 provider_used = "local"
-                llm_provider = "openai"
-                llm_error = _llm_unavailable_prefix("openai", e)
+                llm_provider = attempted_provider
+                llm_error = _llm_unavailable_prefix(attempted_provider, e)
                 answer = _local_chat_answer(question, session)
-            if cache_key:
-                _cache_set(cache_key, answer)
-            _cache_set(hash_key, answer)
+            # Cache only successful OpenAI answers to keep provider labels accurate.
+            if provider_used == attempted_provider:
+                if cache_key:
+                    _cache_set(cache_key, answer)
+                _cache_set(hash_key, answer)
             return {
                 "context": context,
                 "risks": risks,
@@ -3371,7 +3380,7 @@ async def ai_recommendations(payload: Dict = Body(default={})):
             }
         except Exception as e:
             local = _local_chat_answer(question, session)
-            msg = _llm_unavailable_prefix(provider, e)
+            msg = _llm_unavailable_prefix(attempted_provider, e)
             _assistant_debug(f"ai_recommendations fallback to local: {msg}")
             return {
                 "context": context,
@@ -3379,7 +3388,7 @@ async def ai_recommendations(payload: Dict = Body(default={})):
                 "actions": actions,
                 "answer": local,
                 "provider": "local",
-                "llm_provider": provider,
+                "llm_provider": attempted_provider,
                 "llm_error": msg,
                 "cached": False,
             }
@@ -3470,13 +3479,14 @@ async def planning_followup(payload: Dict = Body(default={})):
     if combo_key and last.get("combo_key") and str(combo_key) != str(last.get("combo_key")):
         raise HTTPException(status_code=400, detail="Planning insights do not match the currently selected series. Click Generate again.")
 
-    provider = _default_provider()
+    openai_configured = bool((os.getenv("OPENAI_API_KEY") or "").strip())
+    attempted_provider = "openai"
     cache_key = None
-    if isinstance(request_id, str) and request_id.strip():
-        cache_key = f"planqa:{provider}:{session_id}:{request_id.strip()}"
+    if openai_configured and isinstance(request_id, str) and request_id.strip():
+        cache_key = f"planqa:{attempted_provider}:{session_id}:{request_id.strip()}"
         cached = _cache_get(cache_key)
         if cached is not None:
-            return {"answer": cached, "provider": provider, "llm_provider": provider, "llm_error": None, "cached": True}
+            return {"answer": cached, "provider": attempted_provider, "llm_provider": attempted_provider, "llm_error": None, "cached": True}
 
     # Keep history short to avoid blowing up prompt size.
     hist_lines: list[str] = []
@@ -3508,33 +3518,35 @@ async def planning_followup(payload: Dict = Body(default={})):
 
     lock = _get_lock(session_id)
     async with lock:
-        if cache_key:
+        if cache_key and openai_configured:
             cached = _cache_get(cache_key)
             if cached is not None:
-                return {"answer": cached, "provider": provider, "llm_provider": provider, "llm_error": None, "cached": True}
+                return {"answer": cached, "provider": attempted_provider, "llm_provider": attempted_provider, "llm_error": None, "cached": True}
 
         try:
             try:
+                if not openai_configured:
+                    raise ValueError("OPENAI_API_KEY is not set.")
                 answer = await answer_question_openai(user_message, context_packet=context_packet)
-                provider_used = "openai"
-                llm_provider = "openai"
+                provider_used = attempted_provider
+                llm_provider = attempted_provider
                 llm_error = None
             except Exception as e:
                 provider_used = "local"
-                llm_provider = "openai"
-                llm_error = _llm_unavailable_prefix("openai", e)
+                llm_provider = attempted_provider
+                llm_error = _llm_unavailable_prefix(attempted_provider, e)
                 answer = _local_chat_answer(user_message, session)
 
-            if cache_key:
+            if cache_key and provider_used == attempted_provider:
                 _cache_set(cache_key, answer)
             return {"answer": answer, "provider": provider_used, "llm_provider": llm_provider, "llm_error": llm_error, "cached": False}
         except Exception as e:
-            msg = _llm_unavailable_prefix(provider, e)
+            msg = _llm_unavailable_prefix(attempted_provider, e)
             try:
                 local = _local_chat_answer(user_message, session)
             except Exception:
                 local = "LLM unavailable; please retry after fixing the LLM connection."
-            return {"answer": local, "provider": "local", "llm_provider": provider, "llm_error": msg, "cached": False}
+            return {"answer": local, "provider": "local", "llm_provider": attempted_provider, "llm_error": msg, "cached": False}
 
 # --- Assistant Chat Endpoint ---
 @app.post("/chat")
