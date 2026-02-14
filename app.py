@@ -1671,9 +1671,16 @@ async def get_results(request: Request):
         if not match.empty:
             latest_raw_sales_value = float(match['sales'].sum())
 
-    forecast_month_date = monthly_agg_forecast['date'].max() if not monthly_agg_forecast.empty else None
-    latest_forecast_value = float(monthly_agg_forecast[monthly_agg_forecast['date'] == forecast_month_date]['forecast'].sum()) if forecast_month_date is not None and 'forecast' in monthly_agg_forecast.columns else 0.0
-    forecast_month_label = forecast_month_date.strftime("%B %Y") if isinstance(forecast_month_date, pd.Timestamp) else ""
+    forecast_value_same_month = 0.0
+    forecast_month_label = latest_sales_month
+    if latest_sales_date is not None and 'forecast' in monthly_agg.columns:
+        match_forecast = monthly_agg[monthly_agg['date'] == latest_sales_date]
+        if not match_forecast.empty:
+            forecast_value_same_month = float(match_forecast['forecast'].sum())
+        else:
+            latest_forecast_row = monthly_agg_forecast[monthly_agg_forecast['forecast'] > 0]
+            if not latest_forecast_row.empty:
+                forecast_value_same_month = float(latest_forecast_row.iloc[-1]['forecast'])
 
     latest_accuracy = None
     accuracy_series = monthly_agg['accuracy'].dropna()
@@ -2003,7 +2010,7 @@ async def get_results(request: Request):
         "latest_sales_value": latest_sales_value,
         "latest_raw_sales_value": latest_raw_sales_value,
         "forecast_month_label": forecast_month_label,
-        "latest_forecast_value": latest_forecast_value,
+        "latest_forecast_value": forecast_value_same_month,
         "latest_accuracy": latest_accuracy,
         "quantile_cols": quantile_cols,
         "filtered_df": filtered_df

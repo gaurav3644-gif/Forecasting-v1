@@ -273,15 +273,15 @@
             </div>
           </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
           <div class="card card-soft shadow-sm">
             <div class="card-body">
-              <div class="text-muted small">Forecast ({{ forecast_month_label or "next month" }})</div>
+              <div class="text-muted small">Forecast ({{ forecast_month_label or "same month" }})</div>
               <div class="h5 mb-0">{{ "{:,.0f}".format(latest_forecast_value) if latest_forecast_value is not none else "0" }}</div>
             </div>
           </div>
         </div>
-        <div class="col-md-5">
+        <div class="col-md-4">
           <div class="card card-soft shadow-sm">
             <div class="card-body">
               <div class="text-muted small">Forecast accuracy</div>
