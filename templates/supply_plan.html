@@ -291,6 +291,48 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
+    // Bootstrap modals can misbehave when nested inside a transformed (scaled) container
+    // like our `.zoom-wrapper`. Portal the terms modal to <body> and apply the same scale
+    // so the close/backdrop interactions remain reliable.
+    (function setupTermsModalPortal() {
+        const modalEl = document.getElementById('supplyTermsModal');
+        if (!modalEl) return;
+
+        try {
+            if (modalEl.parentElement !== document.body) {
+                document.body.appendChild(modalEl);
+            }
+
+            const zoomWrapper = document.querySelector('.zoom-wrapper');
+            const transform = zoomWrapper ? window.getComputedStyle(zoomWrapper).transform : 'none';
+            let scale = 1;
+            if (transform && transform !== 'none') {
+                const m = transform.match(/^matrix\(([^)]+)\)$/);
+                const m3 = transform.match(/^matrix3d\(([^)]+)\)$/);
+                const parts = m ? m[1].split(',') : (m3 ? m3[1].split(',') : null);
+                if (parts && parts.length) {
+                    const a = parseFloat(parts[0]);
+                    if (!Number.isNaN(a) && a > 0) scale = a;
+                }
+            }
+
+            const dialog = modalEl.querySelector('.modal-dialog');
+            if (dialog && scale !== 1) {
+                dialog.style.transform = `scale(${scale})`;
+                dialog.style.transformOrigin = 'center';
+            }
+
+            if (window.bootstrap && window.bootstrap.Modal) {
+                const instance = window.bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: true, keyboard: true });
+                modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((btn) => {
+                    btn.addEventListener('click', function() { instance.hide(); });
+                });
+            }
+        } catch (e) {
+            // If anything fails, fall back to default bootstrap behavior.
+        }
+    })();
+ 
     async function loadDefaults() {
         const combo = document.getElementById('combo_key');
         if (!combo) return;
