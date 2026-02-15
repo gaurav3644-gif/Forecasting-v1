@@ -68,12 +68,32 @@ def _database_url() -> str:
 
     Railway typically provides DATABASE_URL automatically when a Postgres plugin is added.
     """
-    return (
+    direct = (
         os.getenv("PITENSOR_DATABASE_URL")
         or os.getenv("DATABASE_PUBLIC_URL")
         or os.getenv("DATABASE_URL")
+        # Common provider variants (Render/Supabase/Neon/Railway)
+        or os.getenv("POSTGRES_URL")
+        or os.getenv("POSTGRESQL_URL")
+        or os.getenv("POSTGRES_URL_NON_POOLING")
+        or os.getenv("POSTGRESQL_URL_NON_POOLING")
         or ""
     ).strip()
+    if direct:
+        return direct
+
+    # Fallback: construct from discrete env vars if a platform exposes PG* but not DATABASE_URL.
+    host = (os.getenv("PGHOST") or os.getenv("POSTGRES_HOST") or "").strip()
+    db = (os.getenv("PGDATABASE") or os.getenv("POSTGRES_DB") or "").strip()
+    user = (os.getenv("PGUSER") or os.getenv("POSTGRES_USER") or "").strip()
+    pwd = (os.getenv("PGPASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
+    port = (os.getenv("PGPORT") or os.getenv("POSTGRES_PORT") or "").strip() or "5432"
+    if host and db and user:
+        # Don't URL-encode here; most providers pass safe credentials in env vars.
+        auth = f"{user}:{pwd}@" if pwd else f"{user}@"
+        return f"postgresql://{auth}{host}:{port}/{db}"
+
+    return ""
 
 
 def _use_postgres() -> bool:
