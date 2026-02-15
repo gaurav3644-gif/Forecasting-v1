@@ -34,6 +34,16 @@ def get_connector_schema(connector: str):
                 {"name": "database", "type": "text", "label": "Database"}
             ]
         },
+        "database": {
+            "fields": [
+                {"name": "provider", "type": "select", "label": "Provider", "options": ["MySQL", "PostgreSQL", "SQL Server", "Oracle", "Other"], "default": "MySQL"},
+                {"name": "host", "type": "text", "label": "Host"},
+                {"name": "port", "type": "number", "label": "Port"},
+                {"name": "username", "type": "text", "label": "Username"},
+                {"name": "password", "type": "password", "label": "Password"},
+                {"name": "database", "type": "text", "label": "Database"}
+            ]
+        },
         "google_sheets": {
             "fields": [
                 {"name": "sheet_url", "type": "text", "label": "Google Sheet URL"},
@@ -45,6 +55,49 @@ def get_connector_schema(connector: str):
                 {"name": "shop_url", "type": "text", "label": "Shopify Store URL"},
                 {"name": "api_key", "type": "text", "label": "API Key"},
                 {"name": "api_password", "type": "password", "label": "API Password"}
+            ]
+        },
+        "warehouse": {
+            "fields": [
+                {"name": "provider", "type": "select", "label": "Provider", "options": ["Snowflake", "BigQuery", "Redshift", "Azure Synapse", "Other"], "default": "Snowflake"},
+                {"name": "account", "type": "text", "label": "Account / Project"},
+                {"name": "host", "type": "text", "label": "Host"},
+                {"name": "port", "type": "number", "label": "Port"},
+                {"name": "username", "type": "text", "label": "Username"},
+                {"name": "password", "type": "password", "label": "Password / Token"},
+                {"name": "database", "type": "text", "label": "Database"},
+                {"name": "schema", "type": "text", "label": "Schema"},
+            ]
+        },
+        "ecommerce": {
+            "fields": [
+                {"name": "provider", "type": "select", "label": "Provider", "options": ["Shopify", "WooCommerce", "Magento", "BigCommerce", "Other"], "default": "Shopify"},
+                {"name": "store_url", "type": "text", "label": "Store URL"},
+                {"name": "api_key", "type": "password", "label": "API Key / Token"},
+                {"name": "api_secret", "type": "password", "label": "API Secret (if applicable)"},
+                {"name": "start_date", "type": "date", "label": "Start Date"},
+                {"name": "end_date", "type": "date", "label": "End Date"},
+            ]
+        },
+        "pos": {
+            "fields": [
+                {"name": "provider", "type": "select", "label": "POS Provider", "options": ["Square", "Toast", "Clover", "Lightspeed", "Other"], "default": "Square"},
+                {"name": "api_base_url", "type": "text", "label": "API Base URL"},
+                {"name": "api_key", "type": "password", "label": "API Key / Token"},
+                {"name": "location_id", "type": "text", "label": "Location / Store ID"},
+                {"name": "start_date", "type": "date", "label": "Start Date"},
+                {"name": "end_date", "type": "date", "label": "End Date"},
+            ]
+        },
+        "erp": {
+            "fields": [
+                {"name": "provider", "type": "select", "label": "ERP Provider", "options": ["SAP", "Oracle ERP", "Microsoft Dynamics", "Other"], "default": "SAP"},
+                {"name": "api_base_url", "type": "text", "label": "API Base URL"},
+                {"name": "client_id", "type": "text", "label": "Client ID / Username"},
+                {"name": "client_secret", "type": "password", "label": "Client Secret / Password"},
+                {"name": "tenant", "type": "text", "label": "Tenant / Company ID"},
+                {"name": "start_date", "type": "date", "label": "Start Date"},
+                {"name": "end_date", "type": "date", "label": "End Date"},
             ]
         }
     }

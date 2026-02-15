@@ -361,6 +361,32 @@
             max-height: 200px;
             white-space: pre;
         }
+        /* Display the sample CSV as a compact table (not raw text). */
+        #sample-csv-box {
+            white-space: normal;
+        }
+        #sample-csv-box table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        #sample-csv-box th,
+        #sample-csv-box td {
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.10);
+        }
+        #sample-csv-box th {
+            text-align: left;
+            font-weight: 700;
+            color: rgba(255,255,255,0.92);
+            border-bottom: 1px solid rgba(255,255,255,0.18);
+        }
+        #sample-csv-box tbody tr:last-child td {
+            border-bottom: none;
+        }
+        #sample-csv-box tbody tr:hover td {
+            background: rgba(255,255,255,0.04);
+        }
         .feature-card {
             background: #f8f9fa;
             border-radius: 18px;
@@ -418,6 +444,7 @@
             margin-bottom: 15px;
         }
         .connector-status {
+            display: none;
             position: absolute;
             top: 15px;
             right: 15px;
@@ -551,8 +578,14 @@
             color: #fff;
         }
         .newsletter-form .form-control {
-            border: none;
+            border: 1px solid rgba(0,0,0,0.18);
             border-radius: 25px 0 0 25px;
+            box-shadow: none;
+            background-color: #fff;
+        }
+        .newsletter-form .form-control:focus {
+            border-color: rgba(13,110,253,0.35);
+            box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.10);
         }
         .newsletter-form .btn {
             border-radius: 0 25px 25px 0;
@@ -603,6 +636,14 @@
             color: white;
             padding: 40px 0;
             text-align: center;
+        }
+        .connector-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(18, 24, 39, 0.18);
+            backdrop-filter: blur(1px);
+            -webkit-backdrop-filter: blur(1px);
+            z-index: 1050; /* just under Bootstrap modal (1055) */
         }
         .animate-on-scroll {
             opacity: 0;
@@ -791,7 +832,7 @@
                         <span class="pill"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="hero_badge_enterprise">Enterprise-ready</span></span>
                     </div>
                     <h1><span data-i18n="hero_title_prefix">Retail's</span> <span class="headline-accent" data-i18n="hero_title_accent">AI Forecasting</span> <span data-i18n="hero_title_suffix">Partner</span></h1>
-                    <p class="lead" data-i18n="hero_subtitle">Upload sales data, generate accurate forecasts, and turn them into clear order recommendations—fast. Built for real retail operations: items, stores, lead times, MOQs, and service levels.</p>
+                    <p class="lead" data-i18n="hero_subtitle">Upload sales data, generate accurate forecasts, and turn them into clear order recommendations—fast. Built for real retail operations: items, stores, lead times, Minimum Order Quantities (MOQ), and service levels.</p>
                     <div class="d-flex flex-column flex-sm-row gap-3 justify-content-lg-start justify-content-center">
                         <a href="#upload" class="btn-hero" data-i18n="hero_btn_start">Start Forecasting</a>
                         <a href="#features" class="btn-hero-secondary"><i class="fa-solid fa-circle-play"></i> <span data-i18n="hero_btn_explore">Explore features</span></a>
@@ -1072,7 +1113,7 @@
                         </div>
                         <h5 data-i18n="conn_ecommerce">E-commerce</h5>
                         <p>Shopify, WooCommerce, Magento, BigCommerce</p>
-                        <div class="connector-status coming-soon" data-i18n="conn_coming_soon">Coming Soon</div>
+                        <div class="connector-status available" data-i18n="conn_available">Available</div>
                     </div>
                 </div>
                 <!-- POS Systems -->
@@ -1083,7 +1124,7 @@
                         </div>
                         <h5 data-i18n="conn_pos">POS Systems</h5>
                         <p>Square, Toast, Clover, Lightspeed</p>
-                        <div class="connector-status coming-soon" data-i18n="conn_coming_soon">Coming Soon</div>
+                        <div class="connector-status available" data-i18n="conn_available">Available</div>
                     </div>
                 </div>
                 <!-- ERP Systems -->
@@ -1094,7 +1135,7 @@
                         </div>
                         <h5 data-i18n="conn_erp">ERP Systems</h5>
                         <p>SAP, Oracle ERP, Microsoft Dynamics</p>
-                        <div class="connector-status coming-soon" data-i18n="conn_coming_soon">Coming Soon</div>
+                        <div class="connector-status available" data-i18n="conn_available">Available</div>
                     </div>
                 </div>
                 <!-- File Upload -->
@@ -1163,11 +1204,29 @@
                                         <strong data-i18n="upload_format">CSV format</strong>
                                         <span class="pill"><i class="fa-solid fa-circle-info"></i> <span data-i18n="upload_minimal">minimal</span></span>
                                     </div>
-                                    <div class="sample-box" id="sample-csv-box">date,item,store,sales
+                                    <div class="sample-box" id="sample-csv-box" aria-label="Sample CSV">
+                                        <table aria-label="Sample CSV table">
+                                            <thead>
+                                                <tr>
+                                                    <th>date</th>
+                                                    <th>item</th>
+                                                    <th>store</th>
+                                                    <th>sales</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr><td>2026-01-01</td><td>1</td><td>1</td><td>120</td></tr>
+                                                <tr><td>2026-01-02</td><td>1</td><td>1</td><td>135</td></tr>
+                                                <tr><td>2026-01-03</td><td>1</td><td>1</td><td>98</td></tr>
+                                                <tr><td>2026-01-01</td><td>2</td><td>1</td><td>42</td></tr>
+                                            </tbody>
+                                        </table>
+                                        <textarea id="sample-csv-raw" class="visually-hidden">date,item,store,sales
 2026-01-01,1,1,120
 2026-01-02,1,1,135
 2026-01-03,1,1,98
-2026-01-01,2,1,42</div>
+2026-01-01,2,1,42</textarea>
+                                    </div>
                                     <div class="d-flex gap-2 mt-3 flex-wrap">
                                         <button type="button" class="btn btn-sm btn-light" id="copy-sample-btn"><i class="fa-regular fa-copy me-1"></i><span data-i18n="upload_copy">Copy</span></button>
                                         <a class="btn btn-sm btn-light" href="/supply_plan"><i class="fa-solid fa-truck-fast me-1"></i><span data-i18n="upload_supply_link">Supply planning</span></a>
@@ -1306,7 +1365,7 @@
                     hero_title_prefix: "Retail's",
                     hero_title_accent: 'AI Forecasting',
                     hero_title_suffix: 'Partner',
-                    hero_subtitle: 'Upload sales data, generate accurate forecasts, and turn them into clear order recommendations\u2014fast. Built for real retail operations: items, stores, lead times, MOQs, and service levels.',
+                    hero_subtitle: 'Upload sales data, generate accurate forecasts, and turn them into clear order recommendations\u2014fast. Built for real retail operations: items, stores, lead times, Minimum Order Quantities (MOQ), and service levels.',
                     hero_btn_start: 'Start Forecasting',
                     hero_btn_explore: 'Explore features',
                     hero_kpi1_value: 'Minutes',
@@ -1365,7 +1424,7 @@
                     conn_file: 'File Upload',
                     conn_file_desc: 'CSV, Excel, JSON files',
                     conn_available: 'Available',
-                    conn_coming_soon: 'Coming Soon',
+                    // conn_coming_soon removed (all connectors enabled)
                     // Upload
                     upload_pill: 'CSV quick start',
                     upload_title: 'Quick Start with CSV',
@@ -1429,7 +1488,7 @@
                     hero_title_prefix: 'Mitra',
                     hero_title_accent: 'Peramalan AI',
                     hero_title_suffix: 'untuk Ritel',
-                    hero_subtitle: 'Unggah data penjualan, buat peramalan akurat, dan ubah menjadi rekomendasi pesanan yang jelas\u2014cepat. Dibuat untuk operasi ritel nyata: item, toko, waktu tunggu, MOQ, dan tingkat layanan.',
+                    hero_subtitle: 'Unggah data penjualan, buat peramalan akurat, dan ubah menjadi rekomendasi pesanan yang jelas\u2014cepat. Dibuat untuk operasi ritel nyata: item, toko, waktu tunggu, Kuantitas Pesanan Minimum (MOQ), dan tingkat layanan.',
                     hero_btn_start: 'Mulai Peramalan',
                     hero_btn_explore: 'Jelajahi fitur',
                     hero_kpi1_value: 'Menit',
@@ -1488,7 +1547,7 @@
                     conn_file: 'Unggah File',
                     conn_file_desc: 'File CSV, Excel, JSON',
                     conn_available: 'Tersedia',
-                    conn_coming_soon: 'Segera Hadir',
+                    // conn_coming_soon removed (all connectors enabled)
                     // Upload
                     upload_pill: 'Mulai cepat CSV',
                     upload_title: 'Mulai Cepat dengan CSV',
@@ -1596,10 +1655,15 @@
         // Smooth scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
+                const href = this.getAttribute('href');
+                if (href === '#pricing') {
+                    e.preventDefault();
+                    showPricingModal();
+                    return;
+                }
+
                 e.preventDefault();
-                document.querySelector(this.getAttribute('href')).scrollIntoView({
-                    behavior: 'smooth'
-                });
+                document.querySelector(href).scrollIntoView({ behavior: 'smooth' });
             });
         });
 
@@ -1652,11 +1716,11 @@
                 const title = card.querySelector('h5').textContent.trim().toLowerCase();
                 let connector = null;
                 let connectorLabel = '';
-                if(title === 'databases') { connector = 'mysql'; connectorLabel = 'Database'; }
-                else if(title === 'cloud warehouses') { connector = 'google_sheets'; connectorLabel = 'Cloud Warehouse'; }
-                else if(title === 'e-commerce') { connector = 'shopify'; connectorLabel = 'Shopify'; }
-                else if(title === 'pos systems') return; // not available
-                else if(title === 'erp systems') return; // not available
+                if(title === 'databases') { connector = 'database'; connectorLabel = 'Database'; }
+                else if(title === 'cloud warehouses') { connector = 'warehouse'; connectorLabel = 'Cloud Warehouse'; }
+                else if(title === 'e-commerce') { connector = 'ecommerce'; connectorLabel = 'E-commerce'; }
+                else if(title === 'pos systems') { connector = 'pos'; connectorLabel = 'POS System'; }
+                else if(title === 'erp systems') { connector = 'erp'; connectorLabel = 'ERP System'; }
                 else if(title === 'file upload') { connector = 'file_upload'; connectorLabel = 'File Upload'; }
                 if(!connector) return;
 
@@ -1675,6 +1739,73 @@
                     .catch(() => alert('Failed to load connector schema.'));
             });
         });
+
+        function ensureConnectorBackdrop() {
+            let bd = document.getElementById('connector-backdrop');
+            if (!bd) {
+                bd = document.createElement('div');
+                bd.id = 'connector-backdrop';
+                bd.className = 'connector-backdrop';
+                document.body.appendChild(bd);
+            }
+            return bd;
+        }
+        function removeConnectorBackdrop() {
+            const bd = document.getElementById('connector-backdrop');
+            if (bd) bd.remove();
+        }
+
+        function showPricingModal() {
+            let modal = document.getElementById('pricing-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'pricing-modal';
+                modal.className = 'modal fade';
+                modal.tabIndex = -1;
+                modal.innerHTML = `
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Pricing</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-2 fw-semibold">Contact information for pricing</div>
+                                <div class="text-muted small mb-3">Reach out and we’ll share plans and a tailored quote.</div>
+                                <div class="d-grid gap-2">
+                                    <div class="border rounded-3 p-2 bg-light small">
+                                        <i class="fas fa-envelope me-2"></i>
+                                        <a href="mailto:support@pitensor.com" class="text-decoration-none">support@pitensor.com</a>
+                                    </div>
+                                    <div class="border rounded-3 p-2 bg-light small">
+                                        <i class="fab fa-whatsapp me-2"></i>
+                                        <a href="https://wa.me/12052398219" target="_blank" rel="noopener" class="text-decoration-none">+12052398219</a>
+                                        <span class="text-muted mx-2">·</span>
+                                        <i class="fab fa-whatsapp me-2"></i>
+                                        <a href="https://wa.me/6282218459081" target="_blank" rel="noopener" class="text-decoration-none">+6282218459081</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+
+            try {
+                const existing = bootstrap.Modal.getInstance(modal);
+                if (existing) existing.dispose();
+            } catch (e) {}
+
+            const modalInstance = new bootstrap.Modal(modal, { backdrop: false, keyboard: true, focus: true });
+            const bd = ensureConnectorBackdrop();
+            bd.onclick = function() { modalInstance.hide(); };
+            modal.addEventListener('hidden.bs.modal', removeConnectorBackdrop, { once: true });
+            modalInstance.show();
+        }
 
         // --- Show Connector Form Modal ---
                 function showConnectorForm(connector, fields, connectorLabel) {
@@ -1698,18 +1829,62 @@
                                             </div>
                                         </form>
                                     </div>
-                                </div>`;
-                                document.body.appendChild(modal);
-                        }
+                                 </div>`;
+                                 document.body.appendChild(modal);
+                         }
                         // Set modal title
                         modal.querySelector('#connector-modal-title').textContent = connectorLabel || (connector.charAt(0).toUpperCase()+connector.slice(1));
                         const body = modal.querySelector('.modal-body');
-                        body.innerHTML = fields.map(f => `
-                                <div class="mb-3">
-                                    <label class="form-label">${f.label}</label>
-                                    <input name="${f.name}" type="${f.type}" class="form-control" ${f.default ? `value='${f.default}'` : ''} required>
-                                </div>
-                        `).join('');
+                        const fieldHtml = fields.map(f => {
+                                if (String(f.type || '').toLowerCase() === 'select') {
+                                        const opts = Array.isArray(f.options) ? f.options : [];
+                                        const def = (f.default != null) ? String(f.default) : '';
+                                        const optionsHtml = opts.map(o => {
+                                                const val = String(o);
+                                                const sel = (def && val === def) ? 'selected' : '';
+                                                return `<option value="${val}" ${sel}>${val}</option>`;
+                                        }).join('');
+                                        return `
+                                                <div class="mb-3">
+                                                        <label class="form-label">${f.label}</label>
+                                                        <select name="${f.name}" class="form-select" required>
+                                                                ${optionsHtml}
+                                                        </select>
+                                                </div>
+                                        `;
+                                }
+                                const valAttr = (f.default != null) ? `value='${String(f.default)}'` : '';
+                                return `
+                                        <div class="mb-3">
+                                                <label class="form-label">${f.label}</label>
+                                                <input name="${f.name}" type="${f.type}" class="form-control" ${valAttr} required>
+                                        </div>
+                                `;
+                        }).join('');
+                        body.innerHTML = fieldHtml;
+
+                        // Small convenience: set a sensible default port for database providers.
+                        if (connector === 'database') {
+                                const providerSel = modal.querySelector('select[name="provider"]');
+                                const portInput = modal.querySelector('input[name="port"]');
+                                const portByProvider = {
+                                        "MySQL": 3306,
+                                        "PostgreSQL": 5432,
+                                        "SQL Server": 1433,
+                                        "Oracle": 1521,
+                                        "Other": ""
+                                };
+                                if (providerSel && portInput) {
+                                        const applyPort = () => {
+                                                const p = providerSel.value;
+                                                const v = portByProvider[p];
+                                                if (v !== undefined) portInput.value = String(v);
+                                        };
+                                        providerSel.addEventListener('change', applyPort);
+                                        // initialize once (respects schema default provider)
+                                        applyPort();
+                                }
+                        }
 
                         // Form submit handler
                         const form = modal.querySelector('#connector-form');
@@ -1724,24 +1899,33 @@
                                 .then(res => res.json())
                                 .then(resp => {
                                         alert(resp.status === 'success' ? 'Connected!' : 'Connection failed');
-                                        const modalInstance = bootstrap.Modal.getOrCreateInstance(modal);
-                                        modalInstance.hide();
+                                        const inst = bootstrap.Modal.getInstance(modal);
+                                        if (inst) inst.hide();
                                 })
                                 .catch(() => alert('Connection error.'));
                         };
 
                         // Show modal
-                        const modalInstance = bootstrap.Modal.getOrCreateInstance(modal);
+                        try {
+                            const existing = bootstrap.Modal.getInstance(modal);
+                            if (existing) existing.dispose();
+                        } catch (e) {}
+                        // Use a light custom backdrop (instead of Bootstrap's default dark one).
+                        const modalInstance = new bootstrap.Modal(modal, { backdrop: false, keyboard: true, focus: true });
+                        const bd = ensureConnectorBackdrop();
+                        bd.onclick = function() { modalInstance.hide(); };
+                        modal.addEventListener('hidden.bs.modal', removeConnectorBackdrop, { once: true });
                         modalInstance.show();
                 }
 
         // Upload helpers (sample download + copy + progress bar)
         document.addEventListener('DOMContentLoaded', function () {
             const sampleBox = document.getElementById('sample-csv-box');
+            const sampleRaw = document.getElementById('sample-csv-raw');
             const downloadBtn = document.getElementById('download-sample-btn');
             const copyBtn = document.getElementById('copy-sample-btn');
 
-            const sampleText = (sampleBox && sampleBox.textContent) ? sampleBox.textContent : '';
+            const sampleText = (sampleRaw && sampleRaw.value) ? sampleRaw.value : ((sampleBox && sampleBox.textContent) ? sampleBox.textContent : '');
 
             if (downloadBtn) {
                 downloadBtn.addEventListener('click', function () {

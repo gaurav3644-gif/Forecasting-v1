@@ -153,7 +153,7 @@
         <div class="container-fluid min-vh-100 d-flex align-items-center justify-content-center">
         <div class="row justify-content-center w-100">
             <div class="col-12 d-flex justify-content-center">
-                <div class="card p-5" style="max-width: 600px; width: 100%; margin: 2rem auto;">
+                <div class="card p-5" style="max-width: 980px; width: 100%; margin: 2rem auto;">
                     <div class="text-center mb-4">
                         <i class="fas fa-cogs fa-3x text-success mb-3"></i>
                         <h1 class="h3 mb-3 font-weight-normal"><span aria-hidden="true">⚙️</span> <span data-i18n="forecast_configure">Configure Forecast</span></h1>
@@ -190,20 +190,22 @@
                                                         {% endfor %}
                                                     </div>
                                                 </div>
-                        <div class="mb-3">
-                            <label class="form-label"><i class="fas fa-calendar-check"></i> Last Data Month</label>
-                            <input type="text" class="form-control" value="{{ last_month }}" readonly>
-                            <div class="form-text">The last month in your uploaded data</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="start_month" class="form-label"><i class="fas fa-calendar-alt"></i> Forecast Start Month</label>
-                            <input type="month" class="form-control" id="start_month" name="start_month" value="{{ default_start_month }}" required>
-                            <div class="form-text">Choose the month from which to start forecasting (default: 3 months before last data month)</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="months" class="form-label"><i class="fas fa-clock"></i> <span data-i18n="forecast_months">Number of Months to Forecast</span></label>
-                            <input type="number" class="form-control" id="months" name="months" value="7" min="1" max="24" step="1" required>
-                            <div class="form-text">How many months ahead to forecast</div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label"><i class="fas fa-calendar-check"></i> Last Data Month</label>
+                                <input type="text" class="form-control" value="{{ last_month }}" readonly>
+                                <div class="form-text">The last month in your uploaded data</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="start_month" class="form-label"><i class="fas fa-calendar-alt"></i> Forecast Start Month</label>
+                                <input type="month" class="form-control" id="start_month" name="start_month" value="{{ default_start_month }}" required>
+                                <div class="form-text">Choose the month from which to start forecasting (default: 3 months before last data month)</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="months" class="form-label"><i class="fas fa-clock"></i> <span data-i18n="forecast_months">Number of Months to Forecast</span></label>
+                                <input type="number" class="form-control" id="months" name="months" value="7" min="1" max="24" step="1" required>
+                                <div class="form-text">How many months ahead to forecast</div>
+                            </div>
                         </div>
 
                         <!-- Out-of-Stock Imputation -->
@@ -228,9 +230,14 @@
                         </div>
 
                         <div class="d-grid">
-                                <button id="runForecastBtn" type="submit" class="btn btn-success btn-lg">
+                                <div class="d-flex gap-2">
+                                <button id="runForecastBtn" type="submit" class="btn btn-success btn-lg flex-grow-1">
                                     <i class="fas fa-rocket me-2"></i><span aria-hidden="true">🚀</span> <span data-i18n="forecast_run">Run Forecast</span>
                                 </button>
+                                <button id="stopForecastBtn" type="button" class="btn btn-outline-danger btn-lg" disabled>
+                                    <i class="fas fa-stop me-2"></i>Stop
+                                </button>
+                                </div>
                                 <div id="progressContainer" style="display:none; margin-top:2rem;">
                                     <div class="progress" style="height: 2rem;">
                                         <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; font-size: 1.1rem;">0%</div>
@@ -248,6 +255,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('forecastForm');
         const runBtn = document.getElementById('runForecastBtn');
+        const stopBtn = document.getElementById('stopForecastBtn');
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
         const progressStatus = document.getElementById('progressStatus');
@@ -265,6 +273,7 @@
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 runBtn.disabled = true;
+                if (stopBtn) stopBtn.disabled = false;
                 progressContainer.style.display = 'block';
                 progressBar.style.width = '0%';
                 progressBar.textContent = '0%';
@@ -285,7 +294,16 @@
                 .catch(err => {
                     progressStatus.textContent = 'Error starting forecast.';
                     runBtn.disabled = false;
+                    if (stopBtn) stopBtn.disabled = true;
                 });
+            });
+        }
+
+        if (stopBtn) {
+            stopBtn.addEventListener('click', function() {
+                stopBtn.disabled = true;
+                progressStatus.textContent = 'Cancelling...';
+                fetch('/forecast_stop', { method: 'POST' }).catch(() => { /* ignore */ });
             });
         }
 
@@ -297,6 +315,11 @@
                     progressBar.style.width = pct + '%';
                     progressBar.textContent = pct + '%';
                     progressStatus.textContent = data.status || '';
+                    if (data.cancelled) {
+                        runBtn.disabled = false;
+                        if (stopBtn) stopBtn.disabled = true;
+                        return;
+                    }
                     if (data.done) {
                         progressBar.style.width = '100%';
                         progressBar.textContent = '100%';
@@ -305,6 +328,7 @@
                     } else if (data.error) {
                         progressStatus.textContent = 'Error: ' + data.error;
                         runBtn.disabled = false;
+                        if (stopBtn) stopBtn.disabled = true;
                     } else {
                         setTimeout(pollProgress, 800);
                     }
@@ -312,6 +336,7 @@
                 .catch(() => {
                     progressStatus.textContent = 'Error checking progress.';
                     runBtn.disabled = false;
+                    if (stopBtn) stopBtn.disabled = true;
                 });
         }
     });

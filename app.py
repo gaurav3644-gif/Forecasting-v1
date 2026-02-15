@@ -1054,12 +1054,37 @@ def _local_chat_answer(user_message: str, session: dict) -> str:
 def set_forecast_progress(session_id, progress, status=None, done=False, error=None):
     if session_id not in data_store:
         data_store[session_id] = {}
+    existing = data_store[session_id].get("forecast_progress") or {}
     logging.debug(f"[LOG] set_forecast_progress: session_id={session_id}, progress={progress}, status={status}, done={done}, error={error}")
     data_store[session_id]["forecast_progress"] = {
         "progress": progress,
         "status": status or "",
         "done": done,
-        "error": error or ""
+        "error": error or "",
+        # Preserve cancellation state unless explicitly set elsewhere.
+        "cancelled": bool(existing.get("cancelled", False)),
+    }
+
+class ForecastCancelled(Exception):
+    pass
+
+def _forecast_cancel_requested(session_id: str) -> bool:
+    return bool(data_store.get(session_id, {}).get("forecast_cancel_requested", False))
+
+def _set_forecast_cancel_requested(session_id: str, requested: bool) -> None:
+    s = data_store.setdefault(session_id, {})
+    s["forecast_cancel_requested"] = bool(requested)
+
+def _set_forecast_cancelled(session_id: str, status: str = "Forecast cancelled.") -> None:
+    if session_id not in data_store:
+        data_store[session_id] = {}
+    prev = data_store[session_id].get("forecast_progress") or {}
+    data_store[session_id]["forecast_progress"] = {
+        "progress": float(prev.get("progress", 0.0) or 0.0),
+        "status": status,
+        "done": True,
+        "error": "",
+        "cancelled": True,
     }
 
 # Endpoint for polling forecast progress
@@ -1081,11 +1106,26 @@ async def forecast_status():
     if not prog:
         logging.debug("[LOG] /forecast_status: No progress found, returning not started.")
         return {"progress": 0, "status": "Not started", "done": False}
-    # Only set done: true if forecast is actually ready
+    cancelled = bool(prog.get("cancelled", False))
+    # Only set done: true if forecast is actually ready (unless cancelled)
     result = dict(prog)
-    result["done"] = prog.get("done", False) and forecast_ready
+    result["cancel_requested"] = _forecast_cancel_requested(session_id)
+    result["cancelled"] = cancelled
+    if cancelled:
+        result["done"] = True
+    else:
+        result["done"] = prog.get("done", False) and forecast_ready
     logging.debug(f"[LOG] /forecast_status: Returning {result}")
     return result
+
+@app.post("/forecast_stop")
+async def forecast_stop():
+    session_id = "default"
+    _set_forecast_cancel_requested(session_id, True)
+    prog = data_store.get(session_id, {}).get("forecast_progress") or {}
+    if prog and not prog.get("done", False):
+        set_forecast_progress(session_id, prog.get("progress", 0.0) or 0.0, "Cancelling...")
+    return {"ok": True}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1315,10 +1355,21 @@ async def run_forecast(
     logging.debug(f"Extra features for training: {data_store[session_id].get('extra_features')}")
     logging.debug(f"OOS imputation enabled: {oos_enabled}, column: {oos_col}")
 
+    # Reset cancel state for a new run.
+    _set_forecast_cancel_requested(session_id, False)
+    try:
+        if "forecast_progress" in data_store.get(session_id, {}):
+            data_store[session_id]["forecast_progress"]["cancelled"] = False
+    except Exception:
+        pass
+
     # Start forecast in a background thread and return immediately
     def forecast_task():
         logging.debug(f"[LOG] Forecast thread started for session_id={session_id}")
         try:
+            if _forecast_cancel_requested(session_id):
+                _set_forecast_cancelled(session_id, "Forecast cancelled.")
+                return
             set_forecast_progress(session_id, 0.05, "Preparing data...")
             raw_df = data_store[session_id].get("raw_df")
             if raw_df is None:
@@ -1345,6 +1396,10 @@ async def run_forecast(
                 set_forecast_progress(session_id, 1.0, "No data available", done=True, error="No data available for forecasting")
                 logging.debug(f"[LOG] Forecast thread: No data available, exiting.")
                 return
+
+            if _forecast_cancel_requested(session_id):
+                _set_forecast_cancelled(session_id, "Forecast cancelled.")
+                return
             start_date = pd.to_datetime(start_month + "-01")
             from run_forecast2 import forecast_all_combined_prob, impute_oos_sales
 
@@ -1363,14 +1418,24 @@ async def run_forecast(
                 data_store[session_id]["original_sales_df"] = None
                 logging.debug(f"[LOG] OOS imputation skipped (enabled={oos_enabled}, column={oos_col})")
 
+            if _forecast_cancel_requested(session_id):
+                _set_forecast_cancelled(session_id, "Forecast cancelled.")
+                return
+
             set_forecast_progress(session_id, 0.35, "Running forecast model...")
             df = data_store[session_id]["df"].copy()
             extra_features = data_store[session_id].get("extra_features", [])
             grain = data_store[session_id].get("grain", [])
             print("gg grain before calling combined prob", grain)
+
+            def _progress_cb(p, msg=None):
+                if _forecast_cancel_requested(session_id):
+                    raise ForecastCancelled()
+                set_forecast_progress(session_id, 0.35 + 0.6 * p, msg or "Forecasting...")
+
             forecast_df, feature_importance, driver_artifacts = forecast_all_combined_prob(
                 df, start_date=start_date, months=months, grain=grain, extra_features=extra_features,
-                progress_callback=lambda p, msg=None: set_forecast_progress(session_id, 0.35 + 0.6 * p, msg or "Forecasting...")
+                progress_callback=_progress_cb
             )
             logging.debug(f"[LOG] Forecast thread: forecast_df shape={getattr(forecast_df, 'shape', None)}")
             data_store[session_id]["forecast_df"] = forecast_df
@@ -1385,6 +1450,8 @@ async def run_forecast(
 
             set_forecast_progress(session_id, 1.0, "Forecast complete!", done=True)
             logging.debug("[LOG] Forecast generated and stored in session.")
+        except ForecastCancelled:
+            _set_forecast_cancelled(session_id, "Forecast cancelled.")
         except Exception as e:
             logging.exception(f"[LOG] ERROR during forecast generation: {e}")
             set_forecast_progress(session_id, 1.0, "Error during forecast", done=True, error=str(e))
