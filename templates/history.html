@@ -1,0 +1,69 @@
+{% block title %}History{% endblock %}
+
+{% block content %}
+<div class="py-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-1" style="letter-spacing:-0.02em;" data-i18n="nav_history">History</h2>
+      <div class="text-muted small">Your previous forecast runs and saved supply plans.</div>
+    </div>
+  </div>
+
+  {% if not runs %}
+    <div class="alert alert-light border">No saved runs yet. Upload data and run a forecast to create history.</div>
+  {% else %}
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3">Run</th>
+                <th>Created</th>
+                <th>File</th>
+                <th>Start</th>
+                <th>Months</th>
+                <th>Grain</th>
+                <th class="text-end pe-3">Open</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in runs %}
+                <tr>
+                  <td class="ps-3">#{{ r.run_id }}</td>
+                  <td class="text-muted small">{{ r.created_at }}</td>
+                  <td class="small">{{ r.filename or "—" }}</td>
+                  <td class="small">{{ r.start_month or "—" }}</td>
+                  <td class="small">{{ r.months or "—" }}</td>
+                  <td class="small">
+                    {% if r.grain %}
+                      {{ r.grain | join(', ') if r.grain is iterable else r.grain }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td class="text-end pe-3">
+                    <form method="post" action="/history/load" class="d-inline">
+                      <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                      <input type="hidden" name="target" value="results">
+                      <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                    </form>
+                    <form method="post" action="/history/load" class="d-inline">
+                      <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                      <input type="hidden" name="target" value="supply_plan">
+                      <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>
+                        Supply Plan
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="text-muted small mt-2">Tip: “Supply Plan” is enabled only when a saved plan exists for that run.</div>
+  {% endif %}
+</div>
+{% endblock %}

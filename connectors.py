@@ -1,3 +1,4 @@
+import time
 from fastapi import APIRouter, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -111,9 +112,32 @@ def connector_schema(connector: str):
     return JSONResponse(schema)
 
 @router.post("/connect/{connector}")
-def connect(connector: str, request: Request):
-    # Here you would validate and attempt connection
-    # For demo, just echo back the received data
+async def connect(connector: str, request: Request):
+    """
+    Save connector configuration to the current user's in-memory session.
+    (Actual data pull is intentionally not implemented here.)
+    """
+    payload = {}
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            payload = {"value": payload}
+    except Exception:
+        payload = {}
+
+    try:
+        email = getattr(request.state, "user_email", None)
+        email_norm = (str(email).strip().lower() if email else "")
+        session_id = f"user:{email_norm}" if email_norm else "default"
+        store = getattr(request.app.state, "data_store", None)
+        if isinstance(store, dict):
+            s = store.setdefault(session_id, {})
+            cfgs = s.setdefault("connector_configs", {})
+            cfgs[str(connector).lower()] = {"ts": time.time(), "payload": payload}
+    except Exception:
+        # best-effort only
+        pass
+
     return JSONResponse({"status": "success", "connector": connector})
 
 @router.post("/upload-csv")

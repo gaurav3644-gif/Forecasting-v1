@@ -80,6 +80,16 @@ def _get_user_email(request: Request) -> Optional[str]:
 def _is_signed_in(request: Request) -> bool:
     return bool(_get_user_email(request))
 
+def _session_id_from_request(request: Request) -> str:
+    """
+    Session key for per-user data isolation.
+
+    Note: Current "sign-in" is email-only (no verification). This isolates state between
+    users in a running server, but is not strong authentication.
+    """
+    email = (_get_user_email(request) or "").strip().lower()
+    return f"user:{email}" if email else "default"
+
 def _safe_next_path(next_val: Optional[str]) -> str:
     dest = (next_val or "").strip()
     if not dest:
@@ -1089,8 +1099,8 @@ def _set_forecast_cancelled(session_id: str, status: str = "Forecast cancelled."
 
 # Endpoint for polling forecast progress
 @app.get("/forecast_status")
-async def forecast_status():
-    session_id = "default"
+async def forecast_status(request: Request):
+    session_id = _session_id_from_request(request)
     if session_id in data_store:
         logging.error("===== STATUS ROUTE DF =====")
         logging.error(data_store[session_id]["df"].columns.tolist())
@@ -1119,8 +1129,8 @@ async def forecast_status():
     return result
 
 @app.post("/forecast_stop")
-async def forecast_stop():
-    session_id = "default"
+async def forecast_stop(request: Request):
+    session_id = _session_id_from_request(request)
     _set_forecast_cancel_requested(session_id, True)
     prog = data_store.get(session_id, {}).get("forecast_progress") or {}
     if prog and not prog.get("done", False):
@@ -1142,6 +1152,8 @@ async def signin_post(request: Request, email: str = Form(...), next: Optional[s
     if "@" not in email or "." not in email.split("@")[-1]:
         return templates.TemplateResponse("signin.html", {"request": request, "next": next, "error": "Please enter a valid email address."}, status_code=400)
     dest = _safe_next_path(next)
+    if dest == "/" and not (next or "").strip():
+        dest = "/dashboard"
     response = RedirectResponse(dest, status_code=303)
     response.set_cookie(
         _auth_cookie_name,
@@ -1164,6 +1176,8 @@ async def signup_post(request: Request, email: str = Form(...), next: Optional[s
     if "@" not in email or "." not in email.split("@")[-1]:
         return templates.TemplateResponse("signup.html", {"request": request, "next": next, "error": "Please enter a valid email address."}, status_code=400)
     dest = _safe_next_path(next)
+    if dest == "/" and not (next or "").strip():
+        dest = "/dashboard"
     response = RedirectResponse(dest, status_code=303)
     response.set_cookie(
         _auth_cookie_name,
@@ -1191,7 +1205,7 @@ async def auth_github(request: Request, next: Optional[str] = None):
     return RedirectResponse(f"/signin?error={quote('GitHub sign-in is not configured yet.')}&next={quote(next or '')}", status_code=303)
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(request: Request, file: UploadFile = File(...)):
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be CSV")
     contents = await file.read()
@@ -1228,14 +1242,31 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid date format in 'date' column: {str(e)}")
     
-    session_id = "default"  # Replace with user session for SaaS
+    session_id = _session_id_from_request(request)
     stored_df = df.copy()
-    data_store[session_id] = {"df": stored_df, "raw_df": stored_df.copy()}
+    user_email = _get_user_email(request)
+    dataset_id = None
+    history_last_error = None
+    if user_email:
+        try:
+            import history_store
+            dataset_id = history_store.save_dataset(user_email, file.filename, stored_df)
+        except Exception as e:
+            logging.warning(f"[HISTORY] Failed to save dataset for {user_email}: {e}")
+            history_last_error = f"Failed to save dataset history: {e}"
+
+    data_store[session_id] = {
+        "df": stored_df,
+        "raw_df": stored_df.copy(),
+        "uploaded_filename": file.filename,
+        "dataset_id": dataset_id,
+        "history_last_error": history_last_error,
+    }
     return RedirectResponse("/forecast", status_code=303)
 
 @app.get("/forecast", response_class=HTMLResponse)
 async def forecast_page(request: Request):
-    session_id = "default"
+    session_id = _session_id_from_request(request)
     if session_id not in data_store or "df" not in data_store[session_id]:
         return RedirectResponse("/?error=no_data", status_code=303)
 
@@ -1270,8 +1301,8 @@ async def forecast_page(request: Request):
     })
 
 @app.get("/status")
-async def get_status():
-    session_id = "default"
+async def get_status(request: Request):
+    session_id = _session_id_from_request(request)
     status = {
         "session_exists": session_id in data_store,
         "data_keys": list(data_store.get(session_id, {}).keys()) if session_id in data_store else [],
@@ -1321,6 +1352,7 @@ from typing import List
 
 @app.post("/forecast")
 async def run_forecast(
+    request: Request,
     start_month: str = Form(...),
     months: int = Form(...),
     grain: List[str] = Form(None),
@@ -1328,7 +1360,8 @@ async def run_forecast(
     enable_oos_imputation: Optional[str] = Form(None),
     oos_column: Optional[str] = Form(None)
 ):
-    session_id = "default"
+    session_id = _session_id_from_request(request)
+    user_email = _get_user_email(request)
     print(f"=== FORECAST FORM SUBMITTED ===")
     logging.debug(f"Start Month: {start_month}")
     logging.debug(f"Months: {months}")
@@ -1442,6 +1475,44 @@ async def run_forecast(
             data_store[session_id]["feature_importance"] = feature_importance
             data_store[session_id]["driver_artifacts"] = driver_artifacts or {}
 
+            # Persist run history (best-effort; does not affect the forecast flow).
+            if user_email:
+                try:
+                    import history_store
+                    params = {
+                        "start_month": start_month,
+                        "months": months,
+                        "grain": data_store.get(session_id, {}).get("grain", []),
+                        "extra_features": data_store.get(session_id, {}).get("extra_features", []),
+                        "oos_enabled": bool(data_store.get(session_id, {}).get("oos_enabled", False)),
+                        "oos_column": data_store.get(session_id, {}).get("oos_column"),
+                        "uploaded_filename": data_store.get(session_id, {}).get("uploaded_filename"),
+                    }
+                    ds_id = data_store.get(session_id, {}).get("dataset_id")
+                    if not ds_id and isinstance(data_store.get(session_id, {}).get("raw_df"), pd.DataFrame):
+                        ds_id = history_store.save_dataset(
+                            user_email,
+                            str(data_store.get(session_id, {}).get("uploaded_filename") or "uploaded.csv"),
+                            data_store[session_id]["raw_df"],
+                        )
+                        data_store[session_id]["dataset_id"] = ds_id
+                    run_id = history_store.save_forecast_run(
+                        user_email,
+                        ds_id,
+                        params=params,
+                        forecast_df=forecast_df,
+                        feature_importance=feature_importance,
+                        driver_artifacts=(driver_artifacts or {}),
+                    )
+                    data_store[session_id]["forecast_run_id"] = run_id
+                    data_store[session_id]["history_last_error"] = None
+                except Exception as e:
+                    logging.warning(f"[HISTORY] Failed to save forecast run for {user_email}: {e}")
+                    try:
+                        data_store[session_id]["history_last_error"] = f"Failed to save forecast run history: {e}"
+                    except Exception:
+                        pass
+
             # Index data for RAG system
             try:
                 asyncio.run(_index_session_data(data_store[session_id]))
@@ -1466,8 +1537,8 @@ async def run_forecast(
 
 @app.post("/generate_forecast")
 @app.post("/generate_forecast")
-async def generate_forecast():
-    session_id = "default"
+async def generate_forecast(request: Request):
+    session_id = _session_id_from_request(request)
     print(f"=== gg GENERATE_FORECAST ENDPOINT CALLED ===")
     # Debug logging
     logging.debug("=== GENERATE_FORECAST STARTED ===")
@@ -1560,7 +1631,7 @@ async def generate_forecast():
 
 @app.get("/results", response_class=HTMLResponse)
 async def get_results(request: Request):
-    session_id = "default"
+    session_id = _session_id_from_request(request)
     logging.debug(f"[LOG] === RESULTS PAGE REQUESTED ===")
     logging.debug(f"[LOG] Session data keys: {list(data_store.get(session_id, {}).keys())}")
     if "forecast_df" not in data_store.get(session_id, {}):
@@ -2083,10 +2154,135 @@ async def get_results(request: Request):
         "filtered_df": filtered_df
     })
 
+@app.get("/history", response_class=HTMLResponse)
+async def history_page(request: Request):
+    # Backward compatibility: dashboard now owns history browsing.
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/dashboard", status_code=303)
+    return RedirectResponse("/dashboard", status_code=303)
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/dashboard", status_code=303)
+    try:
+        import history_store
+        runs = history_store.list_forecast_runs(user_email, limit=100)
+        history_backend = history_store.history_backend()
+        history_info = history_store.history_connection_info()
+    except Exception as e:
+        logging.warning(f"[HISTORY] Failed to list dashboard runs for {user_email}: {e}")
+        runs = []
+        history_backend = "unknown"
+        history_info = {"backend": "unknown"}
+    session_id = _session_id_from_request(request)
+    history_error = None
+    try:
+        history_error = data_store.get(session_id, {}).get("history_last_error")
+    except Exception:
+        history_error = None
+
+    running_forecast = None
+    running_meta = {}
+    try:
+        s = data_store.get(session_id, {}) or {}
+        prog = s.get("forecast_progress") or None
+        if isinstance(prog, dict) and prog and not bool(prog.get("done", False)) and not bool(prog.get("cancelled", False)):
+            running_forecast = prog
+            running_meta = {
+                "uploaded_filename": s.get("uploaded_filename"),
+                "start_month": s.get("start_month"),
+                "months": s.get("months"),
+                "grain": s.get("grain"),
+            }
+    except Exception:
+        running_forecast = None
+        running_meta = {}
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "runs": runs,
+            "history_backend": history_backend,
+            "history_info": history_info,
+            "history_error": history_error,
+            "running_forecast": running_forecast,
+            "running_meta": running_meta,
+        },
+    )
+
+@app.post("/history/load")
+async def history_load(request: Request, run_id: int = Form(...), target: str = Form(default="results")):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/history", status_code=303)
+
+    import history_store
+    session_id = _session_id_from_request(request)
+    run = history_store.load_forecast_run(user_email, int(run_id))
+
+    # Rehydrate session state so existing pages keep working without logic changes.
+    session = data_store.setdefault(session_id, {})
+    raw_df = run.get("raw_df") if isinstance(run, dict) else None
+    forecast_df = run.get("forecast_df") if isinstance(run, dict) else None
+    if not isinstance(raw_df, pd.DataFrame) or raw_df.empty:
+        raise HTTPException(status_code=400, detail="Saved run is missing raw data.")
+    if not isinstance(forecast_df, pd.DataFrame) or forecast_df.empty:
+        raise HTTPException(status_code=400, detail="Saved run is missing forecast output.")
+
+    # Parse expected date columns for downstream plotting/resampling.
+    if "date" in raw_df.columns:
+        raw_df = raw_df.copy()
+        raw_df["date"] = pd.to_datetime(raw_df["date"], errors="coerce")
+    if "date" in forecast_df.columns:
+        forecast_df = forecast_df.copy()
+        forecast_df["date"] = pd.to_datetime(forecast_df["date"], errors="coerce")
+
+    params = run.get("params") if isinstance(run, dict) else {}
+    if not isinstance(params, dict):
+        params = {}
+
+    session["df"] = raw_df
+    session["raw_df"] = raw_df.copy()
+    session["forecast_df"] = forecast_df
+    session["feature_importance"] = run.get("feature_importance") if isinstance(run.get("feature_importance"), dict) else {}
+    session["driver_artifacts"] = run.get("driver_artifacts") if isinstance(run.get("driver_artifacts"), dict) else {}
+    session["uploaded_filename"] = run.get("filename")
+    session["start_month"] = params.get("start_month")
+    session["months"] = params.get("months")
+    session["grain"] = params.get("grain") or session.get("grain") or ["item", "store"]
+    session["extra_features"] = params.get("extra_features") or session.get("extra_features") or []
+    session["oos_enabled"] = bool(params.get("oos_enabled") or False)
+    session["oos_column"] = params.get("oos_column")
+    session["forecast_run_id"] = int(run_id)
+
+    if str(target or "").lower() == "supply_plan":
+        try:
+            sp = history_store.load_supply_plan(user_email, int(run_id))
+            sp_df = sp.get("supply_plan_df")
+            sp_full = sp.get("supply_plan_full_df")
+            if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
+                if "period_start" in sp_df.columns:
+                    sp_df = sp_df.copy()
+                    sp_df["period_start"] = pd.to_datetime(sp_df["period_start"], errors="coerce")
+                session["supply_plan_df"] = sp_df
+            if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
+                if "period_start" in sp_full.columns:
+                    sp_full = sp_full.copy()
+                    sp_full["period_start"] = pd.to_datetime(sp_full["period_start"], errors="coerce")
+                session["supply_plan_full_df"] = sp_full
+        except KeyError:
+            raise HTTPException(status_code=404, detail="No saved supply plan for this run.")
+        return RedirectResponse("/supply_plan", status_code=303)
+
+    return RedirectResponse("/results", status_code=303)
+
 @app.get("/api/update_plot")
 async def api_update_plot(request: Request):
     """AJAX endpoint to update plot and KPIs without full page reload"""
-    session_id = "default"
+    session_id = _session_id_from_request(request)
     if "forecast_df" not in data_store.get(session_id, {}):
         return JSONResponse({"error": "No forecast available"}, status_code=400)
 
@@ -2378,7 +2574,7 @@ from fastapi import Form
 @app.get("/supply_plan", response_class=HTMLResponse)
 async def supply_plan_page(request: Request):
     logging.debug("[LOG] /supply_plan GET endpoint called")
-    session_id = "default"
+    session_id = _session_id_from_request(request)
     forecast_df = data_store.get(session_id, {}).get("forecast_df")
     has_forecast = forecast_df is not None and isinstance(forecast_df, pd.DataFrame) and not forecast_df.empty
     raw_df = data_store.get(session_id, {}).get("df")
@@ -2482,11 +2678,11 @@ async def supply_plan_page(request: Request):
 from fastapi import Body
 
 @app.get("/supply_plan_defaults")
-async def supply_plan_defaults(combo_key: str):
+async def supply_plan_defaults(request: Request, combo_key: str):
     """
     Returns default inputs for a selected series so the UI can prefill editable fields.
     """
-    session_id = "default"
+    session_id = _session_id_from_request(request)
     forecast_df = data_store.get(session_id, {}).get("forecast_df")
     if forecast_df is None or not isinstance(forecast_df, pd.DataFrame) or forecast_df.empty:
         raise HTTPException(status_code=400, detail="No forecast data available.")
@@ -2605,10 +2801,12 @@ async def supply_plan_defaults(combo_key: str):
 
 @app.post("/supply_plan")
 async def supply_plan_submit(
+    request: Request,
     payload: Dict = Body(...)
 ):
     logging.debug("[LOG] /supply_plan POST endpoint called")
-    session_id = "default"
+    session_id = _session_id_from_request(request)
+    user_email = _get_user_email(request)
     forecast_df = data_store.get(session_id, {}).get("forecast_df")
     try:
         from io import StringIO
@@ -3162,6 +3360,34 @@ async def supply_plan_submit(
         # Keep a full copy for downstream analysis (risks/actions/assistant context).
         data_store[session_id]["supply_plan_full_df"] = supply_plan.copy()
 
+        # Persist supply plan history (best-effort).
+        if user_email:
+            try:
+                import history_store
+                run_id = data_store.get(session_id, {}).get("forecast_run_id")
+                if run_id:
+                    plan_params = {
+                        "combo_key": payload.get("combo_key"),
+                        "start_date": payload.get("start_date"),
+                        "months": payload.get("months"),
+                        "override_enabled": bool(payload.get("override_enabled") or False),
+                        "inventory_column": payload.get("inventory_column"),
+                    }
+                    history_store.save_supply_plan(
+                        user_email,
+                        int(run_id),
+                        params=plan_params,
+                        supply_export_df=supply_plan_export,
+                        supply_full_df=supply_plan,
+                    )
+                    data_store[session_id]["history_last_error"] = None
+            except Exception as e:
+                logging.warning(f"[HISTORY] Failed to save supply plan for {user_email}: {e}")
+                try:
+                    data_store[session_id]["history_last_error"] = f"Failed to save supply plan history: {e}"
+                except Exception:
+                    pass
+
         # Filter plan to selected series for display/plot
         plot_df = supply_plan.copy()
         if selected_sku is not None and selected_location is not None:
@@ -3331,8 +3557,8 @@ async def supply_plan_submit(
 
 # Download endpoint for supply plan
 @app.get("/download_supply_plan")
-async def download_supply_plan():
-    session_id = "default"
+async def download_supply_plan(request: Request):
+    session_id = _session_id_from_request(request)
     supply_plan = data_store.get(session_id, {}).get("supply_plan_df")
     if supply_plan is None or supply_plan.empty:
         raise HTTPException(status_code=404, detail="No supply plan available. Please generate it first.")
@@ -3343,13 +3569,14 @@ async def download_supply_plan():
 
 # --- Planning Pipeline Endpoints ---
 @app.get("/planning/context")
-async def planning_context(session_id: str = "default", combo_key: Optional[str] = None):
+async def planning_context(request: Request, combo_key: Optional[str] = None):
+    session_id = _session_id_from_request(request)
     session = data_store.get(session_id, {})
     return build_planning_context(session, combo_key=combo_key)
 
 @app.post("/risks/detect")
-async def risks_detect(payload: Dict = Body(default={})):
-    session_id = payload.get("session_id", "default")
+async def risks_detect(request: Request, payload: Dict = Body(default={})):
+    session_id = _session_id_from_request(request)
     combo_key = payload.get("combo_key")
     session = data_store.get(session_id, {})
     context = build_planning_context(session, combo_key=combo_key)
@@ -3357,8 +3584,8 @@ async def risks_detect(payload: Dict = Body(default={})):
     return {"context": context, "risks": risks}
 
 @app.post("/actions/generate")
-async def actions_generate(payload: Dict = Body(default={})):
-    session_id = payload.get("session_id", "default")
+async def actions_generate(request: Request, payload: Dict = Body(default={})):
+    session_id = _session_id_from_request(request)
     combo_key = payload.get("combo_key")
     session = data_store.get(session_id, {})
     context = payload.get("context") or build_planning_context(session, combo_key=combo_key)
@@ -3367,12 +3594,12 @@ async def actions_generate(payload: Dict = Body(default={})):
     return {"context": context, "risks": risks, "actions": actions}
 
 @app.post("/ai/recommendations")
-async def ai_recommendations(payload: Dict = Body(default={})):
+async def ai_recommendations(request: Request, payload: Dict = Body(default={})):
     """
     Uses the configured LLM provider (Gemini/OpenAI) to convert context+risks+actions into a human-friendly plan.
     Falls back to the local assistant when the LLM is unavailable.
     """
-    session_id = payload.get("session_id", "default")
+    session_id = _session_id_from_request(request)
     combo_key = payload.get("combo_key")
     question = payload.get("question") or "Provide prioritized recommendations and next steps."
     request_id = payload.get("request_id")
@@ -3461,12 +3688,12 @@ async def ai_recommendations(payload: Dict = Body(default={})):
             }
 
 @app.post("/planning/full")
-async def planning_full(payload: Dict = Body(default={})):
+async def planning_full(request: Request, payload: Dict = Body(default={})):
     """
     Convenience endpoint that runs the whole pipeline:
       /planning/context -> /risks/detect -> /actions/generate -> /ai/recommendations
     """
-    session_id = payload.get("session_id", "default")
+    session_id = _session_id_from_request(request)
     combo_key = payload.get("combo_key")
     request_id = payload.get("request_id")
     session = data_store.get(session_id, {})
@@ -3477,7 +3704,6 @@ async def planning_full(payload: Dict = Body(default={})):
         actions = generate_actions(session, context=context, risks=risks)
 
         recs_payload = {
-            "session_id": session_id,
             "combo_key": combo_key,
             "context": context,
             "risks": risks,
@@ -3485,7 +3711,7 @@ async def planning_full(payload: Dict = Body(default={})):
             "question": payload.get("question"),
             "request_id": request_id,
         }
-        recs = await ai_recommendations(recs_payload)
+        recs = await ai_recommendations(request, recs_payload)
         try:
             # Store last planning state for follow-up Q&A (per session).
             store = data_store.setdefault(session_id, session)
@@ -3524,12 +3750,12 @@ async def planning_full(payload: Dict = Body(default={})):
         return JSONResponse({"detail": "Internal server error (see planning_error.log on server)."}, status_code=500)
 
 @app.post("/planning/followup")
-async def planning_followup(payload: Dict = Body(default={})):
+async def planning_followup(request: Request, payload: Dict = Body(default={})):
     """
     Follow-up Q&A about the last generated planning insights (risks/actions/recommendations).
     The client can send short conversation history so users can ask subsequent questions.
     """
-    session_id = payload.get("session_id", "default")
+    session_id = _session_id_from_request(request)
     question = (payload.get("question") or "").strip()
     request_id = payload.get("request_id")
     history = payload.get("history") or []
@@ -3617,7 +3843,7 @@ async def planning_followup(payload: Dict = Body(default={})):
 
 # --- Assistant Chat Endpoint ---
 @app.post("/chat")
-async def chat_endpoint(payload: Dict = Body(...)):
+async def chat_endpoint(request: Request, payload: Dict = Body(...)):
     """
      Receives a chat message from the frontend and returns an AI-generated answer
      (Gemini/OpenAI) using the uploaded raw data, the generated forecast, and the generated supply plan as context.
@@ -3626,7 +3852,7 @@ async def chat_endpoint(payload: Dict = Body(...)):
     if not user_message.strip():
         return {"answer": "Please enter a question about your forecast results."}
 
-    session_id = "default"
+    session_id = _session_id_from_request(request)
     session = data_store.get(session_id, {})
     combo_key = payload.get("combo_key")
     request_id = payload.get("request_id")

@@ -27,6 +27,14 @@
             -webkit-backdrop-filter: blur(10px);
             box-shadow: 0 12px 30px rgba(18,24,39,0.08);
         }
+        .top-nav {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 1060;
+            display: inline-flex;
+            gap: 8px;
+        }
         .lang-btn {
             display: inline-flex;
             align-items: center;
@@ -142,6 +150,10 @@
 </head>
 <body>
     <div class="zoom-wrapper">
+        <div class="top-nav">
+            <a href="/dashboard" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+            <a href="/" class="btn btn-outline-secondary btn-sm">Landing</a>
+        </div>
         <div class="lang-toggle" aria-label="Language toggle">
             <button type="button" class="lang-btn" data-lang="en" title="EN">
                 <span class="lang-flag" aria-hidden="true">🇬🇧</span><span data-i18n="lang_en">EN</span>
@@ -339,6 +351,23 @@
                     if (stopBtn) stopBtn.disabled = true;
                 });
         }
+
+        // If a forecast is already running (e.g., user navigated away to Dashboard and came back),
+        // pick up the existing progress instead of showing the Run button state.
+        fetch('/forecast_status')
+            .then(res => res.json())
+            .then(data => {
+                const statusText = String((data && data.status) || '');
+                const hasStarted = statusText && statusText !== 'Not started';
+                const isRunning = hasStarted && !data.done && !data.cancelled && !data.error;
+                if (isRunning) {
+                    runBtn.disabled = true;
+                    if (stopBtn) stopBtn.disabled = false;
+                    progressContainer.style.display = 'block';
+                    pollProgress();
+                }
+            })
+            .catch(() => { /* ignore */ });
     });
     </script>
     </div>

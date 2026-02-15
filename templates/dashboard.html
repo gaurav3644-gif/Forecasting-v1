@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<style>
+  .connector-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(18,24,39,0.22);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 1050;
+  }
+  .connector-card {
+    border: 1px solid rgba(18,24,39,0.10);
+    border-radius: 16px;
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 10px 28px rgba(18,24,39,0.08);
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    height: 100%;
+  }
+  .connector-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 40px rgba(18,24,39,0.10);
+  }
+  .connector-icon {
+    font-size: 2rem;
+    color: rgba(18,24,39,0.45);
+    margin-bottom: 10px;
+  }
+  .connector-card h6 { margin-bottom: 6px; font-weight: 700; letter-spacing: -0.01em; }
+  .connector-card p { margin-bottom: 0; color: rgba(18,24,39,0.62); font-size: 0.9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="py-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-1" style="letter-spacing:-0.02em;" data-i18n="nav_dashboard">Dashboard</h2>
+      <div class="text-muted small">Run new forecasts and review your saved history.</div>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      <span class="badge text-bg-light border">History: {{ history_backend or "unknown" }}</span>
+      {% if history_info and history_info.backend == "postgres" and history_info.host %}
+        <span class="badge text-bg-light border">DB: {{ history_info.host }}</span>
+      {% endif %}
+      <a href="/" class="btn btn-outline-secondary btn-sm">Landing</a>
+    </div>
+  </div>
+
+  {% if history_error %}
+    <div class="alert alert-warning border shadow-sm py-2">
+      <div class="small"><strong>History save issue:</strong> {{ history_error }}</div>
+    </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-lg-5 col-xl-4">
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm px-3"
+              data-bs-toggle="collapse"
+              data-bs-target="#new-forecast-content"
+              aria-expanded="false"
+              aria-controls="new-forecast-content"
+            >
+              <i class="fa-solid fa-plus me-1"></i>New Forecast
+            </button>
+            <span class="text-muted small">Choose a source</span>
+          </div>
+
+          <div class="collapse" id="new-forecast-content">
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <div class="connector-card" data-connector="database" data-label="Databases">
+                  <div class="connector-icon"><i class="fas fa-database"></i></div>
+                  <h6 class="mb-0">Databases</h6>
+                  <p>PostgreSQL, MySQL, SQL Server</p>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="connector-card" data-connector="warehouse" data-label="Cloud Warehouses">
+                  <div class="connector-icon"><i class="fas fa-cloud"></i></div>
+                  <h6 class="mb-0">Cloud Warehouses</h6>
+                  <p>Snowflake, BigQuery, Redshift</p>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="connector-card" data-connector="ecommerce" data-label="E-commerce">
+                  <div class="connector-icon"><i class="fas fa-shopping-cart"></i></div>
+                  <h6 class="mb-0">E-commerce</h6>
+                  <p>Shopify, WooCommerce, Magento</p>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="connector-card" data-connector="pos" data-label="POS Systems">
+                  <div class="connector-icon"><i class="fas fa-cash-register"></i></div>
+                  <h6 class="mb-0">POS Systems</h6>
+                  <p>Square, Toast, Clover</p>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="connector-card" data-connector="erp" data-label="ERP Systems">
+                  <div class="connector-icon"><i class="fas fa-building"></i></div>
+                  <h6 class="mb-0">ERP Systems</h6>
+                  <p>SAP, Oracle ERP, Dynamics</p>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="connector-card" id="dashboard-file-upload">
+                  <div class="connector-icon"><i class="fas fa-file-csv"></i></div>
+                  <h6 class="mb-0">File Upload</h6>
+                  <p>CSV file</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="border rounded-3 p-3 bg-light" id="dashboard-upload-box">
+              <div class="fw-semibold mb-2">Upload CSV</div>
+              <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
+                <input type="file" class="form-control" name="file" accept=".csv" required>
+                <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
+                <button type="submit" class="btn btn-primary w-100 mt-2">Continue to Forecast</button>
+              </form>
+            </div>
+
+            <div class="text-muted small mt-2">
+              Tip: connectors save credentials/config to your session today. Automated data pull can be added per connector next.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7 col-xl-8">
+      {% if running_forecast %}
+        <div class="card shadow-sm border mb-3">
+          <div class="card-body">
+            <div class="d-flex align-items-start justify-content-between gap-2">
+              <div>
+                <div class="fw-semibold">Forecast running</div>
+                <div class="text-muted small">
+                  {{ (running_meta.uploaded_filename or "uploaded.csv") }} ·
+                  Start: {{ running_meta.start_month or "&mdash;" | safe }} ·
+                  Months: {{ running_meta.months or "&mdash;" | safe }}
+                </div>
+              </div>
+              <div class="text-muted small text-end" id="dash-running-status">
+                {{ running_forecast.status or "Working..." }}
+              </div>
+            </div>
+
+            <div class="progress mt-3" style="height: 10px;">
+              {% set pct = (running_forecast.progress or 0) * 100 %}
+              <div id="dash-running-bar" class="progress-bar" role="progressbar" style="width: {{ pct }}%;" aria-valuenow="{{ pct|round(0) }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <div class="d-flex align-items-center justify-content-between mt-2">
+              <div class="text-muted small" id="dash-running-pct">{{ (pct|round(0)) }}%</div>
+              <div class="d-flex gap-2">
+                <a href="/forecast" class="btn btn-outline-secondary btn-sm">View</a>
+                <button type="button" class="btn btn-outline-danger btn-sm" id="dash-stop-forecast">Stop</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="card shadow-sm">
+        <div class="card-body p-0">
+          <div class="p-3 d-flex align-items-center justify-content-between">
+            <div class="fw-semibold">Your Runs</div>
+            <div class="text-muted small">{{ runs|length }} shown</div>
+          </div>
+          {% if not runs %}
+            <div class="px-3 pb-3">
+              <div class="alert alert-light border mb-0">
+                No saved runs yet for this account.
+                <span class="text-muted">Runs are saved only when you are signed in and the forecast completes successfully.</span>
+              </div>
+            </div>
+          {% else %}
+            <div class="table-responsive">
+              <table class="table mb-0 align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Run</th>
+                    <th>Created</th>
+                    <th>File</th>
+                    <th>Start</th>
+                    <th>Months</th>
+                    <th>Grain</th>
+                    <th class="text-end pe-3">Open</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for r in runs %}
+                    <tr>
+                      <td class="ps-3">#{{ r.run_id }}</td>
+                      <td class="text-muted small">{{ r.created_at }}</td>
+                      <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
+                      <td class="small">{{ r.start_month or "&mdash;" | safe }}</td>
+                      <td class="small">{{ r.months or "&mdash;" | safe }}</td>
+                      <td class="small">
+                        {% if r.grain %}
+                          {{ r.grain | join(', ') if r.grain is iterable else r.grain }}
+                        {% else %}
+                          &mdash;
+                        {% endif %}
+                      </td>
+                      <td class="text-end pe-3">
+                        <form method="post" action="/history/load" class="d-inline">
+                          <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                          <input type="hidden" name="target" value="results">
+                          <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                        </form>
+                        <form method="post" action="/history/load" class="d-inline">
+                          <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                          <input type="hidden" name="target" value="supply_plan">
+                          <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  (function() {
+    const btn = document.getElementById('dash-stop-forecast');
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await fetch('/forecast_stop', { method: 'POST', credentials: 'same-origin' });
+        } catch (e) {}
+        window.location.reload();
+      });
+    }
+  })();
+
+  (function() {
+    const bar = document.getElementById('dash-running-bar');
+    const pctEl = document.getElementById('dash-running-pct');
+    const statusEl = document.getElementById('dash-running-status');
+    if (!bar || !pctEl || !statusEl) return;
+
+    let stopped = false;
+    async function tick() {
+      if (stopped) return;
+      try {
+        const res = await fetch('/forecast_status', { credentials: 'same-origin' });
+        const data = await res.json();
+        const pct = Math.max(0, Math.min(100, Math.round(((data && data.progress) || 0) * 100)));
+        bar.style.width = pct + '%';
+        bar.setAttribute('aria-valuenow', String(pct));
+        pctEl.textContent = pct + '%';
+        statusEl.textContent = (data && data.status) ? String(data.status) : '';
+
+        if (data && (data.done || data.cancelled || data.error)) {
+          stopped = true;
+          // Give the backend a moment to persist the history, then refresh so it appears in "Your Runs".
+          setTimeout(() => window.location.reload(), 800);
+          return;
+        }
+      } catch (e) {
+        // Keep trying; transient errors shouldn't freeze the UI.
+      }
+      setTimeout(tick, 800);
+    }
+
+    tick();
+  })();
+
+  function ensureConnectorBackdrop() {
+    let bd = document.getElementById('connector-backdrop');
+    if (!bd) {
+      bd = document.createElement('div');
+      bd.id = 'connector-backdrop';
+      bd.className = 'connector-backdrop';
+      document.body.appendChild(bd);
+    }
+    return bd;
+  }
+  function removeConnectorBackdrop() {
+    const bd = document.getElementById('connector-backdrop');
+    if (bd) bd.remove();
+  }
+  function showConnectorForm(connector, fields, connectorLabel) {
+    let modal = document.getElementById('connector-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'connector-modal';
+      modal.className = 'modal fade';
+      modal.tabIndex = -1;
+      document.body.appendChild(modal);
+    }
+    const body = fields.map(f => {
+      const name = String(f.name || '');
+      const type = String(f.type || 'text');
+      const label = String(f.label || name);
+      const defv = (f.default !== undefined && f.default !== null) ? String(f.default) : '';
+      if (type === 'select' && Array.isArray(f.options)) {
+        const opts = f.options.map(o => {
+          const ov = String(o);
+          const sel = (defv && ov === defv) ? 'selected' : '';
+          return `<option value="${ov.replace(/\"/g,'&quot;')}" ${sel}>${ov}</option>`;
+        }).join('');
+        return `
+          <div class="mb-3">
+            <label class="form-label">${label}</label>
+            <select class="form-select" name="${name}">${opts}</select>
+          </div>`;
+      }
+      return `
+        <div class="mb-3">
+          <label class="form-label">${label}</label>
+          <input class="form-control" name="${name}" type="${type}" value="${defv.replace(/\"/g,'&quot;')}">
+        </div>`;
+    }).join('');
+
+    modal.innerHTML = `
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Connect: ${connectorLabel}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="connector-form">
+              ${body}
+              <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+              </div>
+              <div id="connector-msg" class="text-muted small mt-2" style="display:none;"></div>
+            </form>
+          </div>
+        </div>
+      </div>`;
+
+    const modalInstance = new bootstrap.Modal(modal, { backdrop: false, keyboard: true, focus: true });
+    const bd = ensureConnectorBackdrop();
+    bd.onclick = function() { modalInstance.hide(); };
+    modal.addEventListener('hidden.bs.modal', removeConnectorBackdrop, { once: true });
+
+    const form = modal.querySelector('#connector-form');
+    const msg = modal.querySelector('#connector-msg');
+    if (form) {
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const obj = {};
+        fd.forEach((v, k) => { obj[String(k)] = String(v); });
+        try {
+          const res = await fetch(`/connect/${encodeURIComponent(connector)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(obj)
+          });
+          if (msg) {
+            msg.style.display = 'block';
+            msg.textContent = res.ok ? 'Saved. You can now upload CSV to run a forecast (connector pull can be enabled next).' : `Failed (HTTP ${res.status})`;
+          }
+        } catch (err) {
+          if (msg) {
+            msg.style.display = 'block';
+            msg.textContent = 'Failed to save connector settings.';
+          }
+        }
+      });
+    }
+
+    modalInstance.show();
+  }
+
+  document.addEventListener('click', function(e) {
+    const card = e.target.closest('.connector-card[data-connector]');
+    if (!card) return;
+    const connector = card.getAttribute('data-connector');
+    const label = card.getAttribute('data-label') || connector;
+    fetch(`/connector-schema/${encodeURIComponent(connector)}`)
+      .then(res => res.json())
+      .then(schema => {
+        if (schema && schema.error) { alert(schema.error); return; }
+        showConnectorForm(connector, (schema && schema.fields) ? schema.fields : [], label);
+      })
+      .catch(() => alert('Failed to load connector schema.'));
+  });
+</script>
+{% endblock %}

@@ -855,7 +855,10 @@
                     <li class="nav-item ms-lg-3">
                         {% set user_email = request.state.user_email if request and request.state is not none else None %}
                         {% if user_email %}
-                            <a class="btn btn-outline-secondary btn-sm px-3" href="/signout"><span data-i18n="nav_sign_out">Sign out</span></a>
+                            <div class="d-flex align-items-center gap-2">
+                                <a class="btn btn-outline-secondary btn-sm px-3" href="/dashboard"><span data-i18n="nav_dashboard">Dashboard</span></a>
+                                <a class="btn btn-outline-secondary btn-sm px-3" href="/signout"><span data-i18n="nav_sign_out">Sign out</span></a>
+                            </div>
                         {% else %}
                             <a class="btn btn-outline-primary btn-sm px-3" href="/signin"><span data-i18n="nav_sign_in">Sign in</span></a>
                         {% endif %}
@@ -1395,6 +1398,7 @@
                     lang_en: 'EN',
                     lang_id: 'ID',
                     nav_sign_in: 'Sign in',
+                    nav_dashboard: 'Dashboard',
                     nav_sign_out: 'Sign out',
                     landing_features: 'Features',
                     landing_connectors: 'Connectors',
@@ -1518,6 +1522,7 @@
                     lang_en: 'EN',
                     lang_id: 'ID',
                     nav_sign_in: 'Masuk',
+                    nav_dashboard: 'Dasbor',
                     nav_sign_out: 'Keluar',
                     landing_features: 'Fitur',
                     landing_connectors: 'Konektor',

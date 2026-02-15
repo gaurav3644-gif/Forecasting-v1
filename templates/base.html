@@ -120,6 +120,7 @@
           en: {
             nav_sign_in: 'Sign in',
             nav_sign_out: 'Sign out',
+            nav_dashboard: 'Dashboard',
             lang_en: 'EN',
             lang_id: 'ID',
             results_supply_plan: 'Supply Plan',
@@ -189,6 +190,7 @@
           id: {
             nav_sign_in: 'Masuk',
             nav_sign_out: 'Keluar',
+            nav_dashboard: 'Dasbor',
             lang_en: 'EN',
             lang_id: 'ID',
             results_supply_plan: 'Rencana Pasokan',
@@ -370,6 +372,7 @@
                 </div>
                 {% set user_email = request.state.user_email if request and request.state is not none else None %}
                 {% if user_email %}
+                    <a class="btn btn-outline-secondary btn-sm" href="/dashboard"><span data-i18n="nav_dashboard">Dashboard</span></a>
                     <span class="small text-muted d-none d-sm-inline">{{ user_email }}</span>
                     <a class="btn btn-outline-secondary btn-sm" href="/signout"><span data-i18n="nav_sign_out">Sign out</span></a>
                 {% else %}
