@@ -298,9 +298,8 @@
         <div class="col-md-4">
           <div class="card card-soft shadow-sm">
             <div class="card-body">
-              <div class="text-muted small">Actual Sales</div>
+              <div class="text-muted small">Actual Sales{% if latest_sales_month %} ({{ latest_sales_month }}){% endif %}</div>
               <div class="h5 mb-0">{{ "{:,.0f}".format(latest_sales_value) if latest_sales_value is not none else "0" }}</div>
-              <div class="text-muted small">{{ latest_sales_month or "—" }}</div>
             </div>
           </div>
         </div>

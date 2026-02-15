@@ -61,6 +61,55 @@
               linear-gradient(to bottom, transparent 0 44%, #ce1126 44% 56%, transparent 56% 100%),
               #ffffff;
         }
+
+        :root {
+            --pitensor-brand-1: #43e97b;
+            --pitensor-brand-2: #38f9d7;
+        }
+
+        /* Replace Bootstrap "primary" (blue) buttons with PiTensor gradient. */
+        .btn-primary {
+            background: linear-gradient(90deg, var(--pitensor-brand-1) 0%, var(--pitensor-brand-2) 100%);
+            border: none;
+            color: #0b1410;
+            border-radius: 999px;
+            box-shadow: 0 10px 26px rgba(67,233,123,0.22);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+        }
+        .btn-primary:hover {
+            color: #0b1410;
+            transform: translateY(-1px);
+            box-shadow: 0 14px 34px rgba(67,233,123,0.26);
+            filter: saturate(1.02);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+            box-shadow: 0 8px 18px rgba(67,233,123,0.20);
+        }
+        .btn-primary:focus,
+        .btn-primary:focus-visible {
+            box-shadow: 0 0 0 0.2rem rgba(67,233,123,0.22), 0 10px 26px rgba(67,233,123,0.22);
+        }
+        .btn-primary:disabled,
+        .btn-primary.disabled {
+            filter: grayscale(0.2);
+            opacity: 0.7;
+            box-shadow: none;
+        }
+
+        .btn-outline-primary {
+            border-radius: 999px;
+            border-color: rgba(67,233,123,0.65);
+            color: #16a34a;
+        }
+        .btn-outline-primary:hover,
+        .btn-outline-primary:active,
+        .btn-outline-primary:focus {
+            background: linear-gradient(90deg, var(--pitensor-brand-1) 0%, var(--pitensor-brand-2) 100%);
+            border-color: transparent;
+            color: #0b1410;
+            box-shadow: 0 10px 26px rgba(67,233,123,0.18);
+        }
     </style>
 
     <script>
