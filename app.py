@@ -767,27 +767,77 @@ async def _optional_auth_guard(request: Request, call_next):
     Set REQUIRE_AUTH=1 to require an email session for most UI routes.
     """
     # Populate user context from cookie for templates/handlers.
-    request.state.user_email = _auth_cookie_email(request.cookies.get(_auth_cookie_name, "")) if hasattr(request, "cookies") else None
+    cookie_email = _auth_cookie_email(request.cookies.get(_auth_cookie_name, "")) if hasattr(request, "cookies") else None
+    request.state.user_email = cookie_email
+
+    # Enforce explicit revocations (always) and unapproved users (when approval gating is enabled) by clearing the session cookie.
+    should_clear_auth_cookie = False
+    if cookie_email and not _is_admin_email(cookie_email):
+        try:
+            import history_store
+
+            if history_store.is_user_access_revoked(email=cookie_email):
+                should_clear_auth_cookie = True
+                request.state.user_email = None
+            elif _require_admin_approval():
+                # Approved means: approved_at set AND not revoked.
+                if not history_store.is_user_access_approved(email=cookie_email):
+                    should_clear_auth_cookie = True
+                    request.state.user_email = None
+        except Exception:
+            # If we can't check, fail closed for "signed-in" state (but don't break public pages).
+            should_clear_auth_cookie = True
+            request.state.user_email = None
 
     require_auth = (os.getenv("REQUIRE_AUTH", "0") or "0").strip() == "1"
     if not require_auth:
-        return await call_next(request)
+        resp = await call_next(request)
+        if should_clear_auth_cookie:
+            try:
+                resp.delete_cookie(_auth_cookie_name)
+            except Exception:
+                pass
+        return resp
 
     path = request.url.path or "/"
     # Allow public routes
     allow_prefixes = ("/signin", "/signup", "/signout", "/auth/", "/static", "/docs", "/openapi.json", "/")
     if any(path == p for p in ("/",)) or any(path.startswith(p) for p in allow_prefixes if p != "/"):
-        return await call_next(request)
+        resp = await call_next(request)
+        if should_clear_auth_cookie:
+            try:
+                resp.delete_cookie(_auth_cookie_name)
+            except Exception:
+                pass
+        return resp
 
     # Allow health/status endpoints
     if path in ("/status", "/forecast_status"):
-        return await call_next(request)
+        resp = await call_next(request)
+        if should_clear_auth_cookie:
+            try:
+                resp.delete_cookie(_auth_cookie_name)
+            except Exception:
+                pass
+        return resp
 
     if _is_signed_in(request):
-        return await call_next(request)
+        resp = await call_next(request)
+        if should_clear_auth_cookie:
+            try:
+                resp.delete_cookie(_auth_cookie_name)
+            except Exception:
+                pass
+        return resp
 
     next_q = quote(path)
-    return RedirectResponse(f"/signin?next={next_q}", status_code=303)
+    resp = RedirectResponse(f"/signin?next={next_q}", status_code=303)
+    if should_clear_auth_cookie:
+        try:
+            resp.delete_cookie(_auth_cookie_name)
+        except Exception:
+            pass
+    return resp
 
 # Import and register connectors router
 from connectors import router as connectors_router
@@ -1912,6 +1962,29 @@ async def signin_post(
             status_code=400,
         )
 
+    # If the user was explicitly revoked, block sign-in immediately (independent of admin-approval mode).
+    if not _is_admin_email(email):
+        try:
+            import history_store
+
+            if history_store.is_user_access_revoked(email=email):
+                return templates.TemplateResponse(
+                    "signin.html",
+                    {
+                        "request": request,
+                        "next": next,
+                        "error": "Your sign-in access has been revoked. Please contact support.",
+                        "stage": "email",
+                        "email": email,
+                        "otp_id": "",
+                        "info": "",
+                        "auth_mode": _auth_mode(),
+                    },
+                    status_code=403,
+                )
+        except Exception:
+            pass
+
     if _auth_mode() == "otp":
         try:
             last_dt = None
@@ -2046,6 +2119,22 @@ async def signin_post(
             )
         try:
             import history_store
+
+            if history_store.is_user_access_revoked(email=email):
+                return templates.TemplateResponse(
+                    "signin.html",
+                    {
+                        "request": request,
+                        "next": next,
+                        "error": "Your sign-in access has been revoked. Please contact support.",
+                        "stage": "email",
+                        "email": email,
+                        "otp_id": "",
+                        "info": "",
+                        "auth_mode": _auth_mode(),
+                    },
+                    status_code=403,
+                )
 
             if not history_store.is_user_access_approved(email=email):
                 try:
@@ -2234,6 +2323,22 @@ async def signin_verify(
             )
         try:
             import history_store
+
+            if history_store.is_user_access_revoked(email=email):
+                return templates.TemplateResponse(
+                    "signin.html",
+                    {
+                        "request": request,
+                        "next": next,
+                        "error": "Your sign-in access has been revoked. Please contact support.",
+                        "stage": "email",
+                        "email": email,
+                        "otp_id": "",
+                        "info": "",
+                        "auth_mode": _auth_mode(),
+                    },
+                    status_code=403,
+                )
 
             if not history_store.is_user_access_approved(email=email):
                 try:
@@ -2470,6 +2575,14 @@ async def auth_google_callback(request: Request, code: Optional[str] = None, sta
             return resp
         try:
             import history_store
+
+            if history_store.is_user_access_revoked(email=email):
+                resp = RedirectResponse(
+                    f"/signin?error={quote('Your sign-in access has been revoked. Please contact support.')}&email={quote(email)}&next={quote(next_path)}",
+                    status_code=303,
+                )
+                resp.delete_cookie(_oauth_cookie_name)
+                return resp
 
             if not history_store.is_user_access_approved(email=email):
                 try:
@@ -3502,12 +3615,16 @@ async def dashboard_page(request: Request):
         history_backend = history_store.history_backend()
         history_info = history_store.history_connection_info()
         pending_users = history_store.list_pending_user_access(limit=200) if is_admin else []
+        approved_users = history_store.list_user_access(limit=500, status="approved") if is_admin else []
+        revoked_users = history_store.list_user_access(limit=500, status="revoked") if is_admin else []
     except Exception as e:
         logging.warning(f"[HISTORY] Failed to list dashboard runs for {user_email}: {e}")
         runs = []
         history_backend = "unknown"
         history_info = {"backend": "unknown"}
         pending_users = []
+        approved_users = []
+        revoked_users = []
     session_id = _session_id_from_request(request)
     history_error = None
     try:
@@ -3538,6 +3655,8 @@ async def dashboard_page(request: Request):
             "runs": runs,
             "is_admin": is_admin,
             "pending_users": pending_users,
+            "approved_users": approved_users,
+            "revoked_users": revoked_users,
             "notice": notice,
             "history_backend": history_backend,
             "history_info": history_info,
@@ -3739,6 +3858,41 @@ async def admin_approve_user_post(request: Request, email: str = Form(...)):
 
     history_store.approve_user_access(email=email, approved_by=user_email)
     msg = quote(f"Approved user: {email}")
+    return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
+
+
+@app.post("/admin/revoke-user")
+async def admin_revoke_user_post(request: Request, email: str = Form(...), reason: str = Form(default="")):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/dashboard", status_code=303)
+    if not _is_admin_email(user_email):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    email = (email or "").strip().lower()
+    reason = (reason or "").strip()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    import history_store
+
+    history_store.revoke_user_access(email=email, revoked_by=user_email, reason=reason or None)
+    msg = quote(f"Revoked access: {email}")
+    return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
+
+
+@app.post("/admin/delete-user")
+async def admin_delete_user_post(request: Request, email: str = Form(...)):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/dashboard", status_code=303)
+    if not _is_admin_email(user_email):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    import history_store
+
+    existed = bool(history_store.delete_user_admin(email=email))
+    msg = quote(f"Deleted user: {email}" if existed else f"User not found: {email}")
     return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
 
 @app.get("/api/update_plot")

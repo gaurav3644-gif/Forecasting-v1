@@ -298,6 +298,14 @@ def init_db() -> None:
                     )
                     """
                 )
+                # Migrate: add revocation fields if missing (older deployments).
+                try:
+                    cur.execute("ALTER TABLE user_access ADD COLUMN IF NOT EXISTS revoked_at TEXT")
+                    cur.execute("ALTER TABLE user_access ADD COLUMN IF NOT EXISTS revoked_by TEXT")
+                    cur.execute("ALTER TABLE user_access ADD COLUMN IF NOT EXISTS revoked_reason TEXT")
+                except Exception:
+                    # Non-fatal; table may already have columns or DB may be in a transient state.
+                    pass
                 conn.commit()
                 return
             finally:
@@ -403,6 +411,17 @@ def init_db() -> None:
                 )
                 """
             )
+            # Migrate: add revocation fields if missing.
+            try:
+                cols = {r["name"] for r in conn.execute("PRAGMA table_info(user_access)").fetchall()}
+                if "revoked_at" not in cols:
+                    conn.execute("ALTER TABLE user_access ADD COLUMN revoked_at TEXT")
+                if "revoked_by" not in cols:
+                    conn.execute("ALTER TABLE user_access ADD COLUMN revoked_by TEXT")
+                if "revoked_reason" not in cols:
+                    conn.execute("ALTER TABLE user_access ADD COLUMN revoked_reason TEXT")
+            except Exception:
+                pass
             conn.commit()
         finally:
             conn.close()
@@ -1696,7 +1715,10 @@ def approve_user_access(*, email: str, approved_by: Optional[str] = None) -> boo
                     VALUES(%s, %s, %s, %s, NULL, 0)
                     ON CONFLICT(email) DO UPDATE SET
                         approved_at=excluded.approved_at,
-                        approved_by=excluded.approved_by
+                        approved_by=excluded.approved_by,
+                        revoked_at=NULL,
+                        revoked_by=NULL,
+                        revoked_reason=NULL
                     """,
                     (email, now, now, approved_by),
                 )
@@ -1716,7 +1738,10 @@ def approve_user_access(*, email: str, approved_by: Optional[str] = None) -> boo
                 VALUES(?, ?, ?, ?, NULL, 0)
                 ON CONFLICT(email) DO UPDATE SET
                     approved_at=excluded.approved_at,
-                    approved_by=excluded.approved_by
+                    approved_by=excluded.approved_by,
+                    revoked_at=NULL,
+                    revoked_by=NULL,
+                    revoked_reason=NULL
                 """,
                 (email, now, now, approved_by),
             )
@@ -1730,7 +1755,133 @@ def is_user_access_approved(*, email: str) -> bool:
     rec = get_user_access(email=email)
     if not rec:
         return False
+    if (rec.get("revoked_at") or "").strip():
+        return False
     return bool((rec.get("approved_at") or "").strip())
+
+
+def is_user_access_revoked(*, email: str) -> bool:
+    rec = get_user_access(email=email)
+    if not rec:
+        return False
+    return bool((rec.get("revoked_at") or "").strip())
+
+
+def revoke_user_access(*, email: str, revoked_by: Optional[str] = None, reason: Optional[str] = None) -> bool:
+    init_db()
+    email = (email or "").strip().lower()
+    revoked_by = (revoked_by or "").strip().lower() or None
+    reason = (reason or "").strip() or None
+    if "@" not in email:
+        raise ValueError("valid email is required")
+    now = _utc_now_iso()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO user_access(email, created_at, approved_at, approved_by, last_requested_at, request_count, revoked_at, revoked_by, revoked_reason)
+                    VALUES(%s, %s, NULL, NULL, NULL, 0, %s, %s, %s)
+                    ON CONFLICT(email) DO UPDATE SET
+                        approved_at=NULL,
+                        approved_by=NULL,
+                        revoked_at=excluded.revoked_at,
+                        revoked_by=excluded.revoked_by,
+                        revoked_reason=excluded.revoked_reason
+                    """,
+                    (email, now, now, revoked_by, reason),
+                )
+                conn.commit()
+                return True
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO user_access(email, created_at, approved_at, approved_by, last_requested_at, request_count, revoked_at, revoked_by, revoked_reason)
+                VALUES(?, ?, NULL, NULL, NULL, 0, ?, ?, ?)
+                ON CONFLICT(email) DO UPDATE SET
+                    approved_at=NULL,
+                    approved_by=NULL,
+                    revoked_at=excluded.revoked_at,
+                    revoked_by=excluded.revoked_by,
+                    revoked_reason=excluded.revoked_reason
+                """,
+                (email, now, now, revoked_by, reason),
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def list_user_access(*, limit: int = 500, status: str = "all") -> list[dict[str, Any]]:
+    """
+    Admin utility: list access records.
+
+    status: all|pending|approved|revoked
+    """
+    init_db()
+    status = (status or "all").strip().lower()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                where = ""
+                if status == "pending":
+                    where = "WHERE approved_at IS NULL AND (revoked_at IS NULL OR revoked_at = '')"
+                elif status == "approved":
+                    where = "WHERE approved_at IS NOT NULL AND (revoked_at IS NULL OR revoked_at = '')"
+                elif status == "revoked":
+                    where = "WHERE revoked_at IS NOT NULL AND revoked_at <> ''"
+                cur.execute(
+                    f"""
+                    SELECT email, created_at, approved_at, approved_by, last_requested_at, request_count, revoked_at, revoked_by, revoked_reason
+                    FROM user_access
+                    {where}
+                    ORDER BY COALESCE(last_requested_at, created_at) DESC
+                    LIMIT %s
+                    """,
+                    (int(limit),),
+                )
+                rows = cur.fetchall() or []
+                return [dict(r) for r in rows]
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            where = ""
+            if status == "pending":
+                where = "WHERE approved_at IS NULL AND (revoked_at IS NULL OR revoked_at = '')"
+            elif status == "approved":
+                where = "WHERE approved_at IS NOT NULL AND (revoked_at IS NULL OR revoked_at = '')"
+            elif status == "revoked":
+                where = "WHERE revoked_at IS NOT NULL AND revoked_at <> ''"
+            rows = conn.execute(
+                f"""
+                SELECT email, created_at, approved_at, approved_by, last_requested_at, request_count, revoked_at, revoked_by, revoked_reason
+                FROM user_access
+                {where}
+                ORDER BY COALESCE(last_requested_at, created_at) DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
 
 
 def list_pending_user_access(*, limit: int = 200) -> list[dict[str, Any]]:
@@ -1771,5 +1922,63 @@ def list_pending_user_access(*, limit: int = 200) -> list[dict[str, Any]]:
                 (int(limit),),
             ).fetchall()
             return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def delete_user_admin(*, email: str) -> bool:
+    """
+    Admin-only: delete a user and all their stored history (runs, datasets, supply plans) + access record.
+    Returns True if user existed in either users or user_access and deletion was attempted.
+    """
+    init_db()
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        raise ValueError("valid email is required")
+    existed = False
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+                row = cur.fetchone()
+                user_id = row[0] if row else None
+                if user_id is not None:
+                    existed = True
+                    # Children first
+                    cur.execute("DELETE FROM supply_plans WHERE user_id = %s", (int(user_id),))
+                    cur.execute("DELETE FROM forecast_runs WHERE user_id = %s", (int(user_id),))
+                    cur.execute("DELETE FROM datasets WHERE user_id = %s", (int(user_id),))
+                    cur.execute("DELETE FROM users WHERE id = %s", (int(user_id),))
+                # Access + OTPs are email-keyed
+                cur.execute("DELETE FROM auth_otps WHERE email = %s", (email,))
+                cur.execute("DELETE FROM user_access WHERE email = %s", (email,))
+                if cur.rowcount:
+                    existed = True
+                conn.commit()
+                return existed
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+            user_id = row["id"] if row else None
+            if user_id is not None:
+                existed = True
+                conn.execute("DELETE FROM supply_plans WHERE user_id = ?", (int(user_id),))
+                conn.execute("DELETE FROM forecast_runs WHERE user_id = ?", (int(user_id),))
+                conn.execute("DELETE FROM datasets WHERE user_id = ?", (int(user_id),))
+                conn.execute("DELETE FROM users WHERE id = ?", (int(user_id),))
+            conn.execute("DELETE FROM auth_otps WHERE email = ?", (email,))
+            cur = conn.execute("DELETE FROM user_access WHERE email = ?", (email,))
+            if getattr(cur, "rowcount", 0):
+                existed = True
+            conn.commit()
+            return existed
         finally:
             conn.close()

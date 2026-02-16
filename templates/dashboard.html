@@ -183,7 +183,7 @@
         </div>
       {% endif %}
 
-      {% if is_admin and pending_users and (pending_users|length) %}
+  {% if is_admin and pending_users and (pending_users|length) %}
         <div class="card shadow-sm mb-3">
           <div class="card-body p-0">
             <div class="p-3 d-flex align-items-center justify-content-between">
@@ -210,6 +210,96 @@
                         <form method="post" action="/admin/approve-user" class="d-inline">
                           <input type="hidden" name="email" value="{{ u.email }}">
                           <button type="submit" class="btn btn-outline-success btn-sm">Approve</button>
+                        </form>
+                        <form method="post" action="/admin/revoke-user" class="d-inline js-revoke-user">
+                          <input type="hidden" name="email" value="{{ u.email }}">
+                          <input type="hidden" name="reason" value="revoked by admin">
+                          <button type="submit" class="btn btn-outline-warning btn-sm">Revoke</button>
+                        </form>
+                        <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
+                          <input type="hidden" name="email" value="{{ u.email }}">
+                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if is_admin and approved_users and (approved_users|length) %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-body p-0">
+            <div class="p-3 d-flex align-items-center justify-content-between">
+              <div class="fw-semibold">Approved Users</div>
+              <div class="text-muted small">{{ approved_users|length }} approved</div>
+            </div>
+            <div class="table-responsive">
+              <table class="table mb-0 align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Email</th>
+                    <th>Approved</th>
+                    <th class="text-end pe-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for u in approved_users %}
+                    <tr>
+                      <td class="ps-3 small">{{ u.email }}</td>
+                      <td class="text-muted small">{{ u.approved_at or "&mdash;" | safe }}</td>
+                      <td class="text-end pe-3">
+                        <form method="post" action="/admin/revoke-user" class="d-inline js-revoke-user">
+                          <input type="hidden" name="email" value="{{ u.email }}">
+                          <input type="hidden" name="reason" value="revoked by admin">
+                          <button type="submit" class="btn btn-outline-warning btn-sm">Revoke</button>
+                        </form>
+                        <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
+                          <input type="hidden" name="email" value="{{ u.email }}">
+                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if is_admin and revoked_users and (revoked_users|length) %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-body p-0">
+            <div class="p-3 d-flex align-items-center justify-content-between">
+              <div class="fw-semibold">Revoked Users</div>
+              <div class="text-muted small">{{ revoked_users|length }} revoked</div>
+            </div>
+            <div class="table-responsive">
+              <table class="table mb-0 align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Email</th>
+                    <th>Revoked</th>
+                    <th class="text-end pe-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for u in revoked_users %}
+                    <tr>
+                      <td class="ps-3 small">{{ u.email }}</td>
+                      <td class="text-muted small">{{ u.revoked_at or "&mdash;" | safe }}</td>
+                      <td class="text-end pe-3">
+                        <form method="post" action="/admin/approve-user" class="d-inline">
+                          <input type="hidden" name="email" value="{{ u.email }}">
+                          <button type="submit" class="btn btn-outline-success btn-sm">Restore</button>
+                        </form>
+                        <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
+                          <input type="hidden" name="email" value="{{ u.email }}">
+                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
                         </form>
                       </td>
                     </tr>
@@ -318,6 +408,23 @@
     document.querySelectorAll('form.js-delete-run').forEach((form) => {
       form.addEventListener('submit', (e) => {
         const ok = window.confirm('Delete this run? This cannot be undone.');
+        if (!ok) e.preventDefault();
+      });
+    });
+  })();
+
+  (function() {
+    document.querySelectorAll('form.js-revoke-user').forEach((form) => {
+      form.addEventListener('submit', (e) => {
+        const email = (form.querySelector('input[name="email"]') || {}).value || 'this user';
+        const ok = window.confirm(`Revoke sign-in access for ${email}?`);
+        if (!ok) e.preventDefault();
+      });
+    });
+    document.querySelectorAll('form.js-delete-user').forEach((form) => {
+      form.addEventListener('submit', (e) => {
+        const email = (form.querySelector('input[name="email"]') || {}).value || 'this user';
+        const ok = window.confirm(`Delete ${email} and ALL their saved history? This cannot be undone.`);
         if (!ok) e.preventDefault();
       });
     });
