@@ -199,7 +199,7 @@
               <table class="table mb-0 align-middle">
                 <thead class="table-light">
                   <tr>
-                    <th class="ps-3">Run</th>
+                    <th class="ps-3">Run ID</th>
                     {% if is_admin %}<th>User</th>{% endif %}
                     <th>Created</th>
                     <th>File</th>
@@ -212,7 +212,7 @@
                 <tbody>
                   {% for r in runs %}
                     <tr>
-                      <td class="ps-3">#{{ r.run_id }}</td>
+                      <td class="ps-3">{{ r.run_id }}</td>
                       {% if is_admin %}<td class="small">{{ r.user_email or "&mdash;" | safe }}</td>{% endif %}
                       <td class="text-muted small">{{ r.created_at }}</td>
                       <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
