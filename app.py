@@ -104,6 +104,65 @@ def _is_admin_email(email: Optional[str]) -> bool:
         return False
     return email.strip().lower() in _parse_admin_emails()
 
+
+def _require_admin_approval() -> bool:
+    return (os.getenv("PITENSOR_REQUIRE_ADMIN_APPROVAL") or "0").strip() == "1"
+
+
+def _public_base_url(request: Request) -> str:
+    env_base = (os.getenv("PITENSOR_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if env_base:
+        return env_base
+    try:
+        return str(request.base_url).rstrip("/")
+    except Exception:
+        return ""
+
+
+def _admin_approve_sig(email: str, ts: str) -> str:
+    msg = f"{(email or '').strip().lower()}|{(ts or '').strip()}".encode("utf-8")
+    return hmac.new(_auth_cookie_secret_b, msg, digestmod=_hashlib.sha256).hexdigest()
+
+
+def _admin_approval_url(request: Request, *, email: str) -> str:
+    ts = str(int(time.time()))
+    sig = _admin_approve_sig(email, ts)
+    base = _public_base_url(request) or ""
+    path = f"/admin/approve?email={quote(email)}&ts={quote(ts)}&sig={quote(sig)}"
+    return f"{base}{path}" if base else path
+
+
+def _notify_admin_user_approval_request(request: Request, *, email: str) -> None:
+    admins = sorted(_parse_admin_emails())
+    if not admins:
+        raise RuntimeError("PITENSOR_ADMIN_EMAILS is not set")
+    approve_url = _admin_approval_url(request, email=email)
+    ip = _client_ip(request)
+    ua = (request.headers.get("user-agent") or "").strip()
+    body = (
+        "A new user requested access to PiTensor.\n\n"
+        f"User: {email}\n"
+        f"Time (UTC): {datetime.now(timezone.utc).isoformat()}\n"
+        f"IP: {ip or 'unknown'}\n"
+        f"User-Agent: {ua or 'unknown'}\n\n"
+        "Approve this user:\n"
+        f"{approve_url}\n\n"
+        "If you did not expect this request, ignore this email.\n"
+    )
+    last_err: Optional[Exception] = None
+    for admin_email in admins:
+        try:
+            _send_text_email(
+                to_addr=admin_email,
+                subject=f"Approve PiTensor user: {email}",
+                body=body,
+                reply_to=None,
+            )
+        except Exception as e:
+            last_err = e
+    if last_err is not None and len(admins) == 1:
+        raise last_err
+
 _oauth_cookie_name = (os.getenv("PITENSOR_OAUTH_COOKIE_NAME") or "").strip() or "pitensor_oauth"
 
 def _sign_blob(blob_b64: str) -> str:
@@ -1801,7 +1860,13 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/signin", response_class=HTMLResponse)
-async def signin_page(request: Request, next: Optional[str] = None, error: Optional[str] = None):
+async def signin_page(
+    request: Request,
+    next: Optional[str] = None,
+    error: Optional[str] = None,
+    info: Optional[str] = None,
+    email: Optional[str] = None,
+):
     return templates.TemplateResponse(
         "signin.html",
         {
@@ -1809,9 +1874,9 @@ async def signin_page(request: Request, next: Optional[str] = None, error: Optio
             "next": next,
             "error": error,
             "stage": "email",
-            "email": "",
+            "email": email or "",
             "otp_id": "",
-            "info": "",
+            "info": info or "",
             "auth_mode": _auth_mode(),
         },
     )
@@ -1956,6 +2021,76 @@ async def signin_post(
                 status_code=500,
             )
 
+    if _require_admin_approval() and not _is_admin_email(email):
+        if not _parse_admin_emails():
+            return templates.TemplateResponse(
+                "signin.html",
+                {
+                    "request": request,
+                    "next": next,
+                    "error": "Admin approval is enabled but no admin emails are configured. Please contact support.",
+                    "stage": "email",
+                    "email": email,
+                    "otp_id": "",
+                    "info": "",
+                    "auth_mode": _auth_mode(),
+                },
+                status_code=500,
+            )
+        try:
+            import history_store
+
+            if not history_store.is_user_access_approved(email=email):
+                try:
+                    rec = history_store.get_user_access(email=email) or {}
+                    last_req = (rec.get("last_requested_at") or "").strip()
+                    should_notify = True
+                    if last_req:
+                        try:
+                            last_dt = datetime.fromisoformat(last_req)
+                            if last_dt.tzinfo is None:
+                                last_dt = last_dt.replace(tzinfo=timezone.utc)
+                            if datetime.now(timezone.utc) - last_dt < timedelta(minutes=10):
+                                should_notify = False
+                        except Exception:
+                            pass
+                    history_store.upsert_user_access_request(email=email)
+                    if should_notify:
+                        _notify_admin_user_approval_request(request, email=email)
+                except Exception as e:
+                    logging.warning(f"[AUTH] Failed to notify admin for approval request {email}: {e}")
+
+                return templates.TemplateResponse(
+                    "signin.html",
+                    {
+                        "request": request,
+                        "next": next,
+                        "error": "",
+                        "stage": "email",
+                        "email": email,
+                        "otp_id": "",
+                        "info": "Your account is pending admin approval. An admin has been notified.",
+                        "auth_mode": _auth_mode(),
+                    },
+                    status_code=403,
+                )
+        except Exception as e:
+            logging.warning(f"[AUTH] Approval check failed for {email}: {e}")
+            return templates.TemplateResponse(
+                "signin.html",
+                {
+                    "request": request,
+                    "next": next,
+                    "error": "Could not verify account approval status. Please try again in a moment.",
+                    "stage": "email",
+                    "email": email,
+                    "otp_id": "",
+                    "info": "",
+                    "auth_mode": _auth_mode(),
+                },
+                status_code=503,
+            )
+
     dest = _safe_next_path(next)
     if dest == "/" and not (next or "").strip():
         dest = "/dashboard"
@@ -2073,6 +2208,76 @@ async def signin_verify(
             },
             status_code=400,
         )
+
+    if _require_admin_approval() and not _is_admin_email(email):
+        if not _parse_admin_emails():
+            return templates.TemplateResponse(
+                "signin.html",
+                {
+                    "request": request,
+                    "next": next,
+                    "error": "Admin approval is enabled but no admin emails are configured. Please contact support.",
+                    "stage": "email",
+                    "email": email,
+                    "otp_id": "",
+                    "info": "",
+                    "auth_mode": _auth_mode(),
+                },
+                status_code=500,
+            )
+        try:
+            import history_store
+
+            if not history_store.is_user_access_approved(email=email):
+                try:
+                    rec = history_store.get_user_access(email=email) or {}
+                    last_req = (rec.get("last_requested_at") or "").strip()
+                    should_notify = True
+                    if last_req:
+                        try:
+                            last_dt = datetime.fromisoformat(last_req)
+                            if last_dt.tzinfo is None:
+                                last_dt = last_dt.replace(tzinfo=timezone.utc)
+                            if datetime.now(timezone.utc) - last_dt < timedelta(minutes=10):
+                                should_notify = False
+                        except Exception:
+                            pass
+                    history_store.upsert_user_access_request(email=email)
+                    if should_notify:
+                        _notify_admin_user_approval_request(request, email=email)
+                except Exception as e:
+                    logging.warning(f"[AUTH] Failed to notify admin for approval request {email}: {e}")
+
+                return templates.TemplateResponse(
+                    "signin.html",
+                    {
+                        "request": request,
+                        "next": next,
+                        "error": "",
+                        "stage": "email",
+                        "email": email,
+                        "otp_id": "",
+                        "info": "Your account is pending admin approval. An admin has been notified.",
+                        "auth_mode": _auth_mode(),
+                    },
+                    status_code=403,
+                )
+        except Exception as e:
+            logging.warning(f"[AUTH] Approval check failed for {email}: {e}")
+            return templates.TemplateResponse(
+                "signin.html",
+                {
+                    "request": request,
+                    "next": next,
+                    "error": "Could not verify account approval status. Please try again in a moment.",
+                    "stage": "email",
+                    "email": email,
+                    "otp_id": "",
+                    "info": "",
+                    "auth_mode": _auth_mode(),
+                },
+                status_code=503,
+            )
 
     dest = _safe_next_path(next)
     if dest == "/" and not (next or "").strip():
@@ -2247,6 +2452,52 @@ async def auth_google_callback(request: Request, code: Optional[str] = None, sta
         return _fail("Google sign-in failed: email not available.")
     if not email_verified:
         return _fail("Google sign-in failed: email not verified.")
+
+    if _require_admin_approval() and not _is_admin_email(email):
+        if not _parse_admin_emails():
+            resp = RedirectResponse(
+                f"/signin?error={quote('Admin approval is enabled but no admin emails are configured. Please contact support.')}&email={quote(email)}&next={quote(next_path)}",
+                status_code=303,
+            )
+            resp.delete_cookie(_oauth_cookie_name)
+            return resp
+        try:
+            import history_store
+
+            if not history_store.is_user_access_approved(email=email):
+                try:
+                    rec = history_store.get_user_access(email=email) or {}
+                    last_req = (rec.get("last_requested_at") or "").strip()
+                    should_notify = True
+                    if last_req:
+                        try:
+                            last_dt = datetime.fromisoformat(last_req)
+                            if last_dt.tzinfo is None:
+                                last_dt = last_dt.replace(tzinfo=timezone.utc)
+                            if datetime.now(timezone.utc) - last_dt < timedelta(minutes=10):
+                                should_notify = False
+                        except Exception:
+                            pass
+                    history_store.upsert_user_access_request(email=email)
+                    if should_notify:
+                        _notify_admin_user_approval_request(request, email=email)
+                except Exception as e:
+                    logging.warning(f"[AUTH] Failed to notify admin for approval request {email}: {e}")
+
+                resp = RedirectResponse(
+                    f"/signin?info={quote('Your account is pending admin approval. An admin has been notified.')}&email={quote(email)}&next={quote(next_path)}",
+                    status_code=303,
+                )
+                resp.delete_cookie(_oauth_cookie_name)
+                return resp
+        except Exception as e:
+            logging.warning(f"[AUTH] Approval check failed for {email}: {e}")
+            resp = RedirectResponse(
+                f"/signin?error={quote('Could not verify account approval status. Please try again in a moment.')}&email={quote(email)}&next={quote(next_path)}",
+                status_code=303,
+            )
+            resp.delete_cookie(_oauth_cookie_name)
+            return resp
 
     # Success: set our app cookie
     dest = next_path
@@ -3230,6 +3481,11 @@ async def dashboard_page(request: Request):
     if not user_email:
         return RedirectResponse("/signin?next=/dashboard", status_code=303)
     is_admin = _is_admin_email(user_email)
+    notice = None
+    try:
+        notice = (request.query_params.get("notice") or "").strip() or None
+    except Exception:
+        notice = None
     try:
         import history_store
         if is_admin:
@@ -3238,11 +3494,13 @@ async def dashboard_page(request: Request):
             runs = history_store.list_forecast_runs(user_email, limit=100)
         history_backend = history_store.history_backend()
         history_info = history_store.history_connection_info()
+        pending_users = history_store.list_pending_user_access(limit=200) if is_admin else []
     except Exception as e:
         logging.warning(f"[HISTORY] Failed to list dashboard runs for {user_email}: {e}")
         runs = []
         history_backend = "unknown"
         history_info = {"backend": "unknown"}
+        pending_users = []
     session_id = _session_id_from_request(request)
     history_error = None
     try:
@@ -3272,6 +3530,8 @@ async def dashboard_page(request: Request):
             "request": request,
             "runs": runs,
             "is_admin": is_admin,
+            "pending_users": pending_users,
+            "notice": notice,
             "history_backend": history_backend,
             "history_info": history_info,
             "history_error": history_error,
@@ -3400,6 +3660,60 @@ async def history_delete(request: Request, run_id: int = Form(...)):
         except Exception:
             pass
     return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.get("/admin/approve")
+async def admin_approve_user(request: Request, email: str, ts: str, sig: str):
+    user_email = _get_user_email(request)
+    # Require admin to be signed in.
+    if not user_email:
+        next_path = str(request.url.path)
+        if request.url.query:
+            next_path = f"{next_path}?{request.url.query}"
+        return RedirectResponse(f"/signin?next={quote(next_path)}", status_code=303)
+    if not _is_admin_email(user_email):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    email = (email or "").strip().lower()
+    ts = (ts or "").strip()
+    sig = (sig or "").strip()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    try:
+        ts_i = int(ts)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid ts")
+
+    expected = _admin_approve_sig(email, ts)
+    if not hmac.compare_digest(expected, sig):
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Expire approval links after 48 hours.
+    if abs(int(time.time()) - ts_i) > 48 * 3600:
+        raise HTTPException(status_code=400, detail="Approval link expired")
+
+    import history_store
+
+    history_store.approve_user_access(email=email, approved_by=user_email)
+    msg = quote(f"Approved user: {email}")
+    return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
+
+
+@app.post("/admin/approve-user")
+async def admin_approve_user_post(request: Request, email: str = Form(...)):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/dashboard", status_code=303)
+    if not _is_admin_email(user_email):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    import history_store
+
+    history_store.approve_user_access(email=email, approved_by=user_email)
+    msg = quote(f"Approved user: {email}")
+    return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
 
 @app.get("/api/update_plot")
 async def api_update_plot(request: Request):

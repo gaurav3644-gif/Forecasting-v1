@@ -63,6 +63,12 @@
     </div>
   {% endif %}
 
+  {% if notice %}
+    <div class="alert alert-success border shadow-sm py-2">
+      <div class="small">{{ notice }}</div>
+    </div>
+  {% endif %}
+
   <div class="row g-3">
     <div class="col-lg-5 col-xl-4">
       <div class="card shadow-sm mb-3">
@@ -177,7 +183,45 @@
         </div>
       {% endif %}
 
-        <div class="card shadow-sm">
+      {% if is_admin and pending_users and (pending_users|length) %}
+        <div class="card shadow-sm mb-3">
+          <div class="card-body p-0">
+            <div class="p-3 d-flex align-items-center justify-content-between">
+              <div class="fw-semibold">Pending Users</div>
+              <div class="text-muted small">{{ pending_users|length }} pending</div>
+            </div>
+            <div class="table-responsive">
+              <table class="table mb-0 align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Email</th>
+                    <th>Last request</th>
+                    <th>Count</th>
+                    <th class="text-end pe-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for u in pending_users %}
+                    <tr>
+                      <td class="ps-3 small">{{ u.email }}</td>
+                      <td class="text-muted small">{{ u.last_requested_at or u.created_at or "&mdash;" | safe }}</td>
+                      <td class="small">{{ u.request_count or 0 }}</td>
+                      <td class="text-end pe-3">
+                        <form method="post" action="/admin/approve-user" class="d-inline">
+                          <input type="hidden" name="email" value="{{ u.email }}">
+                          <button type="submit" class="btn btn-outline-success btn-sm">Approve</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="card shadow-sm">
         <div class="card-body p-0">
           <div class="p-3 d-flex align-items-center justify-content-between">
             <div class="fw-semibold">{% if is_admin %}All Users' Runs{% else %}Your Runs{% endif %}</div>

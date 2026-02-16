@@ -286,6 +286,18 @@ def init_db() -> None:
                     )
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_access (
+                        email TEXT PRIMARY KEY,
+                        created_at TEXT NOT NULL,
+                        approved_at TEXT,
+                        approved_by TEXT,
+                        last_requested_at TEXT,
+                        request_count INTEGER NOT NULL DEFAULT 0
+                    )
+                    """
+                )
                 conn.commit()
                 return
             finally:
@@ -376,6 +388,18 @@ def init_db() -> None:
                     consumed_at TEXT,
                     ip TEXT,
                     user_agent TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_access (
+                    email TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    approved_at TEXT,
+                    approved_by TEXT,
+                    last_requested_at TEXT,
+                    request_count INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -1574,5 +1598,178 @@ def get_latest_auth_otp_created_at(*, email: str) -> Optional[str]:
             if not row:
                 return None
             return row["created_at"]
+        finally:
+            conn.close()
+
+
+def get_user_access(*, email: str) -> Optional[Dict[str, Any]]:
+    init_db()
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return None
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute("SELECT * FROM user_access WHERE email = %s", (email,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute("SELECT * FROM user_access WHERE email = ?", (email,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def upsert_user_access_request(*, email: str) -> None:
+    """
+    Ensure a user_access record exists and bump request_count + last_requested_at.
+    """
+    init_db()
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        raise ValueError("valid email is required")
+    now = _utc_now_iso()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO user_access(email, created_at, approved_at, approved_by, last_requested_at, request_count)
+                    VALUES(%s, %s, NULL, NULL, %s, 1)
+                    ON CONFLICT(email) DO UPDATE SET
+                        last_requested_at=excluded.last_requested_at,
+                        request_count=user_access.request_count + 1
+                    """,
+                    (email, now, now),
+                )
+                conn.commit()
+                return
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO user_access(email, created_at, approved_at, approved_by, last_requested_at, request_count)
+                VALUES(?, ?, NULL, NULL, ?, 1)
+                ON CONFLICT(email) DO UPDATE SET
+                    last_requested_at=excluded.last_requested_at,
+                    request_count=request_count + 1
+                """,
+                (email, now, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def approve_user_access(*, email: str, approved_by: Optional[str] = None) -> bool:
+    init_db()
+    email = (email or "").strip().lower()
+    approved_by = (approved_by or "").strip().lower() or None
+    if "@" not in email:
+        raise ValueError("valid email is required")
+    now = _utc_now_iso()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO user_access(email, created_at, approved_at, approved_by, last_requested_at, request_count)
+                    VALUES(%s, %s, %s, %s, NULL, 0)
+                    ON CONFLICT(email) DO UPDATE SET
+                        approved_at=excluded.approved_at,
+                        approved_by=excluded.approved_by
+                    """,
+                    (email, now, now, approved_by),
+                )
+                conn.commit()
+                return True
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO user_access(email, created_at, approved_at, approved_by, last_requested_at, request_count)
+                VALUES(?, ?, ?, ?, NULL, 0)
+                ON CONFLICT(email) DO UPDATE SET
+                    approved_at=excluded.approved_at,
+                    approved_by=excluded.approved_by
+                """,
+                (email, now, now, approved_by),
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def is_user_access_approved(*, email: str) -> bool:
+    rec = get_user_access(email=email)
+    if not rec:
+        return False
+    return bool((rec.get("approved_at") or "").strip())
+
+
+def list_pending_user_access(*, limit: int = 200) -> list[dict[str, Any]]:
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    SELECT email, created_at, approved_at, approved_by, last_requested_at, request_count
+                    FROM user_access
+                    WHERE approved_at IS NULL
+                    ORDER BY last_requested_at DESC NULLS LAST, created_at DESC
+                    LIMIT %s
+                    """,
+                    (int(limit),),
+                )
+                rows = cur.fetchall() or []
+                return [dict(r) for r in rows]
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT email, created_at, approved_at, approved_by, last_requested_at, request_count
+                FROM user_access
+                WHERE approved_at IS NULL
+                ORDER BY COALESCE(last_requested_at, created_at) DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+            return [dict(r) for r in rows]
         finally:
             conn.close()
