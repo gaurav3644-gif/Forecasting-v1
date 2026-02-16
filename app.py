@@ -25,7 +25,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from run_forecast2 import forecast_all_combined
 import io
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from supply_planner import (
     generate_supply_plan as generate_order_recommendations,
     generate_time_phased_supply_plan as generate_time_phased_supply_plan,
@@ -300,6 +300,172 @@ def _send_demo_request_email_sendgrid(
     )
     resp.raise_for_status()
 
+
+def _send_text_email(
+    *,
+    to_addr: str,
+    subject: str,
+    body: str,
+    reply_to: Optional[str] = None,
+) -> str:
+    """
+    Send a plain-text email using the configured provider.
+
+    Providers (env vars):
+      - Resend: PITENSOR_RESEND_API_KEY (+ PITENSOR_EMAIL_FROM)
+      - SendGrid: PITENSOR_SENDGRID_API_KEY (+ PITENSOR_EMAIL_FROM)
+      - SMTP: PITENSOR_SMTP_HOST (+ PITENSOR_SMTP_USER/PASSWORD etc.)
+    Optional:
+      - PITENSOR_EMAIL_PROVIDER = resend|sendgrid|smtp
+      - PITENSOR_EMAIL_TIMEOUT_S (fallback PITENSOR_SMTP_TIMEOUT_S)
+    Returns provider name used.
+    """
+    to_addr = (to_addr or "").strip()
+    if "@" not in to_addr:
+        raise ValueError("valid to_addr is required")
+    subject = (subject or "").strip() or "PiTensor"
+    body = (body or "").strip()
+
+    provider = (os.getenv("PITENSOR_EMAIL_PROVIDER") or "").strip().lower()
+    has_resend = bool((os.getenv("PITENSOR_RESEND_API_KEY") or "").strip())
+    has_sendgrid = bool((os.getenv("PITENSOR_SENDGRID_API_KEY") or "").strip())
+    has_smtp = bool((os.getenv("PITENSOR_SMTP_HOST") or "").strip())
+    timeout_s = float((os.getenv("PITENSOR_EMAIL_TIMEOUT_S") or os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip() or "12")
+
+    def _from_addr_default() -> str:
+        return (os.getenv("PITENSOR_EMAIL_FROM") or "").strip() or "onboarding@resend.dev"
+
+    def _send_resend() -> None:
+        api_key = (os.getenv("PITENSOR_RESEND_API_KEY") or "").strip()
+        if not api_key:
+            raise RuntimeError("PITENSOR_RESEND_API_KEY is not set")
+        from_addr = _from_addr_default()
+        payload = {
+            "from": from_addr,
+            "to": [to_addr],
+            "subject": subject,
+            "text": body,
+        }
+        if reply_to:
+            payload["reply_to"] = reply_to
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+            timeout=timeout_s,
+        )
+        resp.raise_for_status()
+
+    def _send_sendgrid() -> None:
+        api_key = (os.getenv("PITENSOR_SENDGRID_API_KEY") or "").strip()
+        if not api_key:
+            raise RuntimeError("PITENSOR_SENDGRID_API_KEY is not set")
+        from_addr = (os.getenv("PITENSOR_EMAIL_FROM") or "").strip() or "support@pitensor.com"
+        payload = {
+            "personalizations": [{"to": [{"email": to_addr}]}],
+            "from": {"email": from_addr},
+            "subject": subject,
+            "content": [{"type": "text/plain", "value": body}],
+        }
+        if reply_to:
+            payload["reply_to"] = {"email": reply_to}
+        resp = httpx.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+            timeout=timeout_s,
+        )
+        resp.raise_for_status()
+
+    def _send_smtp() -> None:
+        smtp_host = (os.getenv("PITENSOR_SMTP_HOST") or "").strip()
+        if not smtp_host:
+            raise RuntimeError("PITENSOR_SMTP_HOST is not set")
+        smtp_port = int(float((os.getenv("PITENSOR_SMTP_PORT") or "587").strip() or "587"))
+        smtp_user = (os.getenv("PITENSOR_SMTP_USER") or "").strip()
+        smtp_password = (os.getenv("PITENSOR_SMTP_PASSWORD") or "").strip()
+        smtp_from = (os.getenv("PITENSOR_SMTP_FROM") or "").strip() or (smtp_user or "support@pitensor.com")
+        use_tls = (os.getenv("PITENSOR_SMTP_USE_TLS") or "1").strip() == "1"
+        use_ssl = (os.getenv("PITENSOR_SMTP_USE_SSL") or "0").strip() == "1"
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = smtp_from
+        msg["To"] = to_addr
+        if reply_to:
+            msg["Reply-To"] = reply_to
+        msg.set_content(body)
+
+        context = ssl.create_default_context()
+        if use_ssl:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout_s, context=context) as server:
+                if smtp_user and smtp_password:
+                    server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout_s) as server:
+                server.ehlo()
+                if use_tls:
+                    server.starttls(context=context)
+                    server.ehlo()
+                if smtp_user and smtp_password:
+                    server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+
+    def _do(p: str) -> None:
+        if p == "resend":
+            _send_resend()
+        elif p == "sendgrid":
+            _send_sendgrid()
+        elif p == "smtp":
+            _send_smtp()
+        else:
+            raise RuntimeError(f"Unknown PITENSOR_EMAIL_PROVIDER={p}")
+
+    if provider:
+        _do(provider)
+        return provider
+
+    if has_resend:
+        _do("resend")
+        return "resend"
+    if has_sendgrid:
+        _do("sendgrid")
+        return "sendgrid"
+    if has_smtp:
+        _do("smtp")
+        return "smtp"
+    raise RuntimeError("No email provider configured")
+
+
+def _auth_mode() -> str:
+    mode = (os.getenv("PITENSOR_AUTH_MODE") or "").strip().lower()
+    if mode in ("otp", "email_otp", "emailotp"):
+        return "otp"
+    if mode in ("simple", "email_only", "emailonly", "none"):
+        return "email_only"
+    # Auto: enable OTP when an email provider is configured.
+    if (os.getenv("PITENSOR_RESEND_API_KEY") or "").strip():
+        return "otp"
+    if (os.getenv("PITENSOR_SENDGRID_API_KEY") or "").strip():
+        return "otp"
+    if (os.getenv("PITENSOR_SMTP_HOST") or "").strip():
+        return "otp"
+    return "email_only"
+
+
+def _otp_hash(otp_id: str, code: str) -> str:
+    val = f"{(otp_id or '').strip()}:{(code or '').strip()}".encode("utf-8")
+    return hmac.new(_auth_cookie_secret_b, val, digestmod=_hashlib.sha256).hexdigest()
+
+
+def _client_ip(request: Request) -> str:
+    try:
+        xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        return xff or (request.client.host if request.client else "")
+    except Exception:
+        return ""
+
 def _send_demo_request_notification(
     *,
     name: str,
@@ -493,6 +659,38 @@ except Exception as _e:
 # Global storage for simplicity (use database for production SaaS)
 data_store = {}
 app.state.data_store = data_store
+
+_otp_mem_lock = threading.Lock()
+_otp_mem_store: dict[str, dict[str, Any]] = {}
+
+def _otp_mem_put(*, otp_id: str, email: str, code_hash: str, expires_at: str) -> None:
+    with _otp_mem_lock:
+        _otp_mem_store[otp_id] = {
+            "id": otp_id,
+            "email": email,
+            "code_hash": code_hash,
+            "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "expires_at": expires_at,
+            "attempts": 0,
+            "consumed_at": None,
+        }
+
+def _otp_mem_get(*, otp_id: str) -> Optional[Dict[str, Any]]:
+    with _otp_mem_lock:
+        rec = _otp_mem_store.get(otp_id)
+        return dict(rec) if rec else None
+
+def _otp_mem_inc_attempts(*, otp_id: str) -> None:
+    with _otp_mem_lock:
+        rec = _otp_mem_store.get(otp_id)
+        if rec:
+            rec["attempts"] = int(rec.get("attempts") or 0) + 1
+
+def _otp_mem_consume(*, otp_id: str) -> None:
+    with _otp_mem_lock:
+        rec = _otp_mem_store.get(otp_id)
+        if rec:
+            rec["consumed_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 _assistant_locks: dict[str, asyncio.Lock] = {}
 _assistant_cache: dict[str, tuple[float, str]] = {}
@@ -1525,13 +1723,271 @@ async def home(request: Request):
 
 @app.get("/signin", response_class=HTMLResponse)
 async def signin_page(request: Request, next: Optional[str] = None, error: Optional[str] = None):
-    return templates.TemplateResponse("signin.html", {"request": request, "next": next, "error": error})
+    return templates.TemplateResponse(
+        "signin.html",
+        {
+            "request": request,
+            "next": next,
+            "error": error,
+            "stage": "email",
+            "email": "",
+            "otp_id": "",
+            "info": "",
+            "auth_mode": _auth_mode(),
+        },
+    )
 
 @app.post("/signin")
-async def signin_post(request: Request, email: str = Form(...), next: Optional[str] = Form(default=None)):
+async def signin_post(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    email: str = Form(...),
+    next: Optional[str] = Form(default=None),
+):
     email = (email or "").strip()
     if "@" not in email or "." not in email.split("@")[-1]:
-        return templates.TemplateResponse("signin.html", {"request": request, "next": next, "error": "Please enter a valid email address."}, status_code=400)
+        return templates.TemplateResponse(
+            "signin.html",
+            {
+                "request": request,
+                "next": next,
+                "error": "Please enter a valid email address.",
+                "stage": "email",
+                "email": email,
+                "otp_id": "",
+                "info": "",
+                "auth_mode": _auth_mode(),
+            },
+            status_code=400,
+        )
+
+    if _auth_mode() == "otp":
+        try:
+            last_dt = None
+            try:
+                import history_store
+
+                # Throttle: avoid spamming OTPs.
+                last_created = history_store.get_latest_auth_otp_created_at(email=email)
+                if last_created:
+                    last_dt = datetime.fromisoformat(str(last_created))
+            except Exception:
+                last_dt = None
+
+            if last_dt is not None:
+                try:
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=timezone.utc)
+                    if (datetime.now(timezone.utc) - last_dt).total_seconds() < 30:
+                        return templates.TemplateResponse(
+                            "signin.html",
+                            {
+                                "request": request,
+                                "next": next,
+                                "error": "Please wait a moment before requesting another code.",
+                                "stage": "email",
+                                "email": email,
+                                "otp_id": "",
+                                "info": "",
+                                "auth_mode": _auth_mode(),
+                            },
+                            status_code=429,
+                        )
+                except Exception:
+                    pass
+
+            otp_id = _b64url_encode(os.urandom(18))
+            otp_code = f"{int.from_bytes(os.urandom(3), 'big') % 1000000:06d}"
+            expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).replace(microsecond=0).isoformat()
+            code_hash = _otp_hash(otp_id, otp_code)
+            try:
+                import history_store
+
+                history_store.create_auth_otp(
+                    otp_id=otp_id,
+                    email=email,
+                    code_hash=code_hash,
+                    expires_at=expires_at,
+                    ip=_client_ip(request),
+                    user_agent=(request.headers.get("user-agent") or "")[:300],
+                )
+            except Exception:
+                _otp_mem_put(otp_id=otp_id, email=email.lower(), code_hash=code_hash, expires_at=expires_at)
+
+            try:
+                _send_text_email(
+                    to_addr=email,
+                    subject="Your PiTensor sign-in code",
+                    body=(
+                        "Your PiTensor sign-in code is:\n\n"
+                        f"{otp_code}\n\n"
+                        "It expires in 10 minutes.\n\n"
+                        "If you did not request this, you can ignore this email."
+                    ),
+                )
+            except Exception as e:
+                return templates.TemplateResponse(
+                    "signin.html",
+                    {
+                        "request": request,
+                        "next": next,
+                        "error": f"Could not send sign-in code: {e}",
+                        "stage": "email",
+                        "email": email,
+                        "otp_id": "",
+                        "info": "",
+                        "auth_mode": _auth_mode(),
+                    },
+                    status_code=500,
+                )
+
+            return templates.TemplateResponse(
+                "signin.html",
+                {
+                    "request": request,
+                    "next": next,
+                    "error": None,
+                    "stage": "otp",
+                    "email": email,
+                    "otp_id": otp_id,
+                    "info": "We sent a 6-digit code to your email. Enter it below.",
+                    "auth_mode": _auth_mode(),
+                },
+            )
+        except Exception as e:
+            return templates.TemplateResponse(
+                "signin.html",
+                {
+                    "request": request,
+                    "next": next,
+                    "error": f"Could not send sign-in code: {e}",
+                    "stage": "email",
+                    "email": email,
+                    "otp_id": "",
+                    "info": "",
+                    "auth_mode": _auth_mode(),
+                },
+                status_code=500,
+            )
+
+    dest = _safe_next_path(next)
+    if dest == "/" and not (next or "").strip():
+        dest = "/dashboard"
+    response = RedirectResponse(dest, status_code=303)
+    response.set_cookie(
+        _auth_cookie_name,
+        _auth_cookie_value(email),
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(request),
+        max_age=_auth_cookie_max_age_s or None,
+    )
+    return response
+
+
+@app.post("/signin/verify")
+async def signin_verify(
+    request: Request,
+    otp_id: str = Form(...),
+    email: str = Form(...),
+    code: str = Form(...),
+    next: Optional[str] = Form(default=None),
+):
+    if _auth_mode() != "otp":
+        return RedirectResponse("/signin", status_code=303)
+
+    otp_id = (otp_id or "").strip()
+    email = (email or "").strip().lower()
+    code = "".join([c for c in (code or "") if c.isdigit()]).strip()
+    if not otp_id or "@" not in email or len(code) != 6:
+        return templates.TemplateResponse(
+            "signin.html",
+            {
+                "request": request,
+                "next": next,
+                "error": "Please enter the 6-digit code.",
+                "stage": "otp",
+                "email": email,
+                "otp_id": otp_id,
+                "info": "",
+                "auth_mode": _auth_mode(),
+            },
+            status_code=400,
+        )
+
+    try:
+        rec = {}
+        use_mem = False
+        try:
+            import history_store
+
+            rec = history_store.get_auth_otp(otp_id=otp_id) or {}
+        except Exception:
+            rec = _otp_mem_get(otp_id=otp_id) or {}
+            use_mem = True
+
+        if not rec:
+            raise ValueError("Code expired or invalid.")
+        if str(rec.get("email") or "").strip().lower() != email:
+            raise ValueError("Code expired or invalid.")
+        if rec.get("consumed_at"):
+            raise ValueError("Code already used.")
+        attempts = int(rec.get("attempts") or 0)
+        if attempts >= 5:
+            raise ValueError("Too many attempts. Please request a new code.")
+        expires_at = str(rec.get("expires_at") or "").strip()
+        if expires_at:
+            try:
+                exp_dt = datetime.fromisoformat(expires_at)
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > exp_dt:
+                    raise ValueError("Code expired. Please request a new code.")
+            except ValueError:
+                raise
+            except Exception:
+                pass
+
+        expected = str(rec.get("code_hash") or "")
+        actual = _otp_hash(otp_id, code)
+        if not expected or not hmac.compare_digest(expected, actual):
+            try:
+                if use_mem:
+                    _otp_mem_inc_attempts(otp_id=otp_id)
+                else:
+                    import history_store
+
+                    history_store.increment_auth_otp_attempts(otp_id=otp_id)
+            except Exception:
+                _otp_mem_inc_attempts(otp_id=otp_id)
+            raise ValueError("Incorrect code.")
+
+        try:
+            if use_mem:
+                _otp_mem_consume(otp_id=otp_id)
+            else:
+                import history_store
+
+                history_store.consume_auth_otp(otp_id=otp_id)
+        except Exception:
+            _otp_mem_consume(otp_id=otp_id)
+
+    except Exception as e:
+        return templates.TemplateResponse(
+            "signin.html",
+            {
+                "request": request,
+                "next": next,
+                "error": str(e) or "Invalid code.",
+                "stage": "otp",
+                "email": email,
+                "otp_id": otp_id,
+                "info": "",
+                "auth_mode": _auth_mode(),
+            },
+            status_code=400,
+        )
+
     dest = _safe_next_path(next)
     if dest == "/" and not (next or "").strip():
         dest = "/dashboard"
@@ -1548,27 +2004,15 @@ async def signin_post(request: Request, email: str = Form(...), next: Optional[s
 
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request, next: Optional[str] = None, error: Optional[str] = None):
-    return templates.TemplateResponse("signup.html", {"request": request, "next": next, "error": error})
+    # For now, route sign-up through the same flow as sign-in.
+    dest = "/signin"
+    if (next or "").strip():
+        dest = f"/signin?next={quote(str(next))}"
+    return RedirectResponse(dest, status_code=303)
 
 @app.post("/signup")
-async def signup_post(request: Request, email: str = Form(...), next: Optional[str] = Form(default=None)):
-    # For now, sign-up behaves like a simple email session (no persistence).
-    email = (email or "").strip()
-    if "@" not in email or "." not in email.split("@")[-1]:
-        return templates.TemplateResponse("signup.html", {"request": request, "next": next, "error": "Please enter a valid email address."}, status_code=400)
-    dest = _safe_next_path(next)
-    if dest == "/" and not (next or "").strip():
-        dest = "/dashboard"
-    response = RedirectResponse(dest, status_code=303)
-    response.set_cookie(
-        _auth_cookie_name,
-        _auth_cookie_value(email),
-        httponly=True,
-        samesite="lax",
-        secure=_cookie_secure(request),
-        max_age=_auth_cookie_max_age_s or None,
-    )
-    return response
+async def signup_post(request: Request):
+    return RedirectResponse("/signin", status_code=303)
 
 @app.get("/signout")
 async def signout(request: Request):

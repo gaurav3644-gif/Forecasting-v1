@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from datetime import date
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -271,6 +271,21 @@ def init_db() -> None:
                     )
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS auth_otps (
+                        id TEXT PRIMARY KEY,
+                        email TEXT NOT NULL,
+                        code_hash TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        consumed_at TEXT,
+                        ip TEXT,
+                        user_agent TEXT
+                    )
+                    """
+                )
                 conn.commit()
                 return
             finally:
@@ -346,6 +361,21 @@ def init_db() -> None:
                     message TEXT,
                     source_path TEXT,
                     user_email TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auth_otps (
+                    id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    code_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    consumed_at TEXT,
+                    ip TEXT,
+                    user_agent TEXT
                 )
                 """
             )
@@ -914,5 +944,205 @@ def save_demo_request(
             conn.commit()
             row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
             return int(row["id"])
+        finally:
+            conn.close()
+
+
+def create_auth_otp(
+    *,
+    otp_id: str,
+    email: str,
+    code_hash: str,
+    expires_at: str,
+    ip: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> None:
+    """
+    Persist a one-time sign-in code for OTP-based authentication.
+    """
+    init_db()
+    otp_id = (otp_id or "").strip()
+    email = (email or "").strip().lower()
+    code_hash = (code_hash or "").strip()
+    if not otp_id:
+        raise ValueError("otp_id is required")
+    if "@" not in email:
+        raise ValueError("valid email is required")
+    if not code_hash:
+        raise ValueError("code_hash is required")
+    created_at = _utc_now_iso()
+    expires_at = (expires_at or "").strip() or created_at
+    ip = (ip or "").strip() or None
+    user_agent = (user_agent or "").strip() or None
+
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO auth_otps(
+                        id, email, code_hash, created_at, expires_at, attempts, consumed_at, ip, user_agent
+                    )
+                    VALUES(%s, %s, %s, %s, %s, 0, NULL, %s, %s)
+                    """,
+                    (otp_id, email, code_hash, created_at, expires_at, ip, user_agent),
+                )
+                conn.commit()
+                return
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO auth_otps(
+                    id, email, code_hash, created_at, expires_at, attempts, consumed_at, ip, user_agent
+                )
+                VALUES(?, ?, ?, ?, ?, 0, NULL, ?, ?)
+                """,
+                (otp_id, email, code_hash, created_at, expires_at, ip, user_agent),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_auth_otp(*, otp_id: str) -> Optional[Dict[str, Any]]:
+    init_db()
+    otp_id = (otp_id or "").strip()
+    if not otp_id:
+        return None
+
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM auth_otps WHERE id = %s", (otp_id,))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                # psycopg row is a dict-like via _pg_row_helper
+                if isinstance(row, dict):
+                    return dict(row)
+                # fallback: positional (shouldn't happen with our cursor helper)
+                return {
+                    "id": row[0],
+                    "email": row[1],
+                    "code_hash": row[2],
+                    "created_at": row[3],
+                    "expires_at": row[4],
+                    "attempts": row[5],
+                    "consumed_at": row[6],
+                    "ip": row[7],
+                    "user_agent": row[8],
+                }
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute("SELECT * FROM auth_otps WHERE id = ?", (otp_id,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def increment_auth_otp_attempts(*, otp_id: str) -> None:
+    init_db()
+    otp_id = (otp_id or "").strip()
+    if not otp_id:
+        return
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute("UPDATE auth_otps SET attempts = attempts + 1 WHERE id = %s", (otp_id,))
+                conn.commit()
+                return
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        conn = _connect()
+        try:
+            conn.execute("UPDATE auth_otps SET attempts = attempts + 1 WHERE id = ?", (otp_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def consume_auth_otp(*, otp_id: str) -> None:
+    init_db()
+    otp_id = (otp_id or "").strip()
+    if not otp_id:
+        return
+    consumed_at = _utc_now_iso()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute("UPDATE auth_otps SET consumed_at = %s WHERE id = %s", (consumed_at, otp_id))
+                conn.commit()
+                return
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        conn = _connect()
+        try:
+            conn.execute("UPDATE auth_otps SET consumed_at = ? WHERE id = ?", (consumed_at, otp_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_latest_auth_otp_created_at(*, email: str) -> Optional[str]:
+    init_db()
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return None
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT created_at FROM auth_otps WHERE email = %s ORDER BY created_at DESC LIMIT 1",
+                    (email,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                if isinstance(row, dict):
+                    return row.get("created_at")
+                return row[0]
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT created_at FROM auth_otps WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+                (email,),
+            ).fetchone()
+            if not row:
+                return None
+            return row["created_at"]
         finally:
             conn.close()

@@ -88,15 +88,43 @@
     <div class="alert alert-danger small">{{ error }}</div>
     {% endif %}
 
+    {% if info %}
+    <div class="alert alert-success small">{{ info }}</div>
+    {% endif %}
+
+    {% if stage == 'otp' %}
+    <form method="post" action="/signin/verify" class="mb-2">
+      <input type="hidden" name="next" value="{{ next or '' }}">
+      <input type="hidden" name="otp_id" value="{{ otp_id or '' }}">
+      <input type="hidden" name="email" value="{{ email or '' }}">
+      <div class="mb-2">
+        <label class="form-label fw-semibold">Email</label>
+        <input class="form-control form-control-lg" type="email" value="{{ email or '' }}" disabled>
+      </div>
+      <div class="mb-2">
+        <label class="form-label fw-semibold">6-digit code</label>
+        <input class="form-control form-control-lg" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required>
+        <div class="form-text">Code expires in 10 minutes.</div>
+      </div>
+      <button type="submit" class="btn btn-black w-100">Verify &amp; sign in</button>
+    </form>
+    <form method="post" action="/signin" class="mt-2">
+      <input type="hidden" name="next" value="{{ next or '' }}">
+      <input type="hidden" name="email" value="{{ email or '' }}">
+      <button type="submit" class="btn btn-outline-soft w-100">Resend code</button>
+    </form>
+    {% else %}
     <form method="post" action="/signin" class="mb-2">
       <input type="hidden" name="next" value="{{ next or '' }}">
       <div class="mb-2">
         <label class="form-label fw-semibold">Email</label>
-        <input class="form-control form-control-lg" type="email" name="email" placeholder="Your email address" required>
+        <input class="form-control form-control-lg" type="email" name="email" placeholder="Your email address" value="{{ email or '' }}" required>
       </div>
       <button type="submit" class="btn btn-black w-100"><span data-i18n="auth_continue">Continue</span></button>
     </form>
+    {% endif %}
 
+    {% if stage != 'otp' %}
     <div class="divider">OR</div>
 
     <div class="d-grid gap-2">
@@ -107,6 +135,7 @@
         <span data-i18n="auth_continue_github">Continue with GitHub</span>
       </a>
     </div>
+    {% endif %}
 
     <div class="text-center mt-3 small muted-link">
       Don't have an account? <a href="/signup?next={{ next or '' }}">Sign up</a>
