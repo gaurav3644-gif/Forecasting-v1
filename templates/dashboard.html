@@ -230,165 +230,256 @@
         </div>
       {% endif %}
 
-      {% if is_admin and current_users and (current_users|length) %}
+      {% if is_admin %}
         <div class="card shadow-sm mb-3">
           <div class="card-body p-0">
-            <div class="p-3 d-flex align-items-center justify-content-between">
-              <div class="fw-semibold">Current Users</div>
-              <div class="text-muted small">{{ current_users|length }} users</div>
-            </div>
-            <div class="table-responsive">
-              <table class="table mb-0 align-middle">
-                <thead class="table-light">
-                  <tr>
-                    <th class="ps-3">Email</th>
-                    <th>Status</th>
-                    <th class="text-end pe-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for u in current_users %}
-                    <tr>
-                      <td class="ps-3 small">{{ u.email }}</td>
-                      <td class="text-muted small">
-                        {% if u.status == 'approved' %}
-                          Approved
-                        {% else %}
-                          Legacy
-                        {% endif %}
-                      </td>
-                      <td class="text-end pe-3">
-                        <form method="post" action="/admin/revoke-user" class="d-inline js-revoke-user">
-                          <input type="hidden" name="email" value="{{ u.email }}">
-                          <input type="hidden" name="reason" value="revoked by admin">
-                          <button type="submit" class="btn btn-outline-warning btn-sm">Revoke</button>
-                        </form>
-                        <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
-                          <input type="hidden" name="email" value="{{ u.email }}">
-                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                        </form>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      {% endif %}
+            <ul class="nav nav-tabs px-3 pt-3" id="admin-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-runs-btn" data-bs-toggle="tab" data-bs-target="#tab-runs" type="button" role="tab" aria-controls="tab-runs" aria-selected="true">
+                  All Runs
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-current-btn" data-bs-toggle="tab" data-bs-target="#tab-current" type="button" role="tab" aria-controls="tab-current" aria-selected="false">
+                  Current Users
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-revoked-btn" data-bs-toggle="tab" data-bs-target="#tab-revoked" type="button" role="tab" aria-controls="tab-revoked" aria-selected="false">
+                  Revoked Users
+                </button>
+              </li>
+            </ul>
 
-      {% if is_admin and revoked_users and (revoked_users|length) %}
-        <div class="card shadow-sm mb-3">
-          <div class="card-body p-0">
-            <div class="p-3 d-flex align-items-center justify-content-between">
-              <div class="fw-semibold">Revoked Users</div>
-              <div class="text-muted small">{{ revoked_users|length }} revoked</div>
-            </div>
-            <div class="table-responsive">
-              <table class="table mb-0 align-middle">
-                <thead class="table-light">
-                  <tr>
-                    <th class="ps-3">Email</th>
-                    <th>Revoked</th>
-                    <th class="text-end pe-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for u in revoked_users %}
-                    <tr>
-                      <td class="ps-3 small">{{ u.email }}</td>
-                      <td class="text-muted small">{{ u.revoked_at or "&mdash;" | safe }}</td>
-                      <td class="text-end pe-3">
-                        <form method="post" action="/admin/approve-user" class="d-inline">
-                          <input type="hidden" name="email" value="{{ u.email }}">
-                          <button type="submit" class="btn btn-outline-success btn-sm">Restore</button>
-                        </form>
-                        <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
-                          <input type="hidden" name="email" value="{{ u.email }}">
-                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                        </form>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      {% endif %}
-
-      <div class="card shadow-sm">
-        <div class="card-body p-0">
-          <div class="p-3 d-flex align-items-center justify-content-between">
-            <div class="fw-semibold">{% if is_admin %}All Users' Runs{% else %}Your Runs{% endif %}</div>
-            <div class="text-muted small">{{ runs|length }} shown</div>
-          </div>
-          {% if not runs %}
-            <div class="px-3 pb-3">
-              <div class="alert alert-light border mb-0">
-                {% if is_admin %}
-                  No runs saved yet.
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="tab-runs" role="tabpanel" aria-labelledby="tab-runs-btn">
+                <div class="p-3 d-flex align-items-center justify-content-between">
+                  <div class="fw-semibold">All Runs</div>
+                  <div class="text-muted small">{{ runs|length }} shown</div>
+                </div>
+                {% if not runs %}
+                  <div class="px-3 pb-3">
+                    <div class="alert alert-light border mb-0">
+                      No runs saved yet.
+                      <span class="text-muted">Runs are saved only when you are signed in and the forecast completes successfully.</span>
+                    </div>
+                  </div>
                 {% else %}
-                  No saved runs yet for this account.
+                  <div class="table-responsive">
+                    <table class="table mb-0 align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th class="ps-3">Run ID</th>
+                          <th>User</th>
+                          <th>Created</th>
+                          <th>File</th>
+                          <th>Start</th>
+                          <th>Months</th>
+                          <th>Grain</th>
+                          <th class="text-end pe-3">Open</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for r in runs %}
+                          <tr>
+                            <td class="ps-3">{{ r.run_id }}</td>
+                            <td class="small">{{ r.user_email or "&mdash;" | safe }}</td>
+                            <td class="text-muted small">{{ r.created_at }}</td>
+                            <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
+                            <td class="small">{{ r.start_month or "&mdash;" | safe }}</td>
+                            <td class="small">{{ r.months or "&mdash;" | safe }}</td>
+                            <td class="small">
+                              {% if r.grain %}
+                                {{ r.grain | join(', ') if r.grain is iterable else r.grain }}
+                              {% else %}
+                                &mdash;
+                              {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                              <form method="post" action="/history/load" class="d-inline">
+                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                <input type="hidden" name="target" value="results">
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                              </form>
+                              <form method="post" action="/history/load" class="d-inline">
+                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                <input type="hidden" name="target" value="supply_plan">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
+                              </form>
+                              <form method="post" action="/history/delete" class="d-inline js-delete-run">
+                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                              </form>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
                 {% endif %}
-                <span class="text-muted">Runs are saved only when you are signed in and the forecast completes successfully.</span>
+              </div>
+
+              <div class="tab-pane fade" id="tab-current" role="tabpanel" aria-labelledby="tab-current-btn">
+                <div class="p-3 d-flex align-items-center justify-content-between">
+                  <div class="fw-semibold">Current Users</div>
+                  <div class="text-muted small">{{ (current_users|length) if current_users is defined else 0 }} users</div>
+                </div>
+                {% if not current_users %}
+                  <div class="px-3 pb-3">
+                    <div class="alert alert-light border mb-0">No users to show.</div>
+                  </div>
+                {% else %}
+                  <div class="table-responsive">
+                    <table class="table mb-0 align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th class="ps-3">Email</th>
+                          <th>Status</th>
+                          <th class="text-end pe-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for u in current_users %}
+                          <tr>
+                            <td class="ps-3 small">{{ u.email }}</td>
+                            <td class="text-muted small">
+                              {% if u.status == 'approved' %}
+                                Approved
+                              {% else %}
+                                Legacy
+                              {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                              <form method="post" action="/admin/revoke-user" class="d-inline js-revoke-user">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <input type="hidden" name="reason" value="revoked by admin">
+                                <button type="submit" class="btn btn-outline-warning btn-sm">Revoke</button>
+                              </form>
+                              <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                              </form>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="tab-pane fade" id="tab-revoked" role="tabpanel" aria-labelledby="tab-revoked-btn">
+                <div class="p-3 d-flex align-items-center justify-content-between">
+                  <div class="fw-semibold">Revoked Users</div>
+                  <div class="text-muted small">{{ revoked_users|length }} revoked</div>
+                </div>
+                {% if not revoked_users %}
+                  <div class="px-3 pb-3">
+                    <div class="alert alert-light border mb-0">No revoked users.</div>
+                  </div>
+                {% else %}
+                  <div class="table-responsive">
+                    <table class="table mb-0 align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th class="ps-3">Email</th>
+                          <th>Revoked</th>
+                          <th class="text-end pe-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for u in revoked_users %}
+                          <tr>
+                            <td class="ps-3 small">{{ u.email }}</td>
+                            <td class="text-muted small">{{ u.revoked_at or "&mdash;" | safe }}</td>
+                            <td class="text-end pe-3">
+                              <form method="post" action="/admin/approve-user" class="d-inline">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <button type="submit" class="btn btn-outline-success btn-sm">Restore</button>
+                              </form>
+                              <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                              </form>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% endif %}
               </div>
             </div>
-          {% else %}
-            <div class="table-responsive">
-              <table class="table mb-0 align-middle">
-                <thead class="table-light">
-                  <tr>
-                    <th class="ps-3">Run ID</th>
-                    {% if is_admin %}<th>User</th>{% endif %}
-                    <th>Created</th>
-                    <th>File</th>
-                    <th>Start</th>
-                    <th>Months</th>
-                    <th>Grain</th>
-                    <th class="text-end pe-3">Open</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for r in runs %}
-                    <tr>
-                      <td class="ps-3">{{ r.run_id }}</td>
-                      {% if is_admin %}<td class="small">{{ r.user_email or "&mdash;" | safe }}</td>{% endif %}
-                      <td class="text-muted small">{{ r.created_at }}</td>
-                      <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
-                      <td class="small">{{ r.start_month or "&mdash;" | safe }}</td>
-                      <td class="small">{{ r.months or "&mdash;" | safe }}</td>
-                      <td class="small">
-                        {% if r.grain %}
-                          {{ r.grain | join(', ') if r.grain is iterable else r.grain }}
-                        {% else %}
-                          &mdash;
-                        {% endif %}
-                      </td>
-                      <td class="text-end pe-3">
-                        <form method="post" action="/history/load" class="d-inline">
-                          <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                          <input type="hidden" name="target" value="results">
-                          <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
-                        </form>
-                        <form method="post" action="/history/load" class="d-inline">
-                          <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                          <input type="hidden" name="target" value="supply_plan">
-                          <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
-                        </form>
-                        <form method="post" action="/history/delete" class="d-inline js-delete-run">
-                          <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                        </form>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% endif %}
+          </div>
         </div>
-      </div>
+      {% else %}
+        <div class="card shadow-sm">
+          <div class="card-body p-0">
+            <div class="p-3 d-flex align-items-center justify-content-between">
+              <div class="fw-semibold">Your Runs</div>
+              <div class="text-muted small">{{ runs|length }} shown</div>
+            </div>
+            {% if not runs %}
+              <div class="px-3 pb-3">
+                <div class="alert alert-light border mb-0">
+                  No saved runs yet for this account.
+                  <span class="text-muted">Runs are saved only when you are signed in and the forecast completes successfully.</span>
+                </div>
+              </div>
+            {% else %}
+              <div class="table-responsive">
+                <table class="table mb-0 align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="ps-3">Run ID</th>
+                      <th>Created</th>
+                      <th>File</th>
+                      <th>Start</th>
+                      <th>Months</th>
+                      <th>Grain</th>
+                      <th class="text-end pe-3">Open</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for r in runs %}
+                      <tr>
+                        <td class="ps-3">{{ r.run_id }}</td>
+                        <td class="text-muted small">{{ r.created_at }}</td>
+                        <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
+                        <td class="small">{{ r.start_month or "&mdash;" | safe }}</td>
+                        <td class="small">{{ r.months or "&mdash;" | safe }}</td>
+                        <td class="small">
+                          {% if r.grain %}
+                            {{ r.grain | join(', ') if r.grain is iterable else r.grain }}
+                          {% else %}
+                            &mdash;
+                          {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                          <form method="post" action="/history/load" class="d-inline">
+                            <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                            <input type="hidden" name="target" value="results">
+                            <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                          </form>
+                          <form method="post" action="/history/load" class="d-inline">
+                            <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                            <input type="hidden" name="target" value="supply_plan">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
+                          </form>
+                          <form method="post" action="/history/delete" class="d-inline js-delete-run">
+                            <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                          </form>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     </div>
   </div>
 </div>
