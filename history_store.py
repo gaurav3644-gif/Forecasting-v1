@@ -1884,6 +1884,148 @@ def list_user_access(*, limit: int = 500, status: str = "all") -> list[dict[str,
             conn.close()
 
 
+def list_current_users_admin(*, limit: int = 500) -> list[dict[str, Any]]:
+    """
+    Admin utility: list current (non-revoked) users.
+
+    Includes:
+      - Approved users in user_access
+      - "Legacy" users present in users table but missing user_access
+
+    Excludes:
+      - Revoked users
+      - Pending users (user_access exists but approved_at is NULL)
+    """
+    init_db()
+    out: list[dict[str, Any]] = []
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    WITH access AS (
+                        SELECT
+                            email,
+                            approved_at,
+                            approved_by,
+                            revoked_at,
+                            revoked_by,
+                            revoked_reason,
+                            last_requested_at,
+                            request_count,
+                            created_at AS access_created_at
+                        FROM user_access
+                    )
+                    SELECT
+                        u.email AS email,
+                        u.created_at AS user_created_at,
+                        a.approved_at AS approved_at,
+                        a.approved_by AS approved_by,
+                        a.revoked_at AS revoked_at,
+                        a.last_requested_at AS last_requested_at,
+                        a.request_count AS request_count
+                    FROM users u
+                    LEFT JOIN access a ON a.email = u.email
+                    WHERE (a.revoked_at IS NULL OR a.revoked_at = '')
+                      AND (a.email IS NULL OR a.approved_at IS NOT NULL)
+                    UNION
+                    SELECT
+                        a.email AS email,
+                        NULL AS user_created_at,
+                        a.approved_at AS approved_at,
+                        a.approved_by AS approved_by,
+                        a.revoked_at AS revoked_at,
+                        a.last_requested_at AS last_requested_at,
+                        a.request_count AS request_count
+                    FROM access a
+                    WHERE a.approved_at IS NOT NULL
+                      AND (a.revoked_at IS NULL OR a.revoked_at = '')
+                    ORDER BY COALESCE(user_created_at, approved_at, access_created_at) DESC NULLS LAST
+                    LIMIT %s
+                    """,
+                    (int(limit),),
+                )
+                rows = cur.fetchall() or []
+                seen: set[str] = set()
+                for r in rows:
+                    email = str(r.get("email") or "").strip().lower()
+                    if not email or email in seen:
+                        continue
+                    seen.add(email)
+                    approved_at = r.get("approved_at")
+                    out.append(
+                        {
+                            "email": email,
+                            "approved_at": approved_at,
+                            "created_at": r.get("user_created_at"),
+                            "status": "approved" if (approved_at or "").strip() else "legacy",
+                        }
+                    )
+                return out
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            users_rows = conn.execute("SELECT email, created_at FROM users ORDER BY created_at DESC").fetchall()
+            access_rows = conn.execute(
+                """
+                SELECT email, approved_at, revoked_at, created_at
+                FROM user_access
+                """
+            ).fetchall()
+            access_map = {str(r["email"]).strip().lower(): dict(r) for r in access_rows if r and r.get("email")}
+
+            seen: set[str] = set()
+            # Users table first (most relevant; they have at least one run history)
+            for r in users_rows:
+                email = str(r["email"]).strip().lower()
+                if not email or email in seen:
+                    continue
+                a = access_map.get(email) or {}
+                if (a.get("revoked_at") or "").strip():
+                    continue
+                if a and not (a.get("approved_at") or "").strip():
+                    # Pending: exclude from current list (shows in Pending Users)
+                    continue
+                seen.add(email)
+                approved_at = (a.get("approved_at") or "").strip() or None
+                out.append(
+                    {
+                        "email": email,
+                        "approved_at": approved_at,
+                        "created_at": r.get("created_at"),
+                        "status": "approved" if approved_at else "legacy",
+                    }
+                )
+
+            # Add approved access records that don't have any runs yet (not in users table)
+            for email, a in access_map.items():
+                if email in seen:
+                    continue
+                if (a.get("revoked_at") or "").strip():
+                    continue
+                if not (a.get("approved_at") or "").strip():
+                    continue
+                seen.add(email)
+                out.append(
+                    {
+                        "email": email,
+                        "approved_at": (a.get("approved_at") or "").strip() or None,
+                        "created_at": None,
+                        "status": "approved",
+                    }
+                )
+
+            return out[: int(limit)]
+        finally:
+            conn.close()
+
 def list_pending_user_access(*, limit: int = 200) -> list[dict[str, Any]]:
     init_db()
     with _LOCK:

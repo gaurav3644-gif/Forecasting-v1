@@ -230,27 +230,33 @@
         </div>
       {% endif %}
 
-      {% if is_admin and approved_users and (approved_users|length) %}
+      {% if is_admin and current_users and (current_users|length) %}
         <div class="card shadow-sm mb-3">
           <div class="card-body p-0">
             <div class="p-3 d-flex align-items-center justify-content-between">
-              <div class="fw-semibold">Approved Users</div>
-              <div class="text-muted small">{{ approved_users|length }} approved</div>
+              <div class="fw-semibold">Current Users</div>
+              <div class="text-muted small">{{ current_users|length }} users</div>
             </div>
             <div class="table-responsive">
               <table class="table mb-0 align-middle">
                 <thead class="table-light">
                   <tr>
                     <th class="ps-3">Email</th>
-                    <th>Approved</th>
+                    <th>Status</th>
                     <th class="text-end pe-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {% for u in approved_users %}
+                  {% for u in current_users %}
                     <tr>
                       <td class="ps-3 small">{{ u.email }}</td>
-                      <td class="text-muted small">{{ u.approved_at or "&mdash;" | safe }}</td>
+                      <td class="text-muted small">
+                        {% if u.status == 'approved' %}
+                          Approved
+                        {% else %}
+                          Legacy
+                        {% endif %}
+                      </td>
                       <td class="text-end pe-3">
                         <form method="post" action="/admin/revoke-user" class="d-inline js-revoke-user">
                           <input type="hidden" name="email" value="{{ u.email }}">

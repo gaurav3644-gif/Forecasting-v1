@@ -3615,7 +3615,7 @@ async def dashboard_page(request: Request):
         history_backend = history_store.history_backend()
         history_info = history_store.history_connection_info()
         pending_users = history_store.list_pending_user_access(limit=200) if is_admin else []
-        approved_users = history_store.list_user_access(limit=500, status="approved") if is_admin else []
+        current_users = history_store.list_current_users_admin(limit=500) if is_admin else []
         revoked_users = history_store.list_user_access(limit=500, status="revoked") if is_admin else []
     except Exception as e:
         logging.warning(f"[HISTORY] Failed to list dashboard runs for {user_email}: {e}")
@@ -3623,7 +3623,7 @@ async def dashboard_page(request: Request):
         history_backend = "unknown"
         history_info = {"backend": "unknown"}
         pending_users = []
-        approved_users = []
+        current_users = []
         revoked_users = []
     session_id = _session_id_from_request(request)
     history_error = None
@@ -3655,7 +3655,7 @@ async def dashboard_page(request: Request):
             "runs": runs,
             "is_admin": is_admin,
             "pending_users": pending_users,
-            "approved_users": approved_users,
+            "current_users": current_users,
             "revoked_users": revoked_users,
             "notice": notice,
             "history_backend": history_backend,
