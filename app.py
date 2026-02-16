@@ -199,14 +199,14 @@ def _send_demo_request_email_resend(
     Env vars:
       - PITENSOR_RESEND_API_KEY (required)
       - PITENSOR_DEMO_EMAIL_TO (default support@pitensor.com)
-      - PITENSOR_EMAIL_FROM (default support@pitensor.com)
+      - PITENSOR_EMAIL_FROM (default onboarding@resend.dev)
     """
     api_key = (os.getenv("PITENSOR_RESEND_API_KEY") or "").strip()
     if not api_key:
         raise RuntimeError("PITENSOR_RESEND_API_KEY is not set")
 
     to_addr = (os.getenv("PITENSOR_DEMO_EMAIL_TO") or "support@pitensor.com").strip() or "support@pitensor.com"
-    from_addr = (os.getenv("PITENSOR_EMAIL_FROM") or "support@pitensor.com").strip() or "support@pitensor.com"
+    from_addr = (os.getenv("PITENSOR_EMAIL_FROM") or "").strip() or "onboarding@resend.dev"
 
     subject = f"[PiTensor] Request Demo: {name} ({email})"
     lines = [
@@ -1488,7 +1488,7 @@ async def request_demo(request: Request, background_tasks: BackgroundTasks):
     ):
         def _email_task() -> None:
             try:
-                provider_used = _send_demo_request_notification(
+                _send_demo_request_notification(
                     name=name,
                     email=email,
                     company=company or None,
@@ -1505,8 +1505,14 @@ async def request_demo(request: Request, background_tasks: BackgroundTasks):
                 use_ssl = (os.getenv("PITENSOR_SMTP_USE_SSL") or "0").strip()
                 use_tls = (os.getenv("PITENSOR_SMTP_USE_TLS") or "1").strip()
                 timeout_s = (os.getenv("PITENSOR_EMAIL_TIMEOUT_S") or os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip()
+                extra = ""
+                if isinstance(e, httpx.HTTPStatusError) and getattr(e, "response", None) is not None:
+                    try:
+                        extra = f" status={e.response.status_code} body={e.response.text[:500]}"
+                    except Exception:
+                        extra = f" status={getattr(e.response, 'status_code', '')}"
                 logging.warning(
-                    f"[DEMO] Failed to send demo request email: {e} (provider={provider or 'auto'} host={smtp_host} port={smtp_port} ssl={use_ssl} tls={use_tls} timeout_s={timeout_s})"
+                    f"[DEMO] Failed to send demo request email: {e} (provider={provider or 'auto'} host={smtp_host} port={smtp_port} ssl={use_ssl} tls={use_tls} timeout_s={timeout_s}){extra}"
                 )
 
         background_tasks.add_task(_email_task)
