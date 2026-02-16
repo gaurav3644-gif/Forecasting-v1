@@ -36,7 +36,7 @@
   }
   .auth-title {
     text-align: center;
-    font-weight: 800;
+    font-weight: 400;
     letter-spacing: -0.02em;
     margin-bottom: 18px;
   }
@@ -69,6 +69,13 @@
     background: #fff;
     font-weight: 700;
     padding: 0.65rem 1rem;
+  }
+  .oauth-logo {
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    vertical-align: -3px;
+    margin-right: 10px;
   }
   .muted-link { color: rgba(18,24,39,0.65); }
   .muted-link a { color: #0d6efd; text-decoration: none; font-weight: 700; }
@@ -129,6 +136,13 @@
 
     <div class="d-grid gap-2">
       <a class="btn btn-outline-soft" href="/auth/google?next={{ next or '' }}">
+        <svg class="oauth-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.72 1.22 9.23 3.62l6.9-6.9C35.84 2.38 30.32 0 24 0 14.62 0 6.51 5.38 2.56 13.22l8.02 6.23C12.41 13.5 17.74 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.5 24c0-1.65-.15-3.23-.43-4.75H24v9h12.64c-.54 2.9-2.18 5.36-4.64 7.02l7.14 5.53C43.35 36.9 46.5 30.95 46.5 24z"/>
+          <path fill="#FBBC05" d="M10.58 28.45A14.5 14.5 0 0 1 9.5 24c0-1.54.27-3.03.78-4.45l-8.02-6.23A23.95 23.95 0 0 0 0 24c0 3.87.92 7.53 2.56 10.78l8.02-6.33z"/>
+          <path fill="#34A853" d="M24 48c6.32 0 11.84-2.08 15.79-5.67l-7.14-5.53c-1.98 1.33-4.52 2.12-8.65 2.12-6.26 0-11.59-4-13.42-9.55l-8.02 6.33C6.51 42.62 14.62 48 24 48z"/>
+          <path fill="none" d="M0 0h48v48H0z"/>
+        </svg>
         <span data-i18n="auth_continue_google">Continue with Google</span>
       </a>
     </div>
