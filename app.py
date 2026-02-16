@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import os
 import httpx
 import smtplib
+import socket
 import ssl
 from email.message import EmailMessage
 from assistant_context_packet import build_context_packet
@@ -148,20 +149,36 @@ def _send_demo_request_email(
     msg.set_content(body)
 
     context = ssl.create_default_context()
-    if use_ssl:
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout_s, context=context) as server:
-            if smtp_user and smtp_password:
-                server.login(smtp_user, smtp_password)
-            server.send_message(msg)
-    else:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout_s) as server:
+
+    def _send_via_smtp(*, host: str, port: int, ssl_mode: bool, tls_mode: bool) -> None:
+        if ssl_mode:
+            with smtplib.SMTP_SSL(host, port, timeout=timeout_s, context=context) as server:
+                if smtp_user and smtp_password:
+                    server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+            return
+
+        with smtplib.SMTP(host, port, timeout=timeout_s) as server:
             server.ehlo()
-            if use_tls:
+            if tls_mode:
                 server.starttls(context=context)
                 server.ehlo()
             if smtp_user and smtp_password:
                 server.login(smtp_user, smtp_password)
             server.send_message(msg)
+
+    try:
+        _send_via_smtp(host=smtp_host, port=smtp_port, ssl_mode=use_ssl, tls_mode=use_tls)
+        return
+    except (TimeoutError, socket.timeout) as e:
+        # Common on PaaS if outbound SMTP is filtered or slow to connect. Try SSL/465 if user didn't explicitly choose SSL.
+        if not use_ssl and smtp_port == 587 and (os.getenv("PITENSOR_SMTP_USE_SSL") is None):
+            try:
+                _send_via_smtp(host=smtp_host, port=465, ssl_mode=True, tls_mode=False)
+                return
+            except Exception:
+                pass
+        raise e
 
 def _session_id_from_request(request: Request) -> str:
     """
@@ -1285,7 +1302,14 @@ async def request_demo(request: Request, background_tasks: BackgroundTasks):
                     user_email=user_email or None,
                 )
             except Exception as e:
-                logging.warning(f"[DEMO] Failed to send demo request email: {e}")
+                smtp_host = (os.getenv("PITENSOR_SMTP_HOST") or "").strip()
+                smtp_port = (os.getenv("PITENSOR_SMTP_PORT") or "587").strip()
+                use_ssl = (os.getenv("PITENSOR_SMTP_USE_SSL") or "0").strip()
+                use_tls = (os.getenv("PITENSOR_SMTP_USE_TLS") or "1").strip()
+                timeout_s = (os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip()
+                logging.warning(
+                    f"[DEMO] Failed to send demo request email: {e} (host={smtp_host} port={smtp_port} ssl={use_ssl} tls={use_tls} timeout_s={timeout_s})"
+                )
 
         background_tasks.add_task(_email_task)
     return JSONResponse({"ok": True})
