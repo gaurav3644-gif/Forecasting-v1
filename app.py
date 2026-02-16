@@ -176,9 +176,202 @@ def _send_demo_request_email(
             try:
                 _send_via_smtp(host=smtp_host, port=465, ssl_mode=True, tls_mode=False)
                 return
-            except Exception:
-                pass
+            except Exception as e2:
+                raise RuntimeError(
+                    f"SMTP timed out on {smtp_host}:587 and fallback {smtp_host}:465 failed: {e2}"
+                ) from e2
         raise e
+
+def _send_demo_request_email_resend(
+    *,
+    name: str,
+    email: str,
+    company: Optional[str],
+    phone: Optional[str],
+    role: Optional[str],
+    message: Optional[str],
+    source_path: Optional[str],
+    user_email: Optional[str],
+) -> None:
+    """
+    Send demo request email via Resend (HTTPS API).
+
+    Env vars:
+      - PITENSOR_RESEND_API_KEY (required)
+      - PITENSOR_DEMO_EMAIL_TO (default support@pitensor.com)
+      - PITENSOR_EMAIL_FROM (default support@pitensor.com)
+    """
+    api_key = (os.getenv("PITENSOR_RESEND_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("PITENSOR_RESEND_API_KEY is not set")
+
+    to_addr = (os.getenv("PITENSOR_DEMO_EMAIL_TO") or "support@pitensor.com").strip() or "support@pitensor.com"
+    from_addr = (os.getenv("PITENSOR_EMAIL_FROM") or "support@pitensor.com").strip() or "support@pitensor.com"
+
+    subject = f"[PiTensor] Request Demo: {name} ({email})"
+    lines = [
+        "New demo request received.",
+        "",
+        f"Name: {name}",
+        f"Email: {email}",
+        f"Company: {company or ''}",
+        f"Role: {role or ''}",
+        f"Phone/WhatsApp: {phone or ''}",
+        f"Source: {source_path or ''}",
+        f"Signed-in user: {user_email or ''}",
+        "",
+        "Message:",
+        (message or "").strip(),
+        "",
+    ]
+    body = "\n".join(lines)
+
+    timeout_s = float((os.getenv("PITENSOR_EMAIL_TIMEOUT_S") or os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip() or "12")
+    resp = httpx.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={
+            "from": from_addr,
+            "to": [to_addr],
+            "subject": subject,
+            "text": body,
+            "reply_to": email,
+        },
+        timeout=timeout_s,
+    )
+    resp.raise_for_status()
+
+def _send_demo_request_email_sendgrid(
+    *,
+    name: str,
+    email: str,
+    company: Optional[str],
+    phone: Optional[str],
+    role: Optional[str],
+    message: Optional[str],
+    source_path: Optional[str],
+    user_email: Optional[str],
+) -> None:
+    """
+    Send demo request email via SendGrid (HTTPS API).
+
+    Env vars:
+      - PITENSOR_SENDGRID_API_KEY (required)
+      - PITENSOR_DEMO_EMAIL_TO (default support@pitensor.com)
+      - PITENSOR_EMAIL_FROM (default support@pitensor.com)
+    """
+    api_key = (os.getenv("PITENSOR_SENDGRID_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("PITENSOR_SENDGRID_API_KEY is not set")
+
+    to_addr = (os.getenv("PITENSOR_DEMO_EMAIL_TO") or "support@pitensor.com").strip() or "support@pitensor.com"
+    from_addr = (os.getenv("PITENSOR_EMAIL_FROM") or "support@pitensor.com").strip() or "support@pitensor.com"
+
+    subject = f"[PiTensor] Request Demo: {name} ({email})"
+    lines = [
+        "New demo request received.",
+        "",
+        f"Name: {name}",
+        f"Email: {email}",
+        f"Company: {company or ''}",
+        f"Role: {role or ''}",
+        f"Phone/WhatsApp: {phone or ''}",
+        f"Source: {source_path or ''}",
+        f"Signed-in user: {user_email or ''}",
+        "",
+        "Message:",
+        (message or "").strip(),
+        "",
+    ]
+    body = "\n".join(lines)
+
+    timeout_s = float((os.getenv("PITENSOR_EMAIL_TIMEOUT_S") or os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip() or "12")
+    resp = httpx.post(
+        "https://api.sendgrid.com/v3/mail/send",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={
+            "personalizations": [{"to": [{"email": to_addr}]}],
+            "from": {"email": from_addr},
+            "reply_to": {"email": email},
+            "subject": subject,
+            "content": [{"type": "text/plain", "value": body}],
+        },
+        timeout=timeout_s,
+    )
+    resp.raise_for_status()
+
+def _send_demo_request_notification(
+    *,
+    name: str,
+    email: str,
+    company: Optional[str],
+    phone: Optional[str],
+    role: Optional[str],
+    message: Optional[str],
+    source_path: Optional[str],
+    user_email: Optional[str],
+) -> str:
+    """
+    Send demo request notification using the best configured provider.
+    Returns provider name used.
+    """
+    provider = (os.getenv("PITENSOR_EMAIL_PROVIDER") or "").strip().lower()
+    has_resend = bool((os.getenv("PITENSOR_RESEND_API_KEY") or "").strip())
+    has_sendgrid = bool((os.getenv("PITENSOR_SENDGRID_API_KEY") or "").strip())
+    has_smtp = bool((os.getenv("PITENSOR_SMTP_HOST") or "").strip())
+
+    def _do(p: str) -> None:
+        if p == "resend":
+            _send_demo_request_email_resend(
+                name=name,
+                email=email,
+                company=company,
+                phone=phone,
+                role=role,
+                message=message,
+                source_path=source_path,
+                user_email=user_email,
+            )
+        elif p == "sendgrid":
+            _send_demo_request_email_sendgrid(
+                name=name,
+                email=email,
+                company=company,
+                phone=phone,
+                role=role,
+                message=message,
+                source_path=source_path,
+                user_email=user_email,
+            )
+        elif p == "smtp":
+            _send_demo_request_email(
+                name=name,
+                email=email,
+                company=company,
+                phone=phone,
+                role=role,
+                message=message,
+                source_path=source_path,
+                user_email=user_email,
+            )
+        else:
+            raise RuntimeError(f"Unknown PITENSOR_EMAIL_PROVIDER={p}")
+
+    if provider:
+        _do(provider)
+        return provider
+
+    # Auto: prefer HTTPS APIs (more likely to work on Railway) then SMTP.
+    if has_resend:
+        _do("resend")
+        return "resend"
+    if has_sendgrid:
+        _do("sendgrid")
+        return "sendgrid"
+    if has_smtp:
+        _do("smtp")
+        return "smtp"
+    raise RuntimeError("No email provider configured (set PITENSOR_RESEND_API_KEY or PITENSOR_SENDGRID_API_KEY or PITENSOR_SMTP_HOST)")
 
 def _session_id_from_request(request: Request) -> str:
     """
@@ -1288,10 +1481,14 @@ async def request_demo(request: Request, background_tasks: BackgroundTasks):
         # Still return ok to avoid blocking UX.
 
     # Best-effort email notification (does not affect response).
-    if (os.getenv("PITENSOR_SMTP_HOST") or "").strip():
+    if (
+        (os.getenv("PITENSOR_SMTP_HOST") or "").strip()
+        or (os.getenv("PITENSOR_RESEND_API_KEY") or "").strip()
+        or (os.getenv("PITENSOR_SENDGRID_API_KEY") or "").strip()
+    ):
         def _email_task() -> None:
             try:
-                _send_demo_request_email(
+                provider_used = _send_demo_request_notification(
                     name=name,
                     email=email,
                     company=company or None,
@@ -1302,13 +1499,14 @@ async def request_demo(request: Request, background_tasks: BackgroundTasks):
                     user_email=user_email or None,
                 )
             except Exception as e:
+                provider = (os.getenv("PITENSOR_EMAIL_PROVIDER") or "").strip()
                 smtp_host = (os.getenv("PITENSOR_SMTP_HOST") or "").strip()
                 smtp_port = (os.getenv("PITENSOR_SMTP_PORT") or "587").strip()
                 use_ssl = (os.getenv("PITENSOR_SMTP_USE_SSL") or "0").strip()
                 use_tls = (os.getenv("PITENSOR_SMTP_USE_TLS") or "1").strip()
-                timeout_s = (os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip()
+                timeout_s = (os.getenv("PITENSOR_EMAIL_TIMEOUT_S") or os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip()
                 logging.warning(
-                    f"[DEMO] Failed to send demo request email: {e} (host={smtp_host} port={smtp_port} ssl={use_ssl} tls={use_tls} timeout_s={timeout_s})"
+                    f"[DEMO] Failed to send demo request email: {e} (provider={provider or 'auto'} host={smtp_host} port={smtp_port} ssl={use_ssl} tls={use_tls} timeout_s={timeout_s})"
                 )
 
         background_tasks.add_task(_email_task)
