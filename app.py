@@ -1138,6 +1138,57 @@ async def forecast_stop(request: Request):
     return {"ok": True}
 
 
+@app.post("/request_demo")
+async def request_demo(request: Request):
+    """
+    Save a request-demo lead. No LLM; best-effort persistence to history DB.
+    """
+    try:
+        payload = {}
+        ctype = (request.headers.get("content-type") or "").lower()
+        if "application/json" in ctype:
+            payload = await request.json()
+        else:
+            form = await request.form()
+            payload = dict(form)
+    except Exception:
+        payload = {}
+
+    # Honeypot: bots tend to fill hidden fields.
+    if str(payload.get("hp") or "").strip():
+        return JSONResponse({"ok": True})
+
+    name = str(payload.get("name") or "").strip()
+    email = str(payload.get("email") or "").strip()
+    company = str(payload.get("company") or "").strip()
+    phone = str(payload.get("phone") or "").strip()
+    role = str(payload.get("role") or "").strip()
+    message = str(payload.get("message") or "").strip()
+    source_path = str(payload.get("source_path") or request.url.path or "").strip()
+    user_email = _get_user_email(request)
+
+    if not name or "@" not in email:
+        return JSONResponse({"ok": False, "error": "Name and a valid email are required."}, status_code=400)
+
+    try:
+        import history_store
+
+        history_store.save_demo_request(
+            name=name,
+            email=email,
+            company=company or None,
+            phone=phone or None,
+            role=role or None,
+            message=message or None,
+            source_path=source_path or None,
+            user_email=user_email or None,
+        )
+    except Exception as e:
+        logging.warning(f"[DEMO] Failed to save demo request: {e}")
+        # Still return ok to avoid blocking UX.
+    return JSONResponse({"ok": True})
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})

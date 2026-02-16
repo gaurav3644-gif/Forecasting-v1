@@ -255,6 +255,22 @@ def init_db() -> None:
                     )
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS demo_requests (
+                        id SERIAL PRIMARY KEY,
+                        created_at TEXT NOT NULL,
+                        name TEXT,
+                        email TEXT NOT NULL,
+                        company TEXT,
+                        phone TEXT,
+                        role TEXT,
+                        message TEXT,
+                        source_path TEXT,
+                        user_email TEXT
+                    )
+                    """
+                )
                 conn.commit()
                 return
             finally:
@@ -314,6 +330,22 @@ def init_db() -> None:
                     supply_full_csv_gz BLOB,
                     FOREIGN KEY(user_id) REFERENCES users(id),
                     FOREIGN KEY(forecast_run_id) REFERENCES forecast_runs(id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS demo_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    name TEXT,
+                    email TEXT NOT NULL,
+                    company TEXT,
+                    phone TEXT,
+                    role TEXT,
+                    message TEXT,
+                    source_path TEXT,
+                    user_email TEXT
                 )
                 """
             )
@@ -816,5 +848,71 @@ def load_supply_plan(email: str, run_id: int) -> dict[str, Any]:
                 "supply_plan_df": export_df,
                 "supply_plan_full_df": full_df,
             }
+        finally:
+            conn.close()
+
+
+def save_demo_request(
+    *,
+    name: str,
+    email: str,
+    company: Optional[str] = None,
+    phone: Optional[str] = None,
+    role: Optional[str] = None,
+    message: Optional[str] = None,
+    source_path: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> int:
+    init_db()
+    name = (name or "").strip()
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        raise ValueError("valid email is required")
+    company = (company or "").strip() or None
+    phone = (phone or "").strip() or None
+    role = (role or "").strip() or None
+    message = (message or "").strip() or None
+    source_path = (source_path or "").strip() or None
+    user_email = (user_email or "").strip().lower() or None
+    created_at = _utc_now_iso()
+
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO demo_requests(
+                        created_at, name, email, company, phone, role, message, source_path, user_email
+                    )
+                    VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (created_at, name or None, email, company, phone, role, message, source_path, user_email),
+                )
+                new_id = cur.fetchone()[0]
+                conn.commit()
+                return int(new_id)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO demo_requests(
+                    created_at, name, email, company, phone, role, message, source_path, user_email
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (created_at, name or None, email, company, phone, role, message, source_path, user_email),
+            )
+            conn.commit()
+            row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+            return int(row["id"])
         finally:
             conn.close()

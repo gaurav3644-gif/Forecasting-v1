@@ -842,6 +842,9 @@
                     <li class="nav-item"><a class="nav-link" href="#how-it-works" data-i18n="landing_how">How It Works</a></li>
                     <li class="nav-item"><a class="nav-link" href="#pricing" data-i18n="landing_pricing">Pricing</a></li>
                     <li class="nav-item"><a class="nav-link" href="#contact-anchor" data-i18n="landing_contact">Contact</a></li>
+                    <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
+                        <a class="btn btn-primary btn-sm px-3" href="#request-demo" data-action="request-demo" data-i18n="nav_request_demo">Request Demo</a>
+                    </li>
                     <li class="nav-item d-flex align-items-center ms-lg-2 mt-2 mt-lg-0">
                         <div class="lang-toggle-inline" aria-label="Language toggle">
                             <button type="button" class="lang-btn" data-lang="en" title="EN">
@@ -1378,8 +1381,14 @@
                     <h5 data-i18n="footer_contact">Contact</h5>
                     <p><i class="fas fa-envelope me-2"></i>support@pitensor.com</p>
                     <p class="contact-phones mb-0">
-                        <span><i class="fab fa-whatsapp"></i>+12052398219</span>
-                        <span><i class="fab fa-whatsapp"></i>+6282218459081</span>
+                        <span>
+                            <i class="fab fa-whatsapp"></i>
+                            <a href="https://wa.me/12052398219?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-white text-decoration-none">+12052398219</a>
+                        </span>
+                        <span>
+                            <i class="fab fa-whatsapp"></i>
+                            <a href="https://wa.me/6282218459081?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-white text-decoration-none">+6282218459081</a>
+                        </span>
                     </p>
                 </div>
             </div>
@@ -1387,6 +1396,59 @@
             <p class="mb-0" data-i18n="footer_copyright">&copy; 2026 PiTensor. All rights reserved.</p>
         </div>
     </footer>
+
+    <!-- Request Demo -->
+    <div class="modal fade" id="request-demo-modal" tabindex="-1" aria-labelledby="requestDemoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="requestDemoLabel" data-i18n="demo_modal_title">Request a demo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="request-demo-form" autocomplete="on">
+                    <div class="modal-body">
+                        <input type="text" name="hp" class="d-none" tabindex="-1" autocomplete="off">
+                        <div id="request-demo-success" class="alert alert-success d-none mb-3">
+                            <div class="fw-semibold" data-i18n="demo_success_title">Request received</div>
+                            <div class="small" data-i18n="demo_success_body">Thanks — we’ll reach out soon.</div>
+                        </div>
+                        <div id="request-demo-error" class="alert alert-danger d-none mb-3"></div>
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label" for="request-demo-name" data-i18n="demo_name_label">Full name</label>
+                                <input id="request-demo-name" name="name" class="form-control" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="request-demo-email" data-i18n="demo_email_label">Work email</label>
+                                <input id="request-demo-email" name="email" type="email" class="form-control" required>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="request-demo-company" data-i18n="demo_company_label">Company</label>
+                                <input id="request-demo-company" name="company" class="form-control">
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="request-demo-role" data-i18n="demo_role_label">Role</label>
+                                <input id="request-demo-role" name="role" class="form-control">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="request-demo-phone" data-i18n="demo_phone_label">Phone / WhatsApp</label>
+                                <input id="request-demo-phone" name="phone" class="form-control">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="request-demo-message" data-i18n="demo_message_label">What do you want to see? (optional)</label>
+                                <textarea id="request-demo-message" name="message" class="form-control" rows="3"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="demo_close">Close</button>
+                        <button type="submit" class="btn btn-primary" id="request-demo-submit" data-i18n="demo_submit">Submit request</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <div id="contact-anchor"></div>
@@ -1400,6 +1462,19 @@
                     nav_sign_in: 'Sign in',
                     nav_dashboard: 'Dashboard',
                     nav_sign_out: 'Sign out',
+                    nav_request_demo: 'Request Demo',
+                    demo_modal_title: 'Request a demo',
+                    demo_name_label: 'Full name',
+                    demo_email_label: 'Work email',
+                    demo_company_label: 'Company',
+                    demo_role_label: 'Role',
+                    demo_phone_label: 'Phone / WhatsApp',
+                    demo_message_label: 'What do you want to see? (optional)',
+                    demo_submit: 'Submit request',
+                    demo_close: 'Close',
+                    demo_success_title: 'Request received',
+                    demo_success_body: 'Thanks — we’ll reach out soon.',
+                    demo_error_invalid: 'Please enter your name and a valid email.',
                     landing_features: 'Features',
                     landing_connectors: 'Connectors',
                     landing_insights: 'Insights',
@@ -1524,6 +1599,19 @@
                     nav_sign_in: 'Masuk',
                     nav_dashboard: 'Dasbor',
                     nav_sign_out: 'Keluar',
+                    nav_request_demo: 'Minta Demo',
+                    demo_modal_title: 'Minta demo',
+                    demo_name_label: 'Nama lengkap',
+                    demo_email_label: 'Email kantor',
+                    demo_company_label: 'Perusahaan',
+                    demo_role_label: 'Peran',
+                    demo_phone_label: 'Telepon / WhatsApp',
+                    demo_message_label: 'Apa yang ingin Anda lihat? (opsional)',
+                    demo_submit: 'Kirim permintaan',
+                    demo_close: 'Tutup',
+                    demo_success_title: 'Permintaan diterima',
+                    demo_success_body: 'Terima kasih — kami akan segera menghubungi Anda.',
+                    demo_error_invalid: 'Masukkan nama dan email yang valid.',
                     landing_features: 'Fitur',
                     landing_connectors: 'Konektor',
                     landing_insights: 'Wawasan',
@@ -1710,6 +1798,11 @@
                     showPricingModal();
                     return;
                 }
+                if (href === '#request-demo') {
+                    e.preventDefault();
+                    showRequestDemoModal();
+                    return;
+                }
 
                 e.preventDefault();
                 document.querySelector(href).scrollIntoView({ behavior: 'smooth' });
@@ -1804,6 +1897,77 @@
             if (bd) bd.remove();
         }
 
+        function showRequestDemoModal() {
+            const modal = document.getElementById('request-demo-modal');
+            const form = document.getElementById('request-demo-form');
+            const successEl = document.getElementById('request-demo-success');
+            const errorEl = document.getElementById('request-demo-error');
+            const submitBtn = document.getElementById('request-demo-submit');
+            if (!modal || !form) return;
+
+            if (successEl) successEl.classList.add('d-none');
+            if (errorEl) { errorEl.classList.add('d-none'); errorEl.textContent = ''; }
+            const emailInput = form.querySelector('input[name=\"email\"]');
+
+            const modalInstance = new bootstrap.Modal(modal, { backdrop: false, keyboard: true, focus: true });
+            const bd = ensureConnectorBackdrop();
+            bd.onclick = function() { modalInstance.hide(); };
+            modal.addEventListener('hidden.bs.modal', removeConnectorBackdrop, { once: true });
+            modalInstance.show();
+
+            if (form.__pitensor_bound) return;
+            form.__pitensor_bound = true;
+
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                if (!form.checkValidity()) {
+                    try { form.reportValidity(); } catch (err) {}
+                    return;
+                }
+
+                const original = submitBtn ? submitBtn.innerHTML : '';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<span class=\"spinner-border spinner-border-sm me-2\" role=\"status\" aria-hidden=\"true\"></span>' + original;
+                }
+
+                try {
+                    const payload = {
+                        name: String(form.querySelector('input[name=\"name\"]')?.value || '').trim(),
+                        email: String(form.querySelector('input[name=\"email\"]')?.value || '').trim(),
+                        company: String(form.querySelector('input[name=\"company\"]')?.value || '').trim(),
+                        role: String(form.querySelector('input[name=\"role\"]')?.value || '').trim(),
+                        phone: String(form.querySelector('input[name=\"phone\"]')?.value || '').trim(),
+                        message: String(form.querySelector('textarea[name=\"message\"]')?.value || '').trim(),
+                        hp: String(form.querySelector('input[name=\"hp\"]')?.value || '').trim(),
+                        source_path: window.location.pathname
+                    };
+
+                    const resp = await fetch('/request_demo', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!resp.ok) {
+                        const data = await resp.json().catch(() => ({}));
+                        const msg = data && data.error ? String(data.error) : 'Request failed. Please try again.';
+                        if (errorEl) { errorEl.textContent = msg; errorEl.classList.remove('d-none'); }
+                        return;
+                    }
+
+                    if (errorEl) errorEl.classList.add('d-none');
+                    if (successEl) successEl.classList.remove('d-none');
+                    try { form.reset(); } catch (err) {}
+                    setTimeout(() => { try { modalInstance.hide(); } catch (err) {} }, 1200);
+                } catch (err) {
+                    if (errorEl) { errorEl.textContent = 'Network error. Please try again.'; errorEl.classList.remove('d-none'); }
+                } finally {
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = original; }
+                }
+            });
+        }
+
         function showPricingModal() {
             let modal = document.getElementById('pricing-modal');
             if (!modal) {
@@ -1828,10 +1992,10 @@
                                     </div>
                                     <div class="border rounded-3 p-2 bg-light small">
                                         <i class="fab fa-whatsapp me-2"></i>
-                                        <a href="https://wa.me/12052398219" target="_blank" rel="noopener" class="text-decoration-none">+12052398219</a>
+                                        <a href="https://wa.me/12052398219?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-decoration-none">+12052398219</a>
                                         <span class="text-muted mx-2">·</span>
                                         <i class="fab fa-whatsapp me-2"></i>
-                                        <a href="https://wa.me/6282218459081" target="_blank" rel="noopener" class="text-decoration-none">+6282218459081</a>
+                                        <a href="https://wa.me/6282218459081?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-decoration-none">+6282218459081</a>
                                     </div>
                                 </div>
                             </div>
@@ -1969,6 +2133,13 @@
 
         // Upload helpers (sample download + copy + progress bar)
         document.addEventListener('DOMContentLoaded', function () {
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                if (params.get('demo') === '1' || window.location.hash === '#request-demo') {
+                    setTimeout(() => { try { showRequestDemoModal(); } catch (e) {} }, 50);
+                }
+            } catch (e) {}
+
             const sampleBox = document.getElementById('sample-csv-box');
             const sampleRaw = document.getElementById('sample-csv-raw');
             const downloadBtn = document.getElementById('download-sample-btn');
