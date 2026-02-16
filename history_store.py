@@ -1895,7 +1895,7 @@ def list_pending_user_access(*, limit: int = 200) -> list[dict[str, Any]]:
                     """
                     SELECT email, created_at, approved_at, approved_by, last_requested_at, request_count
                     FROM user_access
-                    WHERE approved_at IS NULL
+                    WHERE approved_at IS NULL AND (revoked_at IS NULL OR revoked_at = '')
                     ORDER BY last_requested_at DESC NULLS LAST, created_at DESC
                     LIMIT %s
                     """,
@@ -1915,7 +1915,7 @@ def list_pending_user_access(*, limit: int = 200) -> list[dict[str, Any]]:
                 """
                 SELECT email, created_at, approved_at, approved_by, last_requested_at, request_count
                 FROM user_access
-                WHERE approved_at IS NULL
+                WHERE approved_at IS NULL AND (revoked_at IS NULL OR revoked_at = '')
                 ORDER BY COALESCE(last_requested_at, created_at) DESC
                 LIMIT ?
                 """,
