@@ -124,11 +124,17 @@ def _admin_approve_sig(email: str, ts: str) -> str:
     return hmac.new(_auth_cookie_secret_b, msg, digestmod=_hashlib.sha256).hexdigest()
 
 
+def _admin_approve_token(*, email: str, ts: str) -> str:
+    # Use the same signed pack/unpack format used by our OAuth cookie (blob.sig).
+    return _oauth_pack({"kind": "admin_approve", "email": (email or "").strip().lower(), "ts": str(ts).strip()})
+
+
 def _admin_approval_url(request: Request, *, email: str) -> str:
     ts = str(int(time.time()))
-    sig = _admin_approve_sig(email, ts)
     base = _public_base_url(request) or ""
-    path = f"/admin/approve?email={quote(email)}&ts={quote(ts)}&sig={quote(sig)}"
+    # Use a single signed token query param so email clients don't truncate at '&'.
+    token = _admin_approve_token(email=email, ts=ts)
+    path = f"/admin/approve?t={quote(token)}"
     return f"{base}{path}" if base else path
 
 
@@ -145,8 +151,9 @@ def _notify_admin_user_approval_request(request: Request, *, email: str) -> None
         f"Time (UTC): {datetime.now(timezone.utc).isoformat()}\n"
         f"IP: {ip or 'unknown'}\n"
         f"User-Agent: {ua or 'unknown'}\n\n"
-        "Approve this user:\n"
-        f"{approve_url}\n\n"
+        "Approve this user (you may be asked to sign in as an admin first):\n"
+        f"<{approve_url}>\n\n"
+        "If the link opens but shows an error, go to Dashboard → Pending Users and approve from there.\n\n"
         "If you did not expect this request, ignore this email.\n"
     )
     last_err: Optional[Exception] = None
@@ -3663,7 +3670,13 @@ async def history_delete(request: Request, run_id: int = Form(...)):
 
 
 @app.get("/admin/approve")
-async def admin_approve_user(request: Request, email: str, ts: str, sig: str):
+async def admin_approve_user(
+    request: Request,
+    t: Optional[str] = None,
+    email: Optional[str] = None,
+    ts: Optional[str] = None,
+    sig: Optional[str] = None,
+):
     user_email = _get_user_email(request)
     # Require admin to be signed in.
     if not user_email:
@@ -3674,23 +3687,36 @@ async def admin_approve_user(request: Request, email: str, ts: str, sig: str):
     if not _is_admin_email(user_email):
         raise HTTPException(status_code=403, detail="Admin access required")
 
+    # Prefer token-based approval links.
+    if t:
+        payload = _oauth_unpack(str(t)) or {}
+        if isinstance(payload, dict) and payload.get("kind") == "admin_approve":
+            email = str(payload.get("email") or "").strip().lower() or email
+            ts = str(payload.get("ts") or "").strip() or ts
+
     email = (email or "").strip().lower()
     ts = (ts or "").strip()
     sig = (sig or "").strip()
-    if "@" not in email:
-        raise HTTPException(status_code=400, detail="Invalid email")
+    if not email or "@" not in email or not ts:
+        msg = quote("Approval link is incomplete. Open Dashboard → Pending Users and approve from there.")
+        return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
     try:
         ts_i = int(ts)
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid ts")
+        msg = quote("Approval link is invalid. Open Dashboard → Pending Users and approve from there.")
+        return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
 
-    expected = _admin_approve_sig(email, ts)
-    if not hmac.compare_digest(expected, sig):
-        raise HTTPException(status_code=400, detail="Invalid signature")
+    # If sig is provided (legacy links), verify it.
+    if sig:
+        expected = _admin_approve_sig(email, ts)
+        if not hmac.compare_digest(expected, sig):
+            msg = quote("Approval link signature is invalid. Open Dashboard → Pending Users and approve from there.")
+            return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
 
     # Expire approval links after 48 hours.
     if abs(int(time.time()) - ts_i) > 48 * 3600:
-        raise HTTPException(status_code=400, detail="Approval link expired")
+        msg = quote("Approval link expired. Open Dashboard → Pending Users and approve from there.")
+        return RedirectResponse(f"/dashboard?notice={msg}", status_code=303)
 
     import history_store
 
