@@ -25,6 +25,11 @@
     box-shadow: 0 18px 60px rgba(18,24,39,0.10);
     padding: 28px;
   }
+  .auth-topbar {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 10px;
+  }
   .auth-logo {
     width: 52px;
     height: 52px;
@@ -86,6 +91,9 @@
 {% block content %}
 <div class="auth-wrap">
   <div class="auth-card">
+    <div class="auth-topbar">
+      <a class="btn btn-outline-secondary btn-sm" href="/">Go back</a>
+    </div>
     <div class="auth-logo" aria-hidden="true">
       <span style="font-size: 26px;">&#129433;</span>
     </div>
