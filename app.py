@@ -466,6 +466,36 @@ def _client_ip(request: Request) -> str:
     except Exception:
         return ""
 
+def _user_friendly_email_send_error(e: Exception) -> str:
+    try:
+        if isinstance(e, httpx.HTTPStatusError) and getattr(e, "response", None) is not None:
+            status = int(getattr(e.response, "status_code", 0) or 0)
+            body = ""
+            try:
+                body = (e.response.text or "")[:1000]
+            except Exception:
+                body = ""
+
+            if status == 403 and "You can only send testing emails to your own email address" in body:
+                return (
+                    "Email provider is in testing mode. "
+                    "Verify your domain in Resend (Domains → pitensor.com) and set PITENSOR_EMAIL_FROM to an @pitensor.com address. "
+                    "Until then, OTP emails can only be sent to your Resend account email."
+                )
+
+            # Generic status with short details.
+            short = body
+            try:
+                short = short.replace("\n", " ").strip()
+            except Exception:
+                pass
+            if short:
+                return f"Email send failed (HTTP {status}): {short}"
+            return f"Email send failed (HTTP {status})."
+    except Exception:
+        pass
+    return str(e) or "Email send failed."
+
 def _send_demo_request_notification(
     *,
     name: str,
@@ -1826,12 +1856,19 @@ async def signin_post(
                     ),
                 )
             except Exception as e:
+                extra = ""
+                if isinstance(e, httpx.HTTPStatusError) and getattr(e, "response", None) is not None:
+                    try:
+                        extra = f" status={e.response.status_code} body={e.response.text[:500]}"
+                    except Exception:
+                        extra = f" status={getattr(e.response, 'status_code', '')}"
+                logging.warning(f"[AUTH] Failed to send OTP email: {e}{extra}")
                 return templates.TemplateResponse(
                     "signin.html",
                     {
                         "request": request,
                         "next": next,
-                        "error": f"Could not send sign-in code: {e}",
+                        "error": f"Could not send sign-in code: {_user_friendly_email_send_error(e)}",
                         "stage": "email",
                         "email": email,
                         "otp_id": "",
