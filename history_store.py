@@ -1917,31 +1917,30 @@ def list_current_users_admin(*, limit: int = 500) -> list[dict[str, Any]]:
                             request_count,
                             created_at AS access_created_at
                         FROM user_access
+                    ),
+                    base AS (
+                        SELECT
+                            u.email AS email,
+                            u.created_at AS user_created_at,
+                            a.access_created_at AS access_created_at,
+                            a.approved_at AS approved_at
+                        FROM users u
+                        LEFT JOIN access a ON a.email = u.email
+                        WHERE (a.revoked_at IS NULL OR a.revoked_at = '')
+                          AND (a.email IS NULL OR a.approved_at IS NOT NULL)
+                        UNION ALL
+                        SELECT
+                            a.email AS email,
+                            NULL AS user_created_at,
+                            a.access_created_at AS access_created_at,
+                            a.approved_at AS approved_at
+                        FROM access a
+                        WHERE a.approved_at IS NOT NULL
+                          AND (a.revoked_at IS NULL OR a.revoked_at = '')
+                          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.email = a.email)
                     )
-                    SELECT
-                        u.email AS email,
-                        u.created_at AS user_created_at,
-                        a.approved_at AS approved_at,
-                        a.approved_by AS approved_by,
-                        a.revoked_at AS revoked_at,
-                        a.last_requested_at AS last_requested_at,
-                        a.request_count AS request_count
-                    FROM users u
-                    LEFT JOIN access a ON a.email = u.email
-                    WHERE (a.revoked_at IS NULL OR a.revoked_at = '')
-                      AND (a.email IS NULL OR a.approved_at IS NOT NULL)
-                    UNION
-                    SELECT
-                        a.email AS email,
-                        NULL AS user_created_at,
-                        a.approved_at AS approved_at,
-                        a.approved_by AS approved_by,
-                        a.revoked_at AS revoked_at,
-                        a.last_requested_at AS last_requested_at,
-                        a.request_count AS request_count
-                    FROM access a
-                    WHERE a.approved_at IS NOT NULL
-                      AND (a.revoked_at IS NULL OR a.revoked_at = '')
+                    SELECT email, user_created_at, access_created_at, approved_at
+                    FROM base
                     ORDER BY COALESCE(user_created_at, approved_at, access_created_at) DESC NULLS LAST
                     LIMIT %s
                     """,
