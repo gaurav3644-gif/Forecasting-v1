@@ -727,6 +727,108 @@ def list_forecast_runs(email: str, limit: int = 50) -> list[dict[str, Any]]:
             conn.close()
 
 
+def list_forecast_runs_admin(*, limit: int = 50) -> list[dict[str, Any]]:
+    """
+    Admin-only: list runs across all users.
+
+    NOTE: Callers must enforce authorization (e.g., check PITENSOR_ADMIN_EMAILS).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    SELECT
+                        fr.id AS run_id,
+                        fr.created_at AS created_at,
+                        fr.params_json AS params_json,
+                        d.filename AS filename,
+                        u.email AS user_email,
+                        CASE WHEN sp.id IS NULL THEN 0 ELSE 1 END AS has_supply_plan
+                    FROM forecast_runs fr
+                    INNER JOIN users u ON u.id = fr.user_id
+                    LEFT JOIN datasets d ON d.id = fr.dataset_id
+                    LEFT JOIN supply_plans sp ON sp.forecast_run_id = fr.id
+                    ORDER BY fr.id DESC
+                    LIMIT %s
+                    """,
+                    (int(limit),),
+                )
+                rows = cur.fetchall() or []
+                out: list[dict[str, Any]] = []
+                for r in rows:
+                    params = {}
+                    try:
+                        params = json.loads(r.get("params_json") or "{}")
+                    except Exception:
+                        params = {}
+                    has_supply_plan_val = int(r.get("has_supply_plan") or 0)
+                    out.append(
+                        {
+                            "run_id": int(r.get("run_id")),
+                            "created_at": r.get("created_at"),
+                            "filename": r.get("filename"),
+                            "user_email": r.get("user_email"),
+                            "start_month": params.get("start_month"),
+                            "months": params.get("months"),
+                            "grain": params.get("grain"),
+                            "has_supply_plan": bool(has_supply_plan_val),
+                        }
+                    )
+                return out
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT
+                    fr.id AS run_id,
+                    fr.created_at AS created_at,
+                    fr.params_json AS params_json,
+                    d.filename AS filename,
+                    u.email AS user_email,
+                    CASE WHEN sp.id IS NULL THEN 0 ELSE 1 END AS has_supply_plan
+                FROM forecast_runs fr
+                INNER JOIN users u ON u.id = fr.user_id
+                LEFT JOIN datasets d ON d.id = fr.dataset_id
+                LEFT JOIN supply_plans sp ON sp.forecast_run_id = fr.id
+                ORDER BY fr.id DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+            out: list[dict[str, Any]] = []
+            for r in rows:
+                params = {}
+                try:
+                    params = json.loads(r["params_json"] or "{}")
+                except Exception:
+                    params = {}
+                out.append(
+                    {
+                        "run_id": int(r["run_id"]),
+                        "created_at": r["created_at"],
+                        "filename": r["filename"],
+                        "user_email": r["user_email"],
+                        "start_month": params.get("start_month"),
+                        "months": params.get("months"),
+                        "grain": params.get("grain"),
+                        "has_supply_plan": bool(int(r["has_supply_plan"] or 0)),
+                    }
+                )
+            return out
+        finally:
+            conn.close()
+
+
 def load_forecast_run(email: str, run_id: int) -> dict[str, Any]:
     init_db()
     with _LOCK:
@@ -811,6 +913,98 @@ def load_forecast_run(email: str, run_id: int) -> dict[str, Any]:
             conn.close()
 
 
+def load_forecast_run_admin(*, run_id: int) -> dict[str, Any]:
+    """
+    Admin-only: load a forecast run by id regardless of owner.
+
+    NOTE: Callers must enforce authorization (e.g., check PITENSOR_ADMIN_EMAILS).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    SELECT
+                        fr.id AS id,
+                        fr.created_at AS created_at,
+                        fr.params_json AS params_json,
+                        fr.forecast_csv_gz AS forecast_csv_gz,
+                        fr.feature_importance_json AS feature_importance_json,
+                        fr.driver_artifacts_json AS driver_artifacts_json,
+                        d.raw_csv_gz AS raw_csv_gz,
+                        d.filename AS filename,
+                        u.email AS user_email
+                    FROM forecast_runs fr
+                    INNER JOIN users u ON u.id = fr.user_id
+                    LEFT JOIN datasets d ON d.id = fr.dataset_id
+                    WHERE fr.id = %s
+                    """,
+                    (int(run_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise KeyError("forecast run not found")
+                params = json.loads(row.get("params_json") or "{}")
+                fi = json.loads(row.get("feature_importance_json") or "{}")
+                da = json.loads(row.get("driver_artifacts_json") or "{}")
+                raw_blob = _bytea_to_bytes(row.get("raw_csv_gz"))
+                forecast_blob = _bytea_to_bytes(row.get("forecast_csv_gz"))
+                raw_df = _csv_gz_to_df(raw_blob) if raw_blob is not None else pd.DataFrame()
+                forecast_df = _csv_gz_to_df(forecast_blob or b"")
+                return {
+                    "run_id": int(row.get("id")),
+                    "created_at": row.get("created_at"),
+                    "filename": row.get("filename"),
+                    "user_email": row.get("user_email"),
+                    "params": params,
+                    "raw_df": raw_df,
+                    "forecast_df": forecast_df,
+                    "feature_importance": fi,
+                    "driver_artifacts": da,
+                }
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT fr.*, d.raw_csv_gz AS raw_csv_gz, d.filename AS filename, u.email AS user_email
+                FROM forecast_runs fr
+                INNER JOIN users u ON u.id = fr.user_id
+                LEFT JOIN datasets d ON d.id = fr.dataset_id
+                WHERE fr.id = ?
+                """,
+                (int(run_id),),
+            ).fetchone()
+            if not row:
+                raise KeyError("forecast run not found")
+            params = json.loads(row["params_json"] or "{}")
+            fi = json.loads(row["feature_importance_json"] or "{}")
+            da = json.loads(row["driver_artifacts_json"] or "{}")
+            raw_df = _csv_gz_to_df(row["raw_csv_gz"]) if row["raw_csv_gz"] is not None else pd.DataFrame()
+            forecast_df = _csv_gz_to_df(row["forecast_csv_gz"])
+            return {
+                "run_id": int(row["id"]),
+                "created_at": row["created_at"],
+                "filename": row["filename"],
+                "user_email": row["user_email"],
+                "params": params,
+                "raw_df": raw_df,
+                "forecast_df": forecast_df,
+                "feature_importance": fi,
+                "driver_artifacts": da,
+            }
+        finally:
+            conn.close()
+
+
 def load_supply_plan(email: str, run_id: int) -> dict[str, Any]:
     init_db()
     with _LOCK:
@@ -881,6 +1075,84 @@ def load_supply_plan(email: str, run_id: int) -> dict[str, Any]:
         finally:
             conn.close()
 
+
+def load_supply_plan_admin(*, run_id: int) -> dict[str, Any]:
+    """
+    Admin-only: load a supply plan by forecast_run_id regardless of owner.
+
+    NOTE: Callers must enforce authorization (e.g., check PITENSOR_ADMIN_EMAILS).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    SELECT
+                        sp.forecast_run_id AS forecast_run_id,
+                        sp.created_at AS created_at,
+                        sp.params_json AS params_json,
+                        sp.supply_export_csv_gz AS supply_export_csv_gz,
+                        sp.supply_full_csv_gz AS supply_full_csv_gz,
+                        u.email AS user_email
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    INNER JOIN users u ON u.id = fr.user_id
+                    WHERE fr.id = %s
+                    """,
+                    (int(run_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise KeyError("supply plan not found")
+                params = json.loads(row.get("params_json") or "{}")
+                export_blob = _bytea_to_bytes(row.get("supply_export_csv_gz"))
+                full_blob = _bytea_to_bytes(row.get("supply_full_csv_gz"))
+                export_df = _csv_gz_to_df(export_blob or b"")
+                full_df = _csv_gz_to_df(full_blob) if full_blob is not None else pd.DataFrame()
+                return {
+                    "forecast_run_id": int(row.get("forecast_run_id")),
+                    "created_at": row.get("created_at"),
+                    "user_email": row.get("user_email"),
+                    "params": params,
+                    "supply_plan_df": export_df,
+                    "supply_plan_full_df": full_df,
+                }
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT sp.*, u.email AS user_email
+                FROM supply_plans sp
+                INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                INNER JOIN users u ON u.id = fr.user_id
+                WHERE fr.id = ?
+                """,
+                (int(run_id),),
+            ).fetchone()
+            if not row:
+                raise KeyError("supply plan not found")
+            params = json.loads(row["params_json"] or "{}")
+            export_df = _csv_gz_to_df(row["supply_export_csv_gz"])
+            full_df = _csv_gz_to_df(row["supply_full_csv_gz"]) if row["supply_full_csv_gz"] is not None else pd.DataFrame()
+            return {
+                "forecast_run_id": int(row["forecast_run_id"]),
+                "created_at": row["created_at"],
+                "user_email": row["user_email"],
+                "params": params,
+                "supply_plan_df": export_df,
+                "supply_plan_full_df": full_df,
+            }
+        finally:
+            conn.close()
 
 def save_demo_request(
     *,

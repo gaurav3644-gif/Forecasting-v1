@@ -85,6 +85,25 @@ def _get_user_email(request: Request) -> Optional[str]:
 def _is_signed_in(request: Request) -> bool:
     return bool(_get_user_email(request))
 
+
+def _parse_admin_emails() -> set[str]:
+    raw = (os.getenv("PITENSOR_ADMIN_EMAILS") or "").strip()
+    if not raw:
+        return set()
+    # Accept comma/semicolon/space separated lists.
+    parts = [p.strip().lower() for p in raw.replace(";", ",").replace("\n", ",").split(",")]
+    out = {p for p in parts if p and "@" in p}
+    if not out:
+        # Fallback if user provided space-separated values only.
+        out = {p.strip().lower() for p in raw.split() if "@" in p}
+    return out
+
+
+def _is_admin_email(email: Optional[str]) -> bool:
+    if not email:
+        return False
+    return email.strip().lower() in _parse_admin_emails()
+
 _oauth_cookie_name = (os.getenv("PITENSOR_OAUTH_COOKIE_NAME") or "").strip() or "pitensor_oauth"
 
 def _sign_blob(blob_b64: str) -> str:
@@ -3210,9 +3229,13 @@ async def dashboard_page(request: Request):
     user_email = _get_user_email(request)
     if not user_email:
         return RedirectResponse("/signin?next=/dashboard", status_code=303)
+    is_admin = _is_admin_email(user_email)
     try:
         import history_store
-        runs = history_store.list_forecast_runs(user_email, limit=100)
+        if is_admin:
+            runs = history_store.list_forecast_runs_admin(limit=100)
+        else:
+            runs = history_store.list_forecast_runs(user_email, limit=100)
         history_backend = history_store.history_backend()
         history_info = history_store.history_connection_info()
     except Exception as e:
@@ -3248,6 +3271,7 @@ async def dashboard_page(request: Request):
         {
             "request": request,
             "runs": runs,
+            "is_admin": is_admin,
             "history_backend": history_backend,
             "history_info": history_info,
             "history_error": history_error,
@@ -3264,7 +3288,12 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
 
     import history_store
     session_id = _session_id_from_request(request)
-    run = history_store.load_forecast_run(user_email, int(run_id))
+    is_admin = _is_admin_email(user_email)
+    run = (
+        history_store.load_forecast_run_admin(run_id=int(run_id))
+        if is_admin
+        else history_store.load_forecast_run(user_email, int(run_id))
+    )
 
     # Rehydrate session state so existing pages keep working without logic changes.
     session = data_store.setdefault(session_id, {})
@@ -3303,7 +3332,11 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
 
     if str(target or "").lower() == "supply_plan":
         try:
-            sp = history_store.load_supply_plan(user_email, int(run_id))
+            sp = (
+                history_store.load_supply_plan_admin(run_id=int(run_id))
+                if is_admin
+                else history_store.load_supply_plan(user_email, int(run_id))
+            )
             sp_df = sp.get("supply_plan_df")
             sp_full = sp.get("supply_plan_full_df")
             if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:

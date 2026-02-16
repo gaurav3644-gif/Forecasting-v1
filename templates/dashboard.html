@@ -46,6 +46,9 @@
       <div class="text-muted small">Run new forecasts and review your saved history.</div>
     </div>
     <div class="d-flex gap-2 align-items-center">
+      {% if is_admin %}
+        <span class="badge text-bg-warning border">Admin</span>
+      {% endif %}
       <span class="badge text-bg-light border">History: {{ history_backend or "unknown" }}</span>
       {% if history_info and history_info.backend == "postgres" and history_info.host %}
         <span class="badge text-bg-light border">DB: {{ history_info.host }}</span>
@@ -174,16 +177,20 @@
         </div>
       {% endif %}
 
-      <div class="card shadow-sm">
+        <div class="card shadow-sm">
         <div class="card-body p-0">
           <div class="p-3 d-flex align-items-center justify-content-between">
-            <div class="fw-semibold">Your Runs</div>
+            <div class="fw-semibold">{% if is_admin %}All Users' Runs{% else %}Your Runs{% endif %}</div>
             <div class="text-muted small">{{ runs|length }} shown</div>
           </div>
           {% if not runs %}
             <div class="px-3 pb-3">
               <div class="alert alert-light border mb-0">
-                No saved runs yet for this account.
+                {% if is_admin %}
+                  No runs saved yet.
+                {% else %}
+                  No saved runs yet for this account.
+                {% endif %}
                 <span class="text-muted">Runs are saved only when you are signed in and the forecast completes successfully.</span>
               </div>
             </div>
@@ -193,6 +200,7 @@
                 <thead class="table-light">
                   <tr>
                     <th class="ps-3">Run</th>
+                    {% if is_admin %}<th>User</th>{% endif %}
                     <th>Created</th>
                     <th>File</th>
                     <th>Start</th>
@@ -205,6 +213,7 @@
                   {% for r in runs %}
                     <tr>
                       <td class="ps-3">#{{ r.run_id }}</td>
+                      {% if is_admin %}<td class="small">{{ r.user_email or "&mdash;" | safe }}</td>{% endif %}
                       <td class="text-muted small">{{ r.created_at }}</td>
                       <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
                       <td class="small">{{ r.start_month or "&mdash;" | safe }}</td>
