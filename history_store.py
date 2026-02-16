@@ -1220,6 +1220,164 @@ def save_demo_request(
             conn.close()
 
 
+def delete_forecast_run(email: str, run_id: int) -> bool:
+    """
+    Delete a forecast run (and its supply plan) for the given user.
+
+    Returns True if something was deleted, False if the run was not found for that user.
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                user_id = _get_or_create_user_id_pg(conn, email)
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT dataset_id FROM forecast_runs WHERE id = %s AND user_id = %s",
+                    (int(run_id), int(user_id)),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return False
+                dataset_id = row[0]
+
+                cur.execute(
+                    "DELETE FROM supply_plans WHERE forecast_run_id = %s AND user_id = %s",
+                    (int(run_id), int(user_id)),
+                )
+                cur.execute(
+                    "DELETE FROM forecast_runs WHERE id = %s AND user_id = %s",
+                    (int(run_id), int(user_id)),
+                )
+
+                if dataset_id is not None:
+                    cur.execute("SELECT 1 FROM forecast_runs WHERE dataset_id = %s LIMIT 1", (int(dataset_id),))
+                    still_used = cur.fetchone() is not None
+                    if not still_used:
+                        cur.execute(
+                            "DELETE FROM datasets WHERE id = %s AND user_id = %s",
+                            (int(dataset_id), int(user_id)),
+                        )
+
+                conn.commit()
+                return True
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            user_id = _get_or_create_user_id(conn, email)
+            row = conn.execute(
+                "SELECT dataset_id FROM forecast_runs WHERE id = ? AND user_id = ?",
+                (int(run_id), int(user_id)),
+            ).fetchone()
+            if not row:
+                return False
+            dataset_id = row["dataset_id"]
+
+            conn.execute(
+                "DELETE FROM supply_plans WHERE forecast_run_id = ? AND user_id = ?",
+                (int(run_id), int(user_id)),
+            )
+            conn.execute(
+                "DELETE FROM forecast_runs WHERE id = ? AND user_id = ?",
+                (int(run_id), int(user_id)),
+            )
+
+            if dataset_id is not None:
+                still_used = (
+                    conn.execute(
+                        "SELECT 1 FROM forecast_runs WHERE dataset_id = ? LIMIT 1",
+                        (int(dataset_id),),
+                    ).fetchone()
+                    is not None
+                )
+                if not still_used:
+                    conn.execute(
+                        "DELETE FROM datasets WHERE id = ? AND user_id = ?",
+                        (int(dataset_id), int(user_id)),
+                    )
+
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def delete_forecast_run_admin(*, run_id: int) -> bool:
+    """
+    Admin-only: delete a forecast run (and its supply plan) regardless of owner.
+
+    Returns True if deleted, False if not found.
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT dataset_id, user_id FROM forecast_runs WHERE id = %s", (int(run_id),))
+                row = cur.fetchone()
+                if not row:
+                    return False
+                dataset_id, user_id = row[0], row[1]
+
+                cur.execute("DELETE FROM supply_plans WHERE forecast_run_id = %s", (int(run_id),))
+                cur.execute("DELETE FROM forecast_runs WHERE id = %s", (int(run_id),))
+
+                if dataset_id is not None:
+                    cur.execute("SELECT 1 FROM forecast_runs WHERE dataset_id = %s LIMIT 1", (int(dataset_id),))
+                    still_used = cur.fetchone() is not None
+                    if not still_used:
+                        cur.execute(
+                            "DELETE FROM datasets WHERE id = %s AND user_id = %s",
+                            (int(dataset_id), int(user_id)),
+                        )
+
+                conn.commit()
+                return True
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT dataset_id, user_id FROM forecast_runs WHERE id = ?",
+                (int(run_id),),
+            ).fetchone()
+            if not row:
+                return False
+            dataset_id, user_id = row["dataset_id"], row["user_id"]
+
+            conn.execute("DELETE FROM supply_plans WHERE forecast_run_id = ?", (int(run_id),))
+            conn.execute("DELETE FROM forecast_runs WHERE id = ?", (int(run_id),))
+
+            if dataset_id is not None:
+                still_used = (
+                    conn.execute(
+                        "SELECT 1 FROM forecast_runs WHERE dataset_id = ? LIMIT 1",
+                        (int(dataset_id),),
+                    ).fetchone()
+                    is not None
+                )
+                if not still_used:
+                    conn.execute(
+                        "DELETE FROM datasets WHERE id = ? AND user_id = ?",
+                        (int(dataset_id), int(user_id)),
+                    )
+
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
 def create_auth_otp(
     *,
     otp_id: str,

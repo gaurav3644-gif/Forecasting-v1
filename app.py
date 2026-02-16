@@ -3355,6 +3355,52 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
 
     return RedirectResponse("/results", status_code=303)
 
+
+@app.post("/history/delete")
+async def history_delete(request: Request, run_id: int = Form(...)):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/dashboard", status_code=303)
+    import history_store
+
+    is_admin = _is_admin_email(user_email)
+    ok = False
+    try:
+        if is_admin:
+            ok = bool(history_store.delete_forecast_run_admin(run_id=int(run_id)))
+        else:
+            ok = bool(history_store.delete_forecast_run(user_email, int(run_id)))
+    except Exception as e:
+        logging.warning(f"[HISTORY] Failed to delete run_id={run_id} for {user_email}: {e}")
+        ok = False
+
+    # If the deleted run is currently loaded in this browser session, clear it.
+    try:
+        session_id = _session_id_from_request(request)
+        session = data_store.get(session_id, {}) or {}
+        if int(session.get("forecast_run_id") or 0) == int(run_id):
+            for k in (
+                "forecast_run_id",
+                "df",
+                "raw_df",
+                "forecast_df",
+                "feature_importance",
+                "driver_artifacts",
+                "supply_plan_df",
+                "supply_plan_full_df",
+            ):
+                session.pop(k, None)
+    except Exception:
+        pass
+
+    if not ok:
+        try:
+            session_id = _session_id_from_request(request)
+            data_store.setdefault(session_id, {})["history_last_error"] = "Failed to delete run (not found or not permitted)."
+        except Exception:
+            pass
+    return RedirectResponse("/dashboard", status_code=303)
+
 @app.get("/api/update_plot")
 async def api_update_plot(request: Request):
     """AJAX endpoint to update plot and KPIs without full page reload"""

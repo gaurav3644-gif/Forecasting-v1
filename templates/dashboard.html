@@ -236,6 +236,10 @@
                           <input type="hidden" name="target" value="supply_plan">
                           <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
                         </form>
+                        <form method="post" action="/history/delete" class="d-inline js-delete-run">
+                          <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                        </form>
                       </td>
                     </tr>
                   {% endfor %}
@@ -264,6 +268,15 @@
         window.location.reload();
       });
     }
+  })();
+
+  (function() {
+    document.querySelectorAll('form.js-delete-run').forEach((form) => {
+      form.addEventListener('submit', (e) => {
+        const ok = window.confirm('Delete this run? This cannot be undone.');
+        if (!ok) e.preventDefault();
+      });
+    });
   })();
 
   (function() {
