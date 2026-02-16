@@ -559,6 +559,17 @@
             border: 1.5px solid rgba(120,120,180,0.10);
             backdrop-filter: blur(12px);
         }
+        .value-media img {
+            width: 100%;
+            height: 260px;
+            object-fit: cover;
+            border-radius: 18px;
+            border: 1px solid rgba(18,24,39,0.10);
+            box-shadow: 0 12px 34px rgba(18,24,39,0.10);
+        }
+        @media (max-width: 992px) {
+            .value-media img { height: 220px; }
+        }
         .stat {
             text-align: center;
         }
@@ -973,6 +984,9 @@
                     </div>
                 </div>
                 <div class="col-lg-6">
+                    <div class="value-media mb-3">
+                        <img src="https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=1200&q=80" alt="Retail sale at checkout" loading="lazy">
+                    </div>
                     <div class="stats-card">
                         <div class="stat">
                             <div class="stat-number">95%</div>
