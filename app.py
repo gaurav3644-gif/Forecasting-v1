@@ -2,6 +2,7 @@ import threading
 import time
 import asyncio
 import random
+import json
 from fastapi import Body
 from typing import Any, Dict, Optional
 import os
@@ -17,7 +18,7 @@ import hashlib
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlencode
 import base64
 import hmac
 import hashlib as _hashlib
@@ -83,6 +84,35 @@ def _get_user_email(request: Request) -> Optional[str]:
 
 def _is_signed_in(request: Request) -> bool:
     return bool(_get_user_email(request))
+
+_oauth_cookie_name = (os.getenv("PITENSOR_OAUTH_COOKIE_NAME") or "").strip() or "pitensor_oauth"
+
+def _sign_blob(blob_b64: str) -> str:
+    sig = hmac.new(_auth_cookie_secret_b, blob_b64.encode("ascii"), digestmod=_hashlib.sha256).digest()
+    return _b64url_encode(sig)
+
+def _oauth_pack(payload: Dict[str, Any]) -> str:
+    blob = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    blob_b64 = _b64url_encode(blob)
+    return f"{blob_b64}.{_sign_blob(blob_b64)}"
+
+def _oauth_unpack(val: str) -> Optional[Dict[str, Any]]:
+    try:
+        if not isinstance(val, str) or "." not in val:
+            return None
+        blob_b64, sig_b64 = val.split(".", 1)
+        expected = _sign_blob(blob_b64)
+        if not hmac.compare_digest(expected, sig_b64):
+            return None
+        blob = _b64url_decode(blob_b64)
+        obj = json.loads(blob.decode("utf-8"))
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+def _pkce_challenge(verifier: str) -> str:
+    digest = _hashlib.sha256((verifier or "").encode("ascii")).digest()
+    return _b64url_encode(digest)
 
 def _send_demo_request_email(
     *,
@@ -2059,8 +2089,159 @@ async def signout(request: Request):
 
 @app.get("/auth/google")
 async def auth_google(request: Request, next: Optional[str] = None):
-    # OAuth not configured in this repo yet; show sign-in UI with message.
-    return RedirectResponse(f"/signin?error={quote('Google sign-in is not configured yet.')}&next={quote(next or '')}", status_code=303)
+    client_id = (os.getenv("GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
+    client_secret = (os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
+    redirect_uri = (os.getenv("GOOGLE_REDIRECT_URI") or os.getenv("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+
+    if not client_id:
+        return RedirectResponse(
+            f"/signin?error={quote('Google sign-in is not configured: missing GOOGLE_CLIENT_ID.')}&next={quote(next or '')}",
+            status_code=303,
+        )
+    if not redirect_uri:
+        # Try to infer from incoming request (may be incorrect if proxy headers aren't set).
+        try:
+            redirect_uri = str(request.url_for("auth_google_callback"))
+        except Exception:
+            redirect_uri = ""
+    if not redirect_uri:
+        return RedirectResponse(
+            f"/signin?error={quote('Google sign-in is not configured: missing GOOGLE_REDIRECT_URI.')}&next={quote(next or '')}",
+            status_code=303,
+        )
+
+    # PKCE (recommended) + CSRF state.
+    state = _b64url_encode(os.urandom(18))
+    nonce = _b64url_encode(os.urandom(18))
+    code_verifier = _b64url_encode(os.urandom(32))
+    code_challenge = _pkce_challenge(code_verifier)
+
+    dest = _safe_next_path(next)
+    cookie_payload = {
+        "provider": "google",
+        "state": state,
+        "nonce": nonce,
+        "verifier": code_verifier,
+        "redirect_uri": redirect_uri,
+        "client_id": client_id,
+        "has_secret": bool(client_secret),
+        "next": dest,
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    }
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "nonce": nonce,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        # Prompt can be omitted to avoid forcing consent every time.
+    }
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+    response = RedirectResponse(auth_url, status_code=303)
+    response.set_cookie(
+        _oauth_cookie_name,
+        _oauth_pack(cookie_payload),
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(request),
+        max_age=600,
+    )
+    return response
+
+
+@app.get("/auth/google/callback", name="auth_google_callback")
+async def auth_google_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    # Validate state (CSRF)
+    cookie_val = request.cookies.get(_oauth_cookie_name, "")
+    cookie = _oauth_unpack(cookie_val) or {}
+
+    next_path = str(cookie.get("next") or "/").strip() or "/"
+    next_path = _safe_next_path(next_path)
+
+    def _fail(msg: str) -> RedirectResponse:
+        resp = RedirectResponse(f"/signin?error={quote(msg)}&next={quote(next_path)}", status_code=303)
+        resp.delete_cookie(_oauth_cookie_name)
+        return resp
+
+    if error:
+        return _fail(f"Google sign-in failed: {error}")
+    if not code or not state:
+        return _fail("Google sign-in failed: missing authorization code.")
+
+    expected_state = str(cookie.get("state") or "").strip()
+    if not expected_state or not hmac.compare_digest(expected_state, str(state).strip()):
+        return _fail("Google sign-in failed: invalid state.")
+
+    client_id = (os.getenv("GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
+    client_secret = (os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
+    redirect_uri = str(cookie.get("redirect_uri") or "").strip() or (os.getenv("GOOGLE_REDIRECT_URI") or os.getenv("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+    code_verifier = str(cookie.get("verifier") or "").strip()
+
+    if not client_id or not redirect_uri:
+        return _fail("Google sign-in is not configured on the server.")
+
+    # Exchange code for tokens
+    token_payload = {
+        "code": code,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    if client_secret:
+        token_payload["client_secret"] = client_secret
+    if code_verifier:
+        token_payload["code_verifier"] = code_verifier
+
+    try:
+        token_resp = httpx.post("https://oauth2.googleapis.com/token", data=token_payload, timeout=15.0)
+        token_resp.raise_for_status()
+        token_data = token_resp.json() or {}
+    except Exception as e:
+        return _fail(f"Google sign-in failed during token exchange: {e}")
+
+    id_token = str(token_data.get("id_token") or "").strip()
+    if not id_token:
+        return _fail("Google sign-in failed: missing id_token.")
+
+    # Validate token and extract email
+    try:
+        info_resp = httpx.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": id_token}, timeout=10.0)
+        info_resp.raise_for_status()
+        info = info_resp.json() or {}
+    except Exception as e:
+        return _fail(f"Google sign-in failed during token validation: {e}")
+
+    aud = str(info.get("aud") or "").strip()
+    email = str(info.get("email") or "").strip().lower()
+    email_verified = str(info.get("email_verified") or "").strip().lower() in ("true", "1", "yes")
+    iss = str(info.get("iss") or "").strip()
+
+    if aud != client_id:
+        return _fail("Google sign-in failed: token audience mismatch.")
+    if iss not in ("accounts.google.com", "https://accounts.google.com"):
+        return _fail("Google sign-in failed: invalid token issuer.")
+    if not email or "@" not in email:
+        return _fail("Google sign-in failed: email not available.")
+    if not email_verified:
+        return _fail("Google sign-in failed: email not verified.")
+
+    # Success: set our app cookie
+    dest = next_path
+    response = RedirectResponse(dest, status_code=303)
+    response.delete_cookie(_oauth_cookie_name)
+    response.set_cookie(
+        _auth_cookie_name,
+        _auth_cookie_value(email),
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(request),
+        max_age=_auth_cookie_max_age_s or None,
+    )
+    return response
 
 @app.get("/auth/github")
 async def auth_github(request: Request, next: Optional[str] = None):
