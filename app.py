@@ -6,11 +6,14 @@ from fastapi import Body
 from typing import Any, Dict, Optional
 import os
 import httpx
+import smtplib
+import ssl
+from email.message import EmailMessage
 from assistant_context_packet import build_context_packet
 from assistant_openai import AssistantLLMError, answer_question_openai
 import retriever
 import hashlib
-from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from urllib.parse import quote, urlparse
@@ -79,6 +82,86 @@ def _get_user_email(request: Request) -> Optional[str]:
 
 def _is_signed_in(request: Request) -> bool:
     return bool(_get_user_email(request))
+
+def _send_demo_request_email(
+    *,
+    name: str,
+    email: str,
+    company: Optional[str],
+    phone: Optional[str],
+    role: Optional[str],
+    message: Optional[str],
+    source_path: Optional[str],
+    user_email: Optional[str],
+) -> None:
+    """
+    Sends an email notification for a demo request using SMTP.
+
+    Config (env vars):
+      - PITENSOR_SMTP_HOST (required to send)
+      - PITENSOR_SMTP_PORT (default 587)
+      - PITENSOR_SMTP_USER (optional)
+      - PITENSOR_SMTP_PASSWORD (optional)
+      - PITENSOR_SMTP_FROM (optional; defaults to PITENSOR_SMTP_USER or support@pitensor.com)
+      - PITENSOR_SMTP_USE_TLS (default 1)  -> STARTTLS for non-SSL
+      - PITENSOR_SMTP_USE_SSL (default 0)  -> SMTP over SSL (usually 465)
+      - PITENSOR_SMTP_TIMEOUT_S (default 12)
+      - PITENSOR_DEMO_EMAIL_TO (default support@pitensor.com)
+    """
+    smtp_host = (os.getenv("PITENSOR_SMTP_HOST") or "").strip()
+    if not smtp_host:
+        raise RuntimeError("PITENSOR_SMTP_HOST is not set")
+
+    to_addr = (os.getenv("PITENSOR_DEMO_EMAIL_TO") or "support@pitensor.com").strip() or "support@pitensor.com"
+
+    smtp_port = int(float((os.getenv("PITENSOR_SMTP_PORT") or "587").strip() or "587"))
+    smtp_user = (os.getenv("PITENSOR_SMTP_USER") or "").strip()
+    smtp_password = (os.getenv("PITENSOR_SMTP_PASSWORD") or "").strip()
+    smtp_from = (os.getenv("PITENSOR_SMTP_FROM") or "").strip() or (smtp_user or "support@pitensor.com")
+    use_tls = (os.getenv("PITENSOR_SMTP_USE_TLS") or "1").strip() == "1"
+    use_ssl = (os.getenv("PITENSOR_SMTP_USE_SSL") or "0").strip() == "1"
+    timeout_s = float((os.getenv("PITENSOR_SMTP_TIMEOUT_S") or "12").strip() or "12")
+
+    subject = f"[PiTensor] Request Demo: {name} ({email})"
+    lines = [
+        "New demo request received.",
+        "",
+        f"Name: {name}",
+        f"Email: {email}",
+        f"Company: {company or ''}",
+        f"Role: {role or ''}",
+        f"Phone/WhatsApp: {phone or ''}",
+        f"Source: {source_path or ''}",
+        f"Signed-in user: {user_email or ''}",
+        "",
+        "Message:",
+        (message or "").strip(),
+        "",
+    ]
+    body = "\n".join(lines)
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = to_addr
+    msg["Reply-To"] = email
+    msg.set_content(body)
+
+    context = ssl.create_default_context()
+    if use_ssl:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout_s, context=context) as server:
+            if smtp_user and smtp_password:
+                server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout_s) as server:
+            server.ehlo()
+            if use_tls:
+                server.starttls(context=context)
+                server.ehlo()
+            if smtp_user and smtp_password:
+                server.login(smtp_user, smtp_password)
+            server.send_message(msg)
 
 def _session_id_from_request(request: Request) -> str:
     """
@@ -1139,7 +1222,7 @@ async def forecast_stop(request: Request):
 
 
 @app.post("/request_demo")
-async def request_demo(request: Request):
+async def request_demo(request: Request, background_tasks: BackgroundTasks):
     """
     Save a request-demo lead. No LLM; best-effort persistence to history DB.
     """
@@ -1186,6 +1269,25 @@ async def request_demo(request: Request):
     except Exception as e:
         logging.warning(f"[DEMO] Failed to save demo request: {e}")
         # Still return ok to avoid blocking UX.
+
+    # Best-effort email notification (does not affect response).
+    if (os.getenv("PITENSOR_SMTP_HOST") or "").strip():
+        def _email_task() -> None:
+            try:
+                _send_demo_request_email(
+                    name=name,
+                    email=email,
+                    company=company or None,
+                    phone=phone or None,
+                    role=role or None,
+                    message=message or None,
+                    source_path=source_path or None,
+                    user_email=user_email or None,
+                )
+            except Exception as e:
+                logging.warning(f"[DEMO] Failed to send demo request email: {e}")
+
+        background_tasks.add_task(_email_task)
     return JSONResponse({"ok": True})
 
 
