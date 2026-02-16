@@ -814,24 +814,77 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             border: 1px solid #e9ecef;
         }
-        .demo-chart .bar {
-            animation: grow 2s ease-out forwards;
-            transform-origin: bottom;
-            transform: scaleY(0);
-            fill: #6c757d;
+        .demo-chart {
+            width: 100%;
+            height: auto;
+            display: block;
         }
-        .bar-1 { animation-delay: 0.1s; }
-        .bar-2 { animation-delay: 0.2s; }
-        .bar-3 { animation-delay: 0.3s; }
-        .bar-4 { animation-delay: 0.4s; }
-        .bar-5 { animation-delay: 0.5s; }
-        .bar-6 { animation-delay: 0.6s; }
-        .bar-7 { animation-delay: 0.7s; }
-        .bar-8 { animation-delay: 0.8s; }
-        .bar-9 { animation-delay: 0.9s; }
-        .bar-10 { animation-delay: 1.0s; }
-        @keyframes grow {
-            to { transform: scaleY(1); }
+        .demo-chart .grid {
+            stroke: rgba(15, 23, 42, 0.08);
+            stroke-width: 1;
+            shape-rendering: crispEdges;
+        }
+        .demo-chart .axis {
+            stroke: rgba(15, 23, 42, 0.16);
+            stroke-width: 1;
+            shape-rendering: crispEdges;
+        }
+        .demo-chart .label {
+            fill: rgba(15, 23, 42, 0.65);
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .demo-chart .legend-label {
+            fill: rgba(15, 23, 42, 0.75);
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .demo-chart .line-actual {
+            stroke: #22c55e;
+            stroke-width: 3;
+            fill: none;
+            filter: drop-shadow(0 2px 8px rgba(34, 197, 94, 0.20));
+        }
+        .demo-chart .line-forecast {
+            stroke: #0ea5e9;
+            stroke-width: 3;
+            fill: none;
+            stroke-dasharray: 7 6;
+            filter: drop-shadow(0 2px 8px rgba(14, 165, 233, 0.14));
+        }
+        .demo-chart .band {
+            fill: rgba(14, 165, 233, 0.12);
+        }
+        .demo-chart .area {
+            fill: url(#actualArea);
+            opacity: 0.95;
+        }
+        .demo-chart .dot {
+            fill: #fff;
+            stroke: #22c55e;
+            stroke-width: 2;
+        }
+        .demo-chart .dot-forecast {
+            fill: #fff;
+            stroke: #0ea5e9;
+            stroke-width: 2;
+        }
+        .demo-chart .now {
+            stroke: rgba(15, 23, 42, 0.25);
+            stroke-width: 1;
+            stroke-dasharray: 4 4;
+        }
+        .demo-chart .draw {
+            stroke-dasharray: 1200;
+            stroke-dashoffset: 1200;
+            animation: draw 1.8s ease-out forwards;
+        }
+        .demo-chart .draw.delay {
+            animation-delay: 0.18s;
+        }
+        @keyframes draw { to { stroke-dashoffset: 0; } }
+        @media (prefers-reduced-motion: reduce) {
+            .demo-chart .draw { animation: none; stroke-dashoffset: 0; }
         }
     </style>
 </head>
@@ -1075,26 +1128,59 @@
                 <div class="col-md-6">
                     <div class="chart-container animate-on-scroll">
                         <svg viewBox="0 0 400 250" class="demo-chart">
+                            <title>Sales trend preview</title>
+                            <desc>Actual sales line with forecast and a confidence band.</desc>
                             <defs>
-                                <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
-                                    <stop offset="0%" style="stop-color:#6c757d;stop-opacity:1" />
-                                    <stop offset="100%" style="stop-color:#495057;stop-opacity:1" />
+                                <linearGradient id="actualArea" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stop-color="#22c55e" stop-opacity="0.28" />
+                                    <stop offset="100%" stop-color="#22c55e" stop-opacity="0.00" />
                                 </linearGradient>
                             </defs>
-                            <rect x="50" y="150" width="20" height="50" fill="url(#grad1)" class="bar bar-1"/>
-                            <rect x="80" y="120" width="20" height="80" fill="url(#grad1)" class="bar bar-2"/>
-                            <rect x="110" y="100" width="20" height="100" fill="url(#grad1)" class="bar bar-3"/>
-                            <rect x="140" y="80" width="20" height="120" fill="url(#grad1)" class="bar bar-4"/>
-                            <rect x="170" y="60" width="20" height="140" fill="url(#grad1)" class="bar bar-5"/>
-                            <rect x="200" y="40" width="20" height="160" fill="url(#grad1)" class="bar bar-6"/>
-                            <rect x="230" y="30" width="20" height="170" fill="url(#grad1)" class="bar bar-7"/>
-                            <rect x="260" y="50" width="20" height="150" fill="url(#grad1)" class="bar bar-8"/>
-                            <rect x="290" y="70" width="20" height="130" fill="url(#grad1)" class="bar bar-9"/>
-                            <rect x="320" y="90" width="20" height="110" fill="url(#grad1)" class="bar bar-10"/>
-                            <line x1="40" y1="200" x2="360" y2="200" stroke="#ddd" stroke-width="1"/>
-                            <line x1="40" y1="200" x2="40" y2="20" stroke="#ddd" stroke-width="1"/>
-                            <text x="200" y="220" text-anchor="middle" font-size="12" fill="#666">Months</text>
-                            <text x="20" y="120" text-anchor="middle" font-size="12" fill="#666" transform="rotate(-90 20 120)">Sales ($)</text>
+
+                            <!-- grid -->
+                            <line x1="46" y1="70" x2="372" y2="70" class="grid" />
+                            <line x1="46" y1="102" x2="372" y2="102" class="grid" />
+                            <line x1="46" y1="134" x2="372" y2="134" class="grid" />
+                            <line x1="46" y1="166" x2="372" y2="166" class="grid" />
+                            <line x1="46" y1="198" x2="372" y2="198" class="grid" />
+
+                            <!-- axes -->
+                            <line x1="46" y1="198" x2="372" y2="198" class="axis" />
+                            <line x1="46" y1="198" x2="46" y2="34" class="axis" />
+
+                            <!-- legend -->
+                            <circle cx="62" cy="42" r="4" class="dot" />
+                            <text x="74" y="45" class="legend-label">Actual</text>
+                            <circle cx="126" cy="42" r="4" class="dot-forecast" />
+                            <text x="138" y="45" class="legend-label">Forecast</text>
+
+                            <!-- "now" marker -->
+                            <line x1="258" y1="34" x2="258" y2="198" class="now" />
+                            <text x="258" y="30" text-anchor="middle" class="label">Now</text>
+
+                            <!-- actual area + line -->
+                            <path class="area" d="M 66 170 L 98 150 L 130 140 L 162 118 L 194 102 L 226 82 L 258 70 L 258 198 L 66 198 Z" />
+                            <path class="line-actual draw" d="M 66 170 L 98 150 L 130 140 L 162 118 L 194 102 L 226 82 L 258 70" />
+
+                            <!-- forecast band + line -->
+                            <path class="band" d="M 258 58 L 290 74 L 322 96 L 354 110 L 354 146 L 322 128 L 290 102 L 258 82 Z" />
+                            <path class="line-forecast draw delay" d="M 258 70 L 290 88 L 322 112 L 354 128" />
+
+                            <!-- dots -->
+                            <circle cx="66" cy="170" r="4" class="dot" />
+                            <circle cx="98" cy="150" r="4" class="dot" />
+                            <circle cx="130" cy="140" r="4" class="dot" />
+                            <circle cx="162" cy="118" r="4" class="dot" />
+                            <circle cx="194" cy="102" r="4" class="dot" />
+                            <circle cx="226" cy="82" r="4" class="dot" />
+                            <circle cx="258" cy="70" r="4" class="dot" />
+                            <circle cx="290" cy="88" r="4" class="dot-forecast" />
+                            <circle cx="322" cy="112" r="4" class="dot-forecast" />
+                            <circle cx="354" cy="128" r="4" class="dot-forecast" />
+
+                            <!-- labels -->
+                            <text x="209" y="232" text-anchor="middle" class="label">Months</text>
+                            <text x="18" y="120" text-anchor="middle" class="label" transform="rotate(-90 18 120)">Sales</text>
                         </svg>
                     </div>
                 </div>
