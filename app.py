@@ -3834,8 +3834,8 @@ async def dashboard_page(request: Request):
     running_forecasts: list[dict[str, Any]] = []
     try:
         sess = _ensure_session_container(session_id)
-        runs = sess.get("runs") or {}
-        for rid, r in runs.items():
+        session_runs = sess.get("runs") or {}
+        for rid, r in session_runs.items():
             if not isinstance(r, dict):
                 continue
             prog = r.get("forecast_progress") or None
