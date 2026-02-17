@@ -4412,6 +4412,7 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
     logging.debug("[LOG] /supply_plan GET endpoint called")
     session_id = _session_id_from_request(request)
     run, rid = _get_run_state(session_id, run_session_id, create=False)
+    user_email = _get_user_email(request)
     forecast_df = (run or {}).get("forecast_df") if isinstance(run, dict) else None
     has_forecast = forecast_df is not None and isinstance(forecast_df, pd.DataFrame) and not forecast_df.empty
     raw_df = (run or {}).get("df") if isinstance(run, dict) else None
@@ -4490,6 +4491,262 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
             "SKU_001,3.5,45,0.95\n"
             "SKU_002,2.0,30,0.90\n"
         )
+    # If the supply plan was saved to history (Postgres/SQLite) but this worker's
+    # in-memory session lost state (restart/multi-worker), reload it so the page
+    # can render the last generated plan without requiring the user to click Generate again.
+    if isinstance(run, dict):
+        try:
+            has_plan = isinstance(run.get("supply_plan_full_df"), pd.DataFrame) and not run.get("supply_plan_full_df").empty
+            if not has_plan:
+                run_id = run.get("forecast_run_id")
+                if user_email and run_id:
+                    import history_store
+                    try:
+                        sp = history_store.load_supply_plan(user_email, int(run_id))
+                    except Exception:
+                        sp = None
+                    if isinstance(sp, dict):
+                        sp_df = sp.get("supply_plan_df")
+                        sp_full = sp.get("supply_plan_full_df")
+                        if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
+                            run["supply_plan_df"] = sp_df
+                        if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
+                            run["supply_plan_full_df"] = sp_full
+                        if isinstance(sp.get("params"), dict):
+                            run["supply_plan_params"] = sp.get("params")
+        except Exception:
+            pass
+
+    def _planning_ui_from_state(state: dict[str, Any]) -> Optional[dict[str, Any]]:
+        ui = state.get("planning_last_ui")
+        if isinstance(ui, dict):
+            return ui
+        last = state.get("planning_last")
+        if not isinstance(last, dict):
+            params = state.get("supply_plan_params")
+            if isinstance(params, dict):
+                saved = params.get("planning")
+                if isinstance(saved, dict):
+                    return {
+                        "combo_key": saved.get("combo_key"),
+                        "question": saved.get("question"),
+                        "provider": saved.get("provider") or "unknown",
+                        "llm_provider": saved.get("llm_provider") or saved.get("provider") or "unknown",
+                        "llm_error": saved.get("llm_error"),
+                        "risks": saved.get("risks") or [],
+                        "actions": saved.get("actions") or [],
+                        "answer": saved.get("answer") or "",
+                    }
+            return None
+        # Align with /planning/full response shape used by the frontend renderer.
+        return {
+            "combo_key": last.get("combo_key"),
+            "question": last.get("question"),
+            "provider": last.get("provider") or "unknown",
+            "llm_provider": last.get("llm_provider") or last.get("provider") or "unknown",
+            "llm_error": last.get("llm_error"),
+            "risks": last.get("risks") or [],
+            "actions": last.get("actions") or [],
+            "answer": last.get("recommendations") or "",
+        }
+
+    def _supply_plan_ui_from_df(plan_df: pd.DataFrame, *, horizon_months: int, selected_combo_key: Optional[str] = None) -> Optional[dict[str, Any]]:
+        try:
+            import plotly.graph_objects as go
+            from plotly.utils import PlotlyJSONEncoder
+            import json as _json
+
+            df = plan_df.copy()
+            try:
+                if selected_combo_key and "|||" in str(selected_combo_key) and "sku_id" in df.columns and "location" in df.columns:
+                    sku, loc = str(selected_combo_key).split("|||", 1)
+                    df = df[(df["sku_id"].astype(str) == str(sku)) & (df["location"].astype(str) == str(loc))].copy()
+            except Exception:
+                pass
+            if "period_start" in df.columns:
+                df["period_start"] = pd.to_datetime(df["period_start"], errors="coerce")
+                df = df.dropna(subset=["period_start"])
+                df = df.sort_values("period_start")
+            df = df.head(min(int(horizon_months or 10), 36))
+            if df.empty:
+                return None
+
+            # Sawtooth chart: inventory over time with reorder point + safety stock
+            points_x = []
+            points_y = []
+            hover = []
+            prev_end = None
+            for _, row in df.iterrows():
+                m_start = pd.to_datetime(row.get("period_start"))
+                m_end = (m_start + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
+                begin_inv = float(row.get("beginning_on_hand", 0.0) or 0.0)
+                end_inv = float(row.get("ending_on_hand", 0.0) or 0.0)
+
+                if prev_end is None:
+                    points_x.append(m_start)
+                    points_y.append(begin_inv)
+                    hover.append(f"Month start<br>Begin inv: {begin_inv:.0f}")
+                else:
+                    points_x.append(m_start)
+                    points_y.append(prev_end)
+                    hover.append(f"Month start<br>Prev end inv: {prev_end:.0f}")
+                    points_x.append(m_start)
+                    points_y.append(begin_inv)
+                    hover.append(f"Month start<br>Begin inv: {begin_inv:.0f}")
+
+                points_x.append(m_end)
+                points_y.append(end_inv)
+                hover.append(
+                    f"{m_start.strftime('%b %Y')}<br>"
+                    f"Demand: {float(row.get('forecast_demand', 0.0) or 0.0):.0f}<br>"
+                    f"Receipts: {float(row.get('receipts', 0.0) or 0.0):.0f}<br>"
+                    f"Order: {float(row.get('order_qty', 0.0) or 0.0):.0f}<br>"
+                    f"End inv: {end_inv:.0f}"
+                )
+                prev_end = end_inv
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=points_x,
+                y=points_y,
+                mode="lines+markers",
+                name="Projected On-hand",
+                line=dict(color="#2b6ef2", width=3),
+                marker=dict(size=7),
+                hovertext=hover,
+                hoverinfo="text",
+            ))
+
+            def _month_end(ts: pd.Timestamp) -> pd.Timestamp:
+                ts = pd.to_datetime(ts)
+                return (ts + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
+
+            def _step_xy(_df: pd.DataFrame, col: str) -> tuple[list[pd.Timestamp], list[float]]:
+                xs: list[pd.Timestamp] = []
+                ys: list[float] = []
+                for _, r in _df.iterrows():
+                    m_start = pd.to_datetime(r.get("period_start"))
+                    if pd.isna(m_start):
+                        continue
+                    m_end = _month_end(m_start)
+                    v = pd.to_numeric(r.get(col), errors="coerce")
+                    v = float(v) if pd.notna(v) else float("nan")
+                    xs.extend([m_start, m_end])
+                    ys.extend([v, v])
+                return xs, ys
+
+            rp_x, rp_y = _step_xy(df, "reorder_point") if "reorder_point" in df.columns else ([], [])
+            ss_x, ss_y = _step_xy(df, "safety_stock") if "safety_stock" in df.columns else ([], [])
+            tl_x, tl_y = _step_xy(df, "target_level") if "target_level" in df.columns else ([], [])
+
+            if rp_x:
+                fig.add_trace(go.Scatter(x=rp_x, y=rp_y, mode="lines", name="Reorder Point", line=dict(color="#e63946", width=2, dash="dash")))
+            if ss_x:
+                fig.add_trace(go.Scatter(x=ss_x, y=ss_y, mode="lines", name="Safety Stock", line=dict(color="#6c757d", width=2, dash="dot")))
+            if tl_x:
+                fig.add_trace(go.Scatter(x=tl_x, y=tl_y, mode="lines", name="Order-up-to Target", line=dict(color="#7b2cbf", width=2, dash="dash")))
+
+            fig.update_layout(
+                title="Projected Inventory (Sawtooth)",
+                xaxis_title="Month",
+                yaxis_title="Units",
+                template="plotly_white",
+                height=420,
+                margin=dict(l=40, r=30, t=60, b=40),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            )
+
+            plot_json = _json.dumps(fig.to_plotly_json(), cls=PlotlyJSONEncoder)
+
+            table_df = df.copy()
+            # Drop internal identifiers if human-readable grain columns exist.
+            sku_col = "item" if "item" in table_df.columns else None
+            loc_col = "store" if "store" in table_df.columns else None
+            if "sku_id" in table_df.columns and sku_col and sku_col in table_df.columns:
+                table_df = table_df.drop(columns=["sku_id"])
+            if "location" in table_df.columns and loc_col and loc_col in table_df.columns:
+                table_df = table_df.drop(columns=["location"])
+
+            table_df = table_df[[c for c in table_df.columns if c != "explanation"]].copy()
+            table_columns = [str(c) for c in table_df.columns]
+
+            def _json_safe(v: object) -> object:
+                try:
+                    if v is None:
+                        return None
+                    if isinstance(v, pd.Timestamp):
+                        return v.strftime("%Y-%m-%d")
+                    if isinstance(v, datetime):
+                        return v.strftime("%Y-%m-%d")
+                    if isinstance(v, float):
+                        if not pd.notna(v):
+                            return None
+                        return float(v)
+                    if isinstance(v, int):
+                        return int(v)
+                    if "numpy" in type(v).__module__:
+                        if pd.isna(v):
+                            return None
+                        try:
+                            return v.item()
+                        except Exception:
+                            return str(v)
+                    if pd.isna(v):  # type: ignore[arg-type]
+                        return None
+                    return v
+                except Exception:
+                    return str(v)
+
+            table_rows = []
+            for _, r in table_df.iterrows():
+                table_rows.append({str(k): _json_safe(v) for k, v in r.to_dict().items()})
+
+            return {
+                "plot_json": plot_json,
+                "table_columns": table_columns,
+                "table_rows": table_rows,
+                "inventory_source": "saved",
+            }
+        except Exception:
+            return None
+
+    initial_supply_plan_ui: Optional[dict[str, Any]] = None
+    initial_planning_ui: Optional[dict[str, Any]] = None
+    selected_combo_key = None
+    if isinstance(run, dict):
+        selected_combo_key = run.get("supply_plan_last_combo_key") or (run.get("supply_plan_params") or {}).get("combo_key")
+        if not selected_combo_key and combos:
+            try:
+                selected_combo_key = combos[0].get("key")
+            except Exception:
+                selected_combo_key = None
+
+        ui = run.get("supply_plan_ui")
+        if isinstance(ui, dict) and ui.get("plot_json") and ui.get("table_columns") and ui.get("table_rows"):
+            initial_supply_plan_ui = ui
+        else:
+            # Compute lightweight UI payload from the stored plan (no recompute).
+            plan_df = run.get("supply_plan_full_df") or run.get("supply_plan_df")
+            if isinstance(plan_df, pd.DataFrame) and not plan_df.empty:
+                initial_supply_plan_ui = _supply_plan_ui_from_df(
+                    plan_df,
+                    horizon_months=int(forecast_months or 10) if str(forecast_months or "").strip() else 10,
+                    selected_combo_key=str(selected_combo_key) if selected_combo_key else None,
+                )
+                if isinstance(initial_supply_plan_ui, dict):
+                    run["supply_plan_ui"] = initial_supply_plan_ui
+
+        initial_planning_ui = _planning_ui_from_state(run)
+
+    try:
+        from markupsafe import Markup
+        import json as _json
+        initial_supply_plan_ui_json = Markup(_json.dumps(initial_supply_plan_ui, default=str)) if initial_supply_plan_ui is not None else Markup("null")
+        initial_planning_ui_json = Markup(_json.dumps(initial_planning_ui, default=str)) if initial_planning_ui is not None else Markup("null")
+    except Exception:
+        initial_supply_plan_ui_json = "null"
+        initial_planning_ui_json = "null"
+
     return templates.TemplateResponse(
         "supply_plan.html",
         {
@@ -4499,12 +4756,15 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
             "has_raw_data": has_raw_data,
             "grain_label": grain_label,
             "combos": combos,
+            "selected_combo_key": selected_combo_key,
             "forecast_start_month": forecast_start_month,
             "forecast_months": forecast_months,
             "sample_forecast_csv": sample_forecast_csv,
             "sample_inventory_csv": sample_inventory_csv,
             "sample_constraints_csv": sample_constraints_csv,
             "sample_policy_csv": sample_policy_csv,
+            "initial_supply_plan_ui_json": initial_supply_plan_ui_json,
+            "initial_planning_ui_json": initial_planning_ui_json,
             "raw_inventory_columns": ([
                 c for c in (list(raw_df.columns) if has_raw_data else [])
                 if any(k in str(c).lower() for k in ["on_hand", "onhand", "inventory", "stock", "qty_on_hand", "qoh", "available"]) 
@@ -5253,6 +5513,29 @@ async def supply_plan_submit(
                         "override_enabled": bool(payload.get("override_enabled") or False),
                         "inventory_column": payload.get("inventory_column"),
                     }
+                    try:
+                        if isinstance(run, dict):
+                            run["supply_plan_params"] = dict(plan_params)
+                    except Exception:
+                        pass
+                    try:
+                        # Persist the latest risks/actions/recommendations snapshot (best-effort) so returning
+                        # to the supply plan page can restore it without re-running the LLM.
+                        pli = (run or {}).get("planning_last_ui") if isinstance(run, dict) else None
+                        if isinstance(pli, dict):
+                            if (not plan_params.get("combo_key")) or (str(pli.get("combo_key") or "") == str(plan_params.get("combo_key") or "")):
+                                plan_params["planning"] = {
+                                    "combo_key": pli.get("combo_key"),
+                                    "question": pli.get("question"),
+                                    "provider": pli.get("provider"),
+                                    "llm_provider": pli.get("llm_provider"),
+                                    "llm_error": pli.get("llm_error"),
+                                    "risks": pli.get("risks") or [],
+                                    "actions": pli.get("actions") or [],
+                                    "answer": pli.get("answer") or "",
+                                }
+                    except Exception:
+                        pass
                     def _bg_save():
                         try:
                             history_store.save_supply_plan(
@@ -5437,8 +5720,16 @@ async def supply_plan_submit(
             row = {str(k): _json_safe(v) for k, v in r.to_dict().items()}
             table_rows.append(row)
 
+        out_payload = {"head": head, "plot_json": fig_json, "table_columns": table_columns, "table_rows": table_rows, "inventory_source": inventory_source}
+        try:
+            if isinstance(run, dict):
+                run["supply_plan_ui"] = out_payload
+                run["supply_plan_last_combo_key"] = payload.get("combo_key")
+                run["supply_plan_last_generated_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        except Exception:
+            pass
         print(f"[SUPPLY_PLAN] SUCCESS - returning plot with {len(table_rows)} table rows", flush=True)
-        return {"head": head, "plot_json": fig_json, "table_columns": table_columns, "table_rows": table_rows, "inventory_source": inventory_source}
+        return out_payload
     except Exception as e:
         print(f"[SUPPLY_PLAN] EXCEPTION: {e}", flush=True)
         logging.exception(f"[SUPPLY_PLAN] Error in supply planning: {e}")
@@ -5618,6 +5909,18 @@ async def planning_full(request: Request, payload: Dict = Body(default={})):
             if not isinstance(store, dict):
                 store, _ = _get_run_state(session_id, rid, create=True)
             context_packet = _build_llm_context_packet(session, combo_key=combo_key)
+            planning_ui = {
+                "ts": time.time(),
+                "run_session_id": rid,
+                "combo_key": combo_key,
+                "question": payload.get("question"),
+                "provider": recs.get("provider") if isinstance(recs, dict) else None,
+                "llm_provider": recs.get("llm_provider") if isinstance(recs, dict) else None,
+                "llm_error": recs.get("llm_error") if isinstance(recs, dict) else None,
+                "risks": risks,
+                "actions": actions,
+                "answer": recs.get("answer") if isinstance(recs, dict) else "",
+            }
             store["planning_last"] = {
                 "ts": time.time(),
                 "run_session_id": rid,
@@ -5632,6 +5935,45 @@ async def planning_full(request: Request, payload: Dict = Body(default={})):
                 "llm_error": recs.get("llm_error") if isinstance(recs, dict) else None,
                 "context_packet": context_packet,
             }
+            store["planning_last_ui"] = planning_ui
+
+            # Persist planning insights into the supply plan history (best-effort).
+            try:
+                user_email = _get_user_email(request)
+                run_id = store.get("forecast_run_id")
+                sp_export = store.get("supply_plan_df")
+                sp_full = store.get("supply_plan_full_df")
+                if user_email and run_id and isinstance(sp_export, pd.DataFrame) and not sp_export.empty:
+                    import history_store
+                    base_params = store.get("supply_plan_params") if isinstance(store.get("supply_plan_params"), dict) else {}
+                    params = dict(base_params or {})
+                    params["planning"] = {
+                        "combo_key": planning_ui.get("combo_key"),
+                        "question": planning_ui.get("question"),
+                        "provider": planning_ui.get("provider"),
+                        "llm_provider": planning_ui.get("llm_provider"),
+                        "llm_error": planning_ui.get("llm_error"),
+                        "risks": planning_ui.get("risks") or [],
+                        "actions": planning_ui.get("actions") or [],
+                        "answer": planning_ui.get("answer") or "",
+                    }
+                    store["supply_plan_params"] = params
+
+                    def _bg_save_plan_insights():
+                        try:
+                            history_store.save_supply_plan(
+                                user_email,
+                                int(run_id),
+                                params=params,
+                                supply_export_df=sp_export,
+                                supply_full_df=sp_full if isinstance(sp_full, pd.DataFrame) and not sp_full.empty else None,
+                            )
+                        except Exception:
+                            pass
+
+                    threading.Thread(target=_bg_save_plan_insights, daemon=True).start()
+            except Exception:
+                pass
         except Exception:
             pass
         # Do not cache entire dict in _assistant_cache; it is shared with chat and intended for short strings.

@@ -59,7 +59,7 @@
                 <label for="combo_key" class="form-label">Item / Store (series)</label>
                 <select class="form-select" id="combo_key">
                     {% for c in combos %}
-                    <option value="{{ c.key }}">{{ c.label }}</option>
+                    <option value="{{ c.key }}" {% if selected_combo_key and c.key == selected_combo_key %}selected{% endif %}>{{ c.label }}</option>
                     {% endfor %}
                 </select>
                 <div class="form-text">Select which item/store to simulate (sawtooth chart).</div>
@@ -291,6 +291,8 @@
 <script>
 // runSessionId must be in module scope so the form submit handler can access it.
 const runSessionId = "{{ run_session_id or '' }}";
+const initialSupplyPlanUI = {{ initial_supply_plan_ui_json }};
+const initialPlanningUI = {{ initial_planning_ui_json }};
 
 document.addEventListener('DOMContentLoaded', function() {
 
@@ -430,6 +432,93 @@ document.addEventListener('DOMContentLoaded', function() {
     let planningChatHistory = [];
     let planningInFlight = false;
 
+    function renderPlanningInsights(data, comboKey) {
+        const out = document.getElementById('planningInsightsOutput');
+        if (!out) return;
+
+        const provider = data && data.provider ? String(data.provider) : 'unknown';
+        const llmProvider = data && data.llm_provider ? String(data.llm_provider) : provider;
+        const llmError = data && data.llm_error ? String(data.llm_error) : '';
+        const risks = (data && Array.isArray(data.risks)) ? data.risks : [];
+        const actions = (data && Array.isArray(data.actions)) ? data.actions : [];
+        const answer = data && data.answer ? String(data.answer) : '';
+
+        const riskItems = risks.slice(0, 8).map(r => {
+            const sev = (r && r.severity) ? String(r.severity) : 'info';
+            const sevClass = (sev === 'high') ? 'danger' : (sev === 'medium') ? 'warning' : 'secondary';
+            const msg = (r && (r.message || r.type)) ? String(r.message || r.type) : '';
+            return `<li class="mb-1"><span class="badge text-bg-${sevClass} me-2">${esc(sev)}</span>${esc(msg)}</li>`;
+        }).join('');
+        const actionItems = actions.slice(0, 8).map(a => {
+            const msg = (a && (a.message || a.type)) ? String(a.message || a.type) : '';
+            return `<li class="mb-1">${esc(msg)}</li>`;
+        }).join('');
+
+        out.style.display = 'block';
+        out.innerHTML = `
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <span class="badge text-bg-light border">Recommendations: ${esc(provider)}</span>
+                <span class="badge text-bg-light border">Risks/Actions: rule-based</span>
+                ${comboKey ? `<span class="badge text-bg-light border">Series: ${esc(comboKey)}</span>` : ``}
+                ${(llmProvider && llmProvider !== provider) ? `<span class="badge text-bg-light border">Attempted: ${esc(llmProvider)}</span>` : ``}
+            </div>
+            ${llmError ? `<div class="alert alert-warning py-2 px-3 small mb-2">${esc(llmError)}</div>` : ``}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                        <div class="fw-semibold mb-2">Top Risks</div>
+                        ${riskItems ? `<ul class="mb-0 ps-3">${riskItems}</ul>` : `<div class="text-muted small mb-0">No risks returned.</div>`}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                        <div class="fw-semibold mb-2">Suggested Actions</div>
+                        ${actionItems ? `<ul class="mb-0 ps-3">${actionItems}</ul>` : `<div class="text-muted small mb-0">No actions returned.</div>`}
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                        <div class="fw-semibold mb-2">Recommendations</div>
+                        <pre class="mb-0" style="white-space:pre-wrap; font-size:0.95em;">${esc(answer)}</pre>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        setFollowupEnabled(true);
+        planningChatHistory = [];
+        if (answer) {
+            planningChatHistory.push({ role: 'assistant', content: answer });
+        }
+        if (followupChat) {
+            followupChat.innerHTML = '';
+            followupChat.style.display = 'none';
+        }
+    }
+
+    function renderSupplyPlan(payload, { message } = {}) {
+        const alertEl = document.getElementById('supplyPlanAlert');
+        const plotEl = document.getElementById('supplyPlanPlot');
+        if (alertEl) {
+            const src = payload && payload.inventory_source ? String(payload.inventory_source) : null;
+            const srcLabel = src === 'file_upload' ? 'Uploaded CSV' : src === 'file_column' ? 'Uploaded CSV (selected column)' : src === 'derived' ? 'Derived from session context' : src === 'manual_override' ? 'Manual overrides (textbox)' : src === 'generated' ? 'Generated defaults' : src === 'saved' ? 'Saved plan' : 'Unknown';
+            alertEl.innerHTML = `${message ? esc(message) : 'Updated.'} <span class="badge text-bg-light border ms-2">Inventory: ${esc(srcLabel)}</span>`;
+        }
+        setDownloadEnabled(true);
+
+        try {
+            if (payload && payload.plot_json) {
+                const plotObj = JSON.parse(payload.plot_json);
+                Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+            } else if (plotEl) {
+                plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
+            }
+        } catch (e) {
+            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${esc(e)}</div>`;
+        }
+        renderSupplyTable(payload ? payload.table_columns : null, payload ? payload.table_rows : null);
+    }
+
     
 
     function addPlanningChat(text, who) {
@@ -509,24 +598,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     out.innerHTML = `<div class="alert alert-danger mb-0">Server error: ${res.status}</div>`;
                     return;
                 }
-
-                const provider = data.provider ? String(data.provider) : 'unknown';
-                const llmProvider = data.llm_provider ? String(data.llm_provider) : provider;
-                const llmError = data.llm_error ? String(data.llm_error) : '';
-                const risks = Array.isArray(data.risks) ? data.risks : [];
-                const actions = Array.isArray(data.actions) ? data.actions : [];
-                const answer = data.answer ? String(data.answer) : '';
-
-                const riskItems = risks.slice(0, 8).map(r => {
-                    const sev = (r && r.severity) ? String(r.severity) : 'info';
-                    const sevClass = (sev === 'high') ? 'danger' : (sev === 'medium') ? 'warning' : 'secondary';
-                    const msg = (r && (r.message || r.type)) ? String(r.message || r.type) : '';
-                    return `<li class="mb-1"><span class="badge text-bg-${sevClass} me-2">${esc(sev)}</span>${esc(msg)}</li>`;
-                }).join('');
-                const actionItems = actions.slice(0, 8).map(a => {
-                    const msg = (a && (a.message || a.type)) ? String(a.message || a.type) : '';
-                    return `<li class="mb-1">${esc(msg)}</li>`;
-                }).join('');
 
                 /* Decision Engine (options + AI narrator) disabled in favor of canonical data-block Q&A.
                 const fmt = (n, d = 2) => (typeof n === 'number' && isFinite(n)) ? n.toFixed(d) : (n === null || n === undefined ? '' : String(n));
@@ -690,41 +761,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 */
-                out.innerHTML = `
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <span class="badge text-bg-light border">Recommendations: ${esc(provider)}</span>
-                        <span class="badge text-bg-light border">Risks/Actions: rule-based</span>
-                        ${comboKey ? `<span class="badge text-bg-light border">Series: ${esc(comboKey)}</span>` : ``}
-                        ${(llmProvider && llmProvider !== provider) ? `<span class="badge text-bg-light border">Attempted: ${esc(llmProvider)}</span>` : ``}
-                    </div>
-                    ${llmError ? `<div class="alert alert-warning py-2 px-3 small mb-2">${esc(llmError)}</div>` : ``}
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                                <div class="fw-semibold mb-2">Top Risks</div>
-                                ${riskItems ? `<ul class="mb-0 ps-3">${riskItems}</ul>` : `<div class="text-muted small mb-0">No risks returned.</div>`}
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                                <div class="fw-semibold mb-2">Suggested Actions</div>
-                                ${actionItems ? `<ul class="mb-0 ps-3">${actionItems}</ul>` : `<div class="text-muted small mb-0">No actions returned.</div>`}
-                            </div>
-                        </div>
-                        <div class="col-12">
-                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                                <div class="fw-semibold mb-2">Recommendations</div>
-                                <pre class="mb-0" style="white-space:pre-wrap; font-size:0.95em;">${esc(answer)}</pre>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                // Enable follow-up questions; keep the initial recommendations in history (for context).
-                setFollowupEnabled(true);
-                if (answer) {
-                    planningChatHistory.push({ role: 'assistant', content: answer });
-                }
+                renderPlanningInsights(data, comboKey);
             } catch (err) {
                 out.innerHTML = `<div class="alert alert-danger mb-0">Unexpected error: ${err}</div>`;
                 console.error('Planning insights error:', err);
@@ -762,6 +799,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Restore last generated outputs (supply plan + planning insights) on page load.
+    try {
+        if (initialSupplyPlanUI && typeof initialSupplyPlanUI === 'object') {
+            renderSupplyPlan(initialSupplyPlanUI, { message: 'Loaded saved supply plan.' });
+        }
+    } catch (e) {}
+
+    try {
+        if (initialPlanningUI && typeof initialPlanningUI === 'object') {
+            const comboKey = (initialPlanningUI.combo_key || (document.getElementById('combo_key') ? document.getElementById('combo_key').value : null));
+            renderPlanningInsights(initialPlanningUI, comboKey);
+        }
+    } catch (e) {}
 });
 
 function setDownloadEnabled(enabled) {
