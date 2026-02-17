@@ -3619,8 +3619,10 @@ async def get_results(request: Request, run_session_id: Optional[str] = None):
         ))
         plot_html = fig.to_html(full_html=False)
     
-    # Drivers (SHAP-based summaries) from forecast artifacts
-    driver_artifacts = data_store.get(session_id, {}).get("driver_artifacts") or {}
+    # Drivers (SHAP-based summaries) from forecast artifacts (per run slot).
+    driver_artifacts = (run or {}).get("driver_artifacts") if isinstance(run, dict) else {}
+    if not isinstance(driver_artifacts, dict):
+        driver_artifacts = {}
     directional_view = []
     for row in (driver_artifacts.get("directional") or []):
         try:
@@ -3659,7 +3661,7 @@ async def get_results(request: Request, run_session_id: Optional[str] = None):
                 forecast_col_for_drivers = col
                 break
 
-        start_month = data_store.get(session_id, {}).get("start_month")
+        start_month = (run or {}).get("start_month") if isinstance(run, dict) else None
         start_dt = pd.to_datetime(f"{start_month}-01") if start_month else None
 
         driver_date = None
