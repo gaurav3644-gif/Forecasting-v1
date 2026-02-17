@@ -128,6 +128,231 @@ def history_connection_info() -> dict[str, Any]:
     return {"backend": "sqlite", "path": _db_path()}
 
 
+def sqlite_history_path() -> str:
+    """
+    Returns the SQLite history DB path used when Postgres is not configured.
+
+    Useful for admin diagnostics/migration when switching from SQLite -> Postgres.
+    """
+    return _db_path()
+
+
+def migrate_sqlite_history_to_postgres(
+    *,
+    sqlite_path: Optional[str] = None,
+    limit: Optional[int] = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    """
+    Best-effort one-way migration:
+      SQLite history file -> configured Postgres database.
+
+    Safety defaults:
+    - No-op unless Postgres is configured.
+    - By default, skips migration if Postgres already has forecast_runs rows (set force=True to override).
+
+    Returns a small dict with counts and a reason when skipped.
+    """
+    if not _use_postgres():
+        return {"ok": False, "skipped": True, "reason": "postgres_not_configured"}
+
+    init_db()
+    spath = (sqlite_path or _db_path() or "").strip() or "pitensor_history.sqlite3"
+    if not os.path.exists(spath):
+        return {"ok": False, "skipped": True, "reason": "sqlite_not_found", "sqlite_path": spath}
+
+    max_rows = None
+    try:
+        if limit is not None:
+            max_rows = int(limit)
+            if max_rows <= 0:
+                max_rows = None
+    except Exception:
+        max_rows = None
+
+    with _LOCK:
+        # Check destination state first.
+        conn_pg = _pg_connect()
+        try:
+            cur = conn_pg.cursor()
+            try:
+                cur.execute("SELECT COUNT(*) FROM forecast_runs")
+                pg_run_count = int((cur.fetchone() or [0])[0] or 0)
+            except Exception:
+                pg_run_count = 0
+
+            if pg_run_count > 0 and not force:
+                return {"ok": False, "skipped": True, "reason": "postgres_not_empty", "postgres_forecast_runs": pg_run_count}
+
+            conn_sql = sqlite3.connect(spath, check_same_thread=False)
+            conn_sql.row_factory = sqlite3.Row
+            try:
+                # Verify SQLite has the tables we need.
+                try:
+                    sql_has_runs = bool(
+                        conn_sql.execute(
+                            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='forecast_runs'"
+                        ).fetchone()
+                    )
+                except Exception:
+                    sql_has_runs = False
+                if not sql_has_runs:
+                    return {"ok": False, "skipped": True, "reason": "sqlite_missing_tables", "sqlite_path": spath}
+
+                # Build sqlite user_id -> email map
+                user_map: dict[int, str] = {}
+                try:
+                    for r in conn_sql.execute("SELECT id, email FROM users").fetchall():
+                        try:
+                            user_map[int(r["id"])] = str(r["email"] or "").strip().lower()
+                        except Exception:
+                            continue
+                except Exception:
+                    user_map = {}
+
+                # Migrate datasets first (keep mapping for forecast_runs.dataset_id)
+                ds_id_map: dict[int, int] = {}
+                migrated_users = 0
+                migrated_datasets = 0
+                migrated_runs = 0
+                migrated_supply = 0
+
+                # Pre-create users encountered in SQLite so later inserts can reference them.
+                seen_emails: set[str] = set()
+                for uid, email in list(user_map.items()):
+                    if not email or "@" not in email:
+                        continue
+                    if email in seen_emails:
+                        continue
+                    _get_or_create_user_id_pg(conn_pg, email)
+                    seen_emails.add(email)
+                migrated_users = len(seen_emails)
+
+                ds_rows = conn_sql.execute(
+                    "SELECT id, user_id, filename, created_at, raw_csv_gz FROM datasets ORDER BY id ASC"
+                ).fetchall()
+                if max_rows is not None:
+                    ds_rows = ds_rows[: max_rows]
+                for r in ds_rows:
+                    old_id = int(r["id"])
+                    email = user_map.get(int(r["user_id"]))
+                    if not email or "@" not in email:
+                        continue
+                    user_id_pg = _get_or_create_user_id_pg(conn_pg, email)
+                    cur.execute(
+                        "INSERT INTO datasets(user_id, filename, created_at, raw_csv_gz) VALUES(%s, %s, %s, %s) RETURNING id",
+                        (
+                            user_id_pg,
+                            r["filename"],
+                            r["created_at"] or _utc_now_iso(),
+                            _pg_binary(_bytea_to_bytes(r["raw_csv_gz"]) or b""),
+                        ),
+                    )
+                    new_id = int((cur.fetchone() or [None])[0] or 0)
+                    if new_id:
+                        ds_id_map[old_id] = new_id
+                        migrated_datasets += 1
+
+                # Migrate forecast runs
+                fr_rows = conn_sql.execute(
+                    "SELECT id, user_id, dataset_id, created_at, params_json, forecast_csv_gz, feature_importance_json, driver_artifacts_json FROM forecast_runs ORDER BY id ASC"
+                ).fetchall()
+                if max_rows is not None:
+                    fr_rows = fr_rows[: max_rows]
+                run_id_map: dict[int, int] = {}
+                for r in fr_rows:
+                    old_run_id = int(r["id"])
+                    email = user_map.get(int(r["user_id"]))
+                    if not email or "@" not in email:
+                        continue
+                    user_id_pg = _get_or_create_user_id_pg(conn_pg, email)
+                    old_ds = r["dataset_id"]
+                    new_ds = ds_id_map.get(int(old_ds)) if old_ds is not None else None
+                    cur.execute(
+                        """
+                        INSERT INTO forecast_runs(
+                            user_id, dataset_id, created_at, params_json, forecast_csv_gz, feature_importance_json, driver_artifacts_json
+                        )
+                        VALUES(%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            user_id_pg,
+                            int(new_ds) if new_ds is not None else None,
+                            r["created_at"] or _utc_now_iso(),
+                            r["params_json"] or "{}",
+                            _pg_binary(_bytea_to_bytes(r["forecast_csv_gz"]) or b""),
+                            r["feature_importance_json"] or "{}",
+                            r["driver_artifacts_json"] or "{}",
+                        ),
+                    )
+                    new_run_id = int((cur.fetchone() or [None])[0] or 0)
+                    if new_run_id:
+                        run_id_map[old_run_id] = new_run_id
+                        migrated_runs += 1
+
+                # Migrate supply plans (optional; only those whose forecast_run_id migrated)
+                try:
+                    sp_rows = conn_sql.execute(
+                        "SELECT id, user_id, forecast_run_id, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz FROM supply_plans ORDER BY id ASC"
+                    ).fetchall()
+                except Exception:
+                    sp_rows = []
+                if max_rows is not None and sp_rows:
+                    sp_rows = sp_rows[: max_rows]
+                for r in sp_rows:
+                    old_fr = r["forecast_run_id"]
+                    if old_fr is None:
+                        continue
+                    new_fr = run_id_map.get(int(old_fr))
+                    if not new_fr:
+                        continue
+                    email = user_map.get(int(r["user_id"]))
+                    if not email or "@" not in email:
+                        continue
+                    user_id_pg = _get_or_create_user_id_pg(conn_pg, email)
+                    cur.execute(
+                        """
+                        INSERT INTO supply_plans(
+                            user_id, forecast_run_id, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                        )
+                        VALUES(%s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            user_id_pg,
+                            int(new_fr),
+                            r["created_at"] or _utc_now_iso(),
+                            r["params_json"] or "{}",
+                            _pg_binary(_bytea_to_bytes(r["supply_export_csv_gz"]) or b""),
+                            _pg_binary(_bytea_to_bytes(r["supply_full_csv_gz"])) if r["supply_full_csv_gz"] is not None else None,
+                        ),
+                    )
+                    _ = cur.fetchone()
+                    migrated_supply += 1
+
+                conn_pg.commit()
+                return {
+                    "ok": True,
+                    "skipped": False,
+                    "sqlite_path": spath,
+                    "migrated_users": migrated_users,
+                    "migrated_datasets": migrated_datasets,
+                    "migrated_forecast_runs": migrated_runs,
+                    "migrated_supply_plans": migrated_supply,
+                }
+            finally:
+                try:
+                    conn_sql.close()
+                except Exception:
+                    pass
+        finally:
+            try:
+                conn_pg.close()
+            except Exception:
+                pass
+
+
 def _db_path() -> str:
     # SQLite fallback for local/dev.
     return (os.getenv("PITENSOR_HISTORY_DB") or "pitensor_history.sqlite3").strip()

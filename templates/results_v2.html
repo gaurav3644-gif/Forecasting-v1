@@ -537,18 +537,8 @@
 <script>
   // Bootstrap modals can misbehave when nested inside a transformed (scaled) container
   // like our `.zoom-wrapper`. Portal the chat modal to <body> so close/backdrop works reliably.
-  (function setupChatModalPortal() {
-    function parseScaleFromTransform(transform) {
-      if (!transform || transform === 'none') return 1;
-      const m = transform.match(/^matrix\(([^)]+)\)$/);
-      const m3 = transform.match(/^matrix3d\(([^)]+)\)$/);
-      const parts = m ? m[1].split(',') : (m3 ? m3[1].split(',') : null);
-      if (!parts || !parts.length) return 1;
-      const a = parseFloat(parts[0]);
-      return (!Number.isNaN(a) && a > 0) ? a : 1;
-    }
-
-    function run() {
+  document.addEventListener('DOMContentLoaded', function() {
+    (function setupChatModalPortal() {
       const modalEl = document.getElementById('chatModal');
       if (!modalEl) return;
 
@@ -558,31 +548,35 @@
         }
 
         const zoomWrapper = document.querySelector('.zoom-wrapper');
-        const scale = zoomWrapper ? parseScaleFromTransform(window.getComputedStyle(zoomWrapper).transform) : 1;
+        const transform = zoomWrapper ? window.getComputedStyle(zoomWrapper).transform : 'none';
+        let scale = 1;
+        if (transform && transform !== 'none') {
+          const m = transform.match(/^matrix\(([^)]+)\)$/);
+          const m3 = transform.match(/^matrix3d\(([^)]+)\)$/);
+          const parts = m ? m[1].split(',') : (m3 ? m3[1].split(',') : null);
+          if (parts && parts.length) {
+            const a = parseFloat(parts[0]);
+            if (!Number.isNaN(a) && a > 0) scale = a;
+          }
+        }
+
         const dialog = modalEl.querySelector('.modal-dialog');
         if (dialog && scale !== 1) {
-          // Use the `scale` property so we don't override Bootstrap's own transforms/animations.
-          try { dialog.style.scale = String(scale); } catch (e) { /* ignore */ }
+          dialog.style.transform = 'scale(' + scale + ')';
           dialog.style.transformOrigin = 'center';
         }
 
         if (window.bootstrap && window.bootstrap.Modal) {
           const instance = window.bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: true, keyboard: true });
-          modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach((btn) => {
+          modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function(btn) {
             btn.addEventListener('click', function() { instance.hide(); });
           });
         }
       } catch (e) {
         // fall back to default bootstrap behavior
       }
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', run);
-    } else {
-      run();
-    }
-  })();
+    })();
+  });
 
   // CSV download
   document.getElementById('downloadCsvBtn')?.addEventListener('click', function() {
