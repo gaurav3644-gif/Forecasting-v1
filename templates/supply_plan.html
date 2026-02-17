@@ -840,11 +840,24 @@ document.getElementById('supplyPlanForm').addEventListener('submit', async funct
     };
 
     try {
-        const res = await fetch('/supply_plan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+        let res;
+        try {
+            res = await fetch('/supply_plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+        } catch (fetchErr) {
+            clearTimeout(timeoutId);
+            if (fetchErr.name === 'AbortError') {
+                throw new Error('Request timed out. The server may be busy — please try again.');
+            }
+            throw fetchErr;
+        }
+        clearTimeout(timeoutId);
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {

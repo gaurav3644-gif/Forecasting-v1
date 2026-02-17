@@ -4643,7 +4643,7 @@ async def supply_plan_submit(
     request: Request,
     payload: Dict = Body(...)
 ):
-    logging.debug("[LOG] /supply_plan POST endpoint called")
+    logging.info("[LOG] /supply_plan POST endpoint called")
     session_id = _session_id_from_request(request)
     user_email = _get_user_email(request)
     rid_in = None
@@ -4652,8 +4652,13 @@ async def supply_plan_submit(
     except Exception:
         rid_in = None
     run_session_id = _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None)
+    logging.info(f"[SUPPLY_PLAN] session={session_id[:12]}.. run_session_id={run_session_id}")
     run, rid = _get_run_state(session_id, run_session_id, create=False)
+    if run is None:
+        logging.warning(f"[SUPPLY_PLAN] No run state found for rid={run_session_id}")
+        return {"error": "Session not found. Please navigate back to the results page and try again."}
     forecast_df = (run or {}).get("forecast_df") if isinstance(run, dict) else None
+    logging.info(f"[SUPPLY_PLAN] forecast_df available: {forecast_df is not None and isinstance(forecast_df, pd.DataFrame)}, shape={forecast_df.shape if isinstance(forecast_df, pd.DataFrame) else 'N/A'}")
     try:
         from io import StringIO
         import json
@@ -4909,7 +4914,10 @@ async def supply_plan_submit(
             except Exception:
                 return None
 
+        # For historical runs, raw data lives in the run state, not in data_store.
         raw_df = data_store.get(session_id, {}).get("df")
+        if raw_df is None and isinstance(run, dict):
+            raw_df = run.get("raw_df") or run.get("df")
         inventory_df = _read_csv_optional(payload.get("inventory_csv", ""), "inventory_csv")
         # Track where inventory was sourced from for UI visibility: 'file_upload', 'file_column', 'derived', 'manual_override', 'generated'
         inventory_source = None
@@ -5045,7 +5053,11 @@ async def supply_plan_submit(
             # If still missing, prefer derived inventory from the canonical context packet if available.
             if inventory_df is None:
                 try:
-                    packet = build_context_packet(data_store.get(session_id, {}), combo_key=combo_key)
+                    # Use the run state for historical runs (data_store may be empty after server restart).
+                    _ctx_session = data_store.get(session_id, {})
+                    if isinstance(run, dict):
+                        _ctx_session = {**_ctx_session, **{k: v for k, v in run.items() if k in ("df", "forecast_df", "supply_plan_df", "supply_plan_full_df")}}
+                    packet = build_context_packet(_ctx_session, combo_key=combo_key)
                     derived = packet.get("derived_inventory") if isinstance(packet, dict) else None
                     if derived and isinstance(derived, dict) and derived.get("rows"):
                         try:
@@ -5177,8 +5189,23 @@ async def supply_plan_submit(
                     forecast_input_df = forecast_input_df[~((forecast_input_df["sku_id"].astype(str) == str(selected_sku)) & (forecast_input_df["location"].astype(str) == str(selected_location)))]
                     forecast_input_df = pd.concat([forecast_input_df, base_series[["sku_id", "location", "period_start", "forecast_demand"]]], ignore_index=True)
 
-        supply_plan = generate_time_phased_supply_plan(
-            forecast_df=forecast_input_df,
+        # Performance: only compute the supply plan for the selected combo.
+        # The UI displays one series at a time; computing all combos can take
+        # very long on large datasets and cause server timeouts.
+        if selected_sku is not None and selected_location is not None:
+            _sp_forecast = forecast_input_df[
+                (forecast_input_df["sku_id"].astype(str) == str(selected_sku)) &
+                (forecast_input_df["location"].astype(str) == str(selected_location))
+            ].copy()
+            if _sp_forecast.empty:
+                return {"error": f"No forecast rows found for the selected series ({selected_sku} / {selected_location})."}
+        else:
+            _sp_forecast = forecast_input_df
+
+        # Run the heavy computation in a thread pool to avoid blocking the event loop.
+        supply_plan = await asyncio.to_thread(
+            generate_time_phased_supply_plan,
+            forecast_df=_sp_forecast,
             inventory_df=inventory_df,
             constraints_df=constraints_df,
             policy_df=policy_df,
@@ -5220,7 +5247,8 @@ async def supply_plan_submit(
                         "override_enabled": bool(payload.get("override_enabled") or False),
                         "inventory_column": payload.get("inventory_column"),
                     }
-                    history_store.save_supply_plan(
+                    await asyncio.to_thread(
+                        history_store.save_supply_plan,
                         user_email,
                         int(run_id),
                         params=plan_params,
