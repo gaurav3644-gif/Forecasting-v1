@@ -3,7 +3,10 @@
     "allow": [
       "Bash(python:*)",
       "Bash(powershell -Command \"$lines = Get-Content ''C:\\\\Users\\\\Gaurav\\\\.claude\\\\projects\\\\c--Forecasting-v2-streamlit-v2-fastapi-app-v3\\\\9cdbd014-7c89-40f5-8db2-db97f34f77b0.jsonl''; foreach\\($line in $lines\\) { try { $obj = $line | ConvertFrom-Json; if\\($obj.type -eq ''human'' -and $obj.message.content\\) { $content = if\\($obj.message.content -is [string]\\) { $obj.message.content } else { \\($obj.message.content | ConvertTo-Json -Compress\\) }; Write-Output \\(''---USER: '' + $content.Substring\\(0, [Math]::Min\\(500, $content.Length\\)\\)\\) } } catch {} }\")",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
