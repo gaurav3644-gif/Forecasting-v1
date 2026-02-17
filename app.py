@@ -4918,7 +4918,8 @@ async def supply_plan_submit(
         # For historical runs, raw data lives in the run state, not in data_store.
         raw_df = data_store.get(session_id, {}).get("df")
         if raw_df is None and isinstance(run, dict):
-            raw_df = run.get("raw_df") or run.get("df")
+            _candidate = run.get("raw_df")
+            raw_df = _candidate if isinstance(_candidate, pd.DataFrame) else run.get("df")
         inventory_df = _read_csv_optional(payload.get("inventory_csv", ""), "inventory_csv")
         # Track where inventory was sourced from for UI visibility: 'file_upload', 'file_column', 'derived', 'manual_override', 'generated'
         inventory_source = None
