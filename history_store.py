@@ -847,6 +847,7 @@ def save_supply_plan(
                     )
                     VALUES(%s, %s, %s, %s, %s, %s)
                     ON CONFLICT(forecast_run_id) DO UPDATE SET
+                        user_id=excluded.user_id,
                         created_at=excluded.created_at,
                         params_json=excluded.params_json,
                         supply_export_csv_gz=excluded.supply_export_csv_gz,
@@ -886,6 +887,7 @@ def save_supply_plan(
                 )
                 VALUES(?, ?, ?, ?, ?, ?)
                 ON CONFLICT(forecast_run_id) DO UPDATE SET
+                    user_id=excluded.user_id,
                     created_at=excluded.created_at,
                     params_json=excluded.params_json,
                     supply_export_csv_gz=excluded.supply_export_csv_gz,
@@ -929,6 +931,39 @@ def has_supply_plan(email: str, forecast_run_id: int) -> bool:
             row = conn.execute(
                 "SELECT 1 FROM supply_plans WHERE user_id = ? AND forecast_run_id = ? LIMIT 1",
                 (user_id, int(forecast_run_id)),
+            ).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
+
+def has_supply_plan_admin(*, forecast_run_id: int) -> bool:
+    """
+    Admin-only: existence check by forecast_run_id regardless of owner.
+    Callers must enforce authorization.
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT 1 FROM supply_plans WHERE forecast_run_id = %s LIMIT 1",
+                    (int(forecast_run_id),),
+                )
+                return cur.fetchone() is not None
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM supply_plans WHERE forecast_run_id = ? LIMIT 1",
+                (int(forecast_run_id),),
             ).fetchone()
             return row is not None
         finally:

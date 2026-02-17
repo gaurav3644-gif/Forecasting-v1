@@ -3930,6 +3930,11 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
         "oos_column": params.get("oos_column"),
         "forecast_run_id": int(run_id),
     }
+    try:
+        if is_admin and isinstance(run, dict) and run.get("user_email"):
+            run_state["run_owner_email"] = str(run.get("user_email"))
+    except Exception:
+        pass
     runs[rid] = run_state
     sess["runs"] = runs
     sess["active_run_session_id"] = rid
@@ -3953,6 +3958,11 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
                     sp_full = sp_full.copy()
                     sp_full["period_start"] = pd.to_datetime(sp_full["period_start"], errors="coerce")
                 run_state["supply_plan_full_df"] = sp_full
+            try:
+                if is_admin and isinstance(sp, dict) and sp.get("user_email"):
+                    run_state["run_owner_email"] = str(sp.get("user_email"))
+            except Exception:
+                pass
         except KeyError:
             raise HTTPException(status_code=404, detail="No saved supply plan for this run.")
         return RedirectResponse(f"/supply_plan?run_session_id={quote(rid)}", status_code=303)
@@ -4499,10 +4509,16 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
             has_plan = isinstance(run.get("supply_plan_full_df"), pd.DataFrame) and not run.get("supply_plan_full_df").empty
             if not has_plan:
                 run_id = run.get("forecast_run_id")
-                if user_email and run_id:
+                effective_email = user_email
+                try:
+                    if effective_email and _is_admin_email(effective_email) and run.get("run_owner_email"):
+                        effective_email = str(run.get("run_owner_email"))
+                except Exception:
+                    pass
+                if effective_email and run_id:
                     import history_store
                     try:
-                        sp = history_store.load_supply_plan(user_email, int(run_id))
+                        sp = history_store.load_supply_plan(str(effective_email), int(run_id))
                     except Exception:
                         sp = None
                     if isinstance(sp, dict):
@@ -5508,6 +5524,12 @@ async def supply_plan_submit(
                 import history_store
                 run_id = (run or {}).get("forecast_run_id") if isinstance(run, dict) else None
                 if run_id:
+                    effective_email = user_email
+                    try:
+                        if effective_email and _is_admin_email(effective_email) and isinstance(run, dict) and run.get("run_owner_email"):
+                            effective_email = str(run.get("run_owner_email"))
+                    except Exception:
+                        pass
                     plan_params = {
                         "combo_key": payload.get("combo_key"),
                         "start_date": payload.get("start_date"),
@@ -5541,7 +5563,7 @@ async def supply_plan_submit(
                     def _bg_save():
                         try:
                             history_store.save_supply_plan(
-                                user_email,
+                                str(effective_email),
                                 int(run_id),
                                 params=plan_params,
                                 supply_export_df=supply_plan_export,
@@ -5749,6 +5771,7 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
     user_email = _get_user_email(request)
     if not user_email:
         raise HTTPException(status_code=401, detail="Please sign in to save supply plans.")
+    is_admin = _is_admin_email(user_email)
 
     rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
     run_session_id = _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None)
@@ -5768,13 +5791,19 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
 
     try:
         import history_store
-        exists = bool(history_store.has_supply_plan(user_email, int(run_id)))
+        effective_email = user_email
+        try:
+            if is_admin and run.get("run_owner_email"):
+                effective_email = str(run.get("run_owner_email"))
+        except Exception:
+            pass
+        exists = bool(history_store.has_supply_plan_admin(forecast_run_id=int(run_id))) if is_admin else bool(history_store.has_supply_plan(str(effective_email), int(run_id)))
         if exists and not overwrite:
             return JSONResponse({"detail": "Supply plan already saved.", "exists": True}, status_code=409)
 
         params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
         saved_id = history_store.save_supply_plan(
-            user_email,
+            str(effective_email),
             int(run_id),
             params=dict(params or {}),
             supply_export_df=sp_export,
