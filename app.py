@@ -6263,21 +6263,22 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
             context_packet = _build_llm_context_packet(session, combo_key=combo_key)
             logging.info(f"[PACKET DEBUG] Context packet keys: {list(context_packet.keys())}")
 
-            # Ensure RAG system has indexed the data
-            if not retriever.get_retriever().initialized:
-                try:
-                    logging.info(f"[RAG DEBUG] Indexing session data...")
-                    await _index_session_data(session)
-                    logging.info(f"[RAG DEBUG] Indexing complete")
-                except Exception as e:
-                    logging.warning(f"Failed to index data for RAG: {e}")
-
             ai_engine = (os.getenv("PITENSOR_AI_ASSISTANT_ENGINE") or "").strip().lower() or "agentic"
             use_agentic = (
                 provider == "openai"
                 and ai_engine in ("agentic", "agentic_rag", "agentic-rag", "rag_agent", "rag-agent")
                 and callable(answer_question_agentic)
             )
+
+            # Ensure RAG system has indexed the data (optional for agentic; skip by default to avoid extra embedding calls).
+            rag_for_agentic = (os.getenv("PITENSOR_AGENTIC_USE_RETRIEVER", "0") or "0").strip() == "1"
+            if (not use_agentic or rag_for_agentic) and not retriever.get_retriever().initialized:
+                try:
+                    logging.info("[RAG DEBUG] Indexing session data...")
+                    await _index_session_data(session)
+                    logging.info("[RAG DEBUG] Indexing complete")
+                except Exception as e:
+                    logging.warning(f"Failed to index data for RAG: {e}")
 
             try:
                 if use_agentic:

@@ -37,6 +37,52 @@ def _load_glossary() -> dict[str, Any]:
     except Exception:
         return {}
 
+def _summarize_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    """
+    Create a compact summary suitable for prompting.
+
+    Important: avoid embedding large sample tables/rows in the prompt, since models
+    tend to echo them instead of answering.
+    """
+    if not isinstance(packet, dict):
+        return {}
+    out: dict[str, Any] = {}
+    try:
+        grain = packet.get("grain") if isinstance(packet.get("grain"), dict) else {}
+        out["grain"] = grain
+    except Exception:
+        pass
+
+    def _keep_block(name: str) -> None:
+        blk = packet.get(name)
+        if not isinstance(blk, dict):
+            return
+        keep: dict[str, Any] = {}
+        for k in ("available_columns", "date_col", "date_range", "metrics"):
+            if k in blk:
+                keep[k] = _jsonable(blk.get(k))
+        # Keep any pre-aggregated rollups (small).
+        if name == "raw_sales" and isinstance(blk.get("monthly_rollup"), list):
+            keep["monthly_rollup"] = _jsonable(blk.get("monthly_rollup"))
+        out[name] = keep
+
+    _keep_block("raw_sales")
+    _keep_block("forecast_output")
+    _keep_block("supply_plan")
+
+    # Risks/actions summary (small).
+    try:
+        sp = packet.get("supply_plan_and_risks")
+        if isinstance(sp, dict):
+            out["supply_plan_and_risks"] = {
+                "planning_context": _jsonable(sp.get("planning_context")) if isinstance(sp.get("planning_context"), dict) else {},
+                "risks": _jsonable(sp.get("risks")) if isinstance(sp.get("risks"), list) else [],
+                "actions": _jsonable(sp.get("actions")) if isinstance(sp.get("actions"), list) else [],
+            }
+    except Exception:
+        pass
+    return out
+
 
 def _jsonable(v: Any) -> Any:
     if v is None:
@@ -290,14 +336,6 @@ async def answer_question_agentic(
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
         },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_data_blocks",
-                "description": "Get the canonical data blocks (raw sales, forecast output, supply plan & risks) and any retrieved documents. Use this when unsure what data exists.",
-                "parameters": {"type": "object", "properties": {}, "required": []},
-            },
-        },
     ]
 
     base_rules = (
@@ -310,12 +348,16 @@ async def answer_question_agentic(
         "- The safest way to include numbers is to fetch them via sql_query.\n"
         "- You MAY use SQL aggregates (SUM/AVG/MIN/MAX) instead of doing arithmetic in text.\n"
         "- Keep explanations concise and business-focused.\n"
+        "- Do NOT dump raw JSON, schema JSON, or large data previews. Summarize.\n"
+        "- Do NOT answer with dataset metadata (rows/columns/date range) unless the user asked for it.\n"
+        "- First directly answer the user's question, then add brief reasoning.\n"
     )
 
     # Keep some context always visible to the model.
     schema_text = json.dumps(schema, ensure_ascii=False)
     glossary_text = json.dumps(glossary, ensure_ascii=False)
-    packet_text = json.dumps(packet, ensure_ascii=False)
+    packet_summary = _summarize_packet(packet)
+    packet_text = json.dumps(packet_summary, ensure_ascii=False)
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": base_rules},
@@ -395,8 +437,6 @@ async def answer_question_agentic(
 
                 if fn == "get_schema":
                     result = {"schema": schema, "tables": tables}
-                elif fn == "get_data_blocks":
-                    result = {"data_blocks": packet}
                 elif fn == "sql_query":
                     try:
                         query = str(args.get("query") or "")
@@ -429,6 +469,63 @@ async def answer_question_agentic(
 
     if not final_answer:
         raise AgenticRAGError("LLM returned an empty response.")
+
+    # Heuristic: if the model didn't use SQL and responded with a metadata dump for a "top/highest month" question,
+    # compute a minimal SQL result and ask the model to narrate it (no new numbers).
+    try:
+        if tool_calls == 0:
+            ql = q.lower()
+            looks_like_meta = ("rows" in final_answer.lower() and "date range" in final_answer.lower()) or ("rows ×" in final_answer.lower())
+            asks_top_month = ("month" in ql) and any(w in ql for w in ("highest", "top", "most", "max")) and any(w in ql for w in ("sale", "sales", "demand", "actual"))
+            if looks_like_meta and asks_top_month:
+                rs = packet_summary.get("raw_sales") if isinstance(packet_summary.get("raw_sales"), dict) else {}
+                date_col = rs.get("date_col") if isinstance(rs.get("date_col"), str) else "date"
+                sales_col = None
+                metrics = rs.get("metrics") if isinstance(rs.get("metrics"), dict) else {}
+                if isinstance(metrics.get("sales_col"), str):
+                    sales_col = metrics.get("sales_col")
+                sales_col = sales_col or "sales"
+                sql = (
+                    f"SELECT substr({date_col}, 1, 7) AS month, "
+                    f"SUM(CAST({sales_col} AS REAL)) AS total_sales "
+                    f"FROM raw_sales "
+                    f"WHERE {date_col} IS NOT NULL "
+                    f"GROUP BY month "
+                    f"ORDER BY total_sales DESC "
+                    f"LIMIT 3"
+                )
+                # Run on a temporary connection because `conn` is closed below.
+                conn2 = sqlite3.connect(":memory:", check_same_thread=False)
+                try:
+                    raw_df.to_sql("raw_sales", conn2, if_exists="replace", index=False)
+                    sql_res = _run_sql(conn2, sql)
+                finally:
+                    try:
+                        conn2.close()
+                    except Exception:
+                        pass
+                tool_results_for_validation.append({"tool": "sql_query", "result": sql_res})
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "Computed SQL result for this question (use ONLY these numbers for the answer; do not add any other numbers):\n"
+                            f"{json.dumps(sql_res, ensure_ascii=False)}\n\n"
+                            "Now answer the user's question in a ChatGPT-like explanatory tone:\n"
+                            "- Start with the direct answer (which month is highest).\n"
+                            "- Add 2-4 short bullets explaining the result.\n"
+                            "- Do NOT mention row counts/columns.\n"
+                        ),
+                    }
+                )
+                messages.append({"role": "user", "content": q})
+                data3 = await _call_llm(tool_choice="none")
+                msg3 = ((data3.get("choices") or [{}])[0].get("message") or {})
+                content3 = str(msg3.get("content") or "").strip()
+                if content3:
+                    final_answer = content3
+    except Exception:
+        pass
 
     # Validate "no invented numbers" against: data blocks + tool outputs (schema/tool results).
     validation_packet: dict[str, Any] = {
