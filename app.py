@@ -4726,7 +4726,9 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
             initial_supply_plan_ui = ui
         else:
             # Compute lightweight UI payload from the stored plan (no recompute).
-            plan_df = run.get("supply_plan_full_df") or run.get("supply_plan_df")
+            plan_df = run.get("supply_plan_full_df")
+            if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
+                plan_df = run.get("supply_plan_df")
             if isinstance(plan_df, pd.DataFrame) and not plan_df.empty:
                 initial_supply_plan_ui = _supply_plan_ui_from_df(
                     plan_df,
