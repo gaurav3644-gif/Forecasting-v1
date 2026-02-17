@@ -14,6 +14,11 @@ import ssl
 from email.message import EmailMessage
 from assistant_context_packet import build_context_packet
 from assistant_openai import AssistantLLMError, answer_question_openai
+try:
+    from agentic_rag import AgenticRAGError, answer_question_agentic
+except Exception:  # pragma: no cover - optional; legacy assistant remains available
+    AgenticRAGError = RuntimeError  # type: ignore
+    answer_question_agentic = None  # type: ignore
 import retriever
 import hashlib
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException, BackgroundTasks
@@ -5923,7 +5928,18 @@ async def ai_recommendations(request: Request, payload: Dict = Body(default={}))
             try:
                 if not openai_configured:
                     raise ValueError("OPENAI_API_KEY is not set.")
-                answer = await answer_question_openai(question, context_packet=context_packet)
+                ai_engine = (os.getenv("PITENSOR_AI_ASSISTANT_ENGINE") or "").strip().lower() or "agentic"
+                use_agentic = ai_engine in ("agentic", "agentic_rag", "agentic-rag", "rag_agent", "rag-agent") and callable(answer_question_agentic)
+                if use_agentic:
+                    res = await answer_question_agentic(
+                        question,
+                        session=session,
+                        combo_key=combo_key,
+                        context_packet=context_packet,
+                    )
+                    answer = res.answer
+                else:
+                    answer = await answer_question_openai(question, context_packet=context_packet)
                 provider_used = attempted_provider
                 llm_provider = attempted_provider
                 llm_error = None
@@ -6155,7 +6171,19 @@ async def planning_followup(request: Request, payload: Dict = Body(default={})):
             try:
                 if not openai_configured:
                     raise ValueError("OPENAI_API_KEY is not set.")
-                answer = await answer_question_openai(user_message, context_packet=context_packet)
+                ai_engine = (os.getenv("PITENSOR_AI_ASSISTANT_ENGINE") or "").strip().lower() or "agentic"
+                use_agentic = ai_engine in ("agentic", "agentic_rag", "agentic-rag", "rag_agent", "rag-agent") and callable(answer_question_agentic)
+                if use_agentic:
+                    res = await answer_question_agentic(
+                        user_message,
+                        session=session,
+                        combo_key=combo_key,
+                        context_packet=context_packet,
+                        history=payload.get("history") if isinstance(payload, dict) else None,
+                    )
+                    answer = res.answer
+                else:
+                    answer = await answer_question_openai(user_message, context_packet=context_packet)
                 provider_used = attempted_provider
                 llm_provider = attempted_provider
                 llm_error = None
@@ -6244,8 +6272,25 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
                 except Exception as e:
                     logging.warning(f"Failed to index data for RAG: {e}")
 
+            ai_engine = (os.getenv("PITENSOR_AI_ASSISTANT_ENGINE") or "").strip().lower() or "agentic"
+            use_agentic = (
+                provider == "openai"
+                and ai_engine in ("agentic", "agentic_rag", "agentic-rag", "rag_agent", "rag-agent")
+                and callable(answer_question_agentic)
+            )
+
             try:
-                answer = await answer_question_openai(user_message, context_packet=context_packet)
+                if use_agentic:
+                    res = await answer_question_agentic(
+                        user_message,
+                        session=session,
+                        combo_key=combo_key,
+                        context_packet=context_packet,
+                        history=payload.get("history") if isinstance(payload, dict) else None,
+                    )
+                    answer = res.answer
+                else:
+                    answer = await answer_question_openai(user_message, context_packet=context_packet)
                 provider_used = "openai"
                 llm_provider = "openai"
                 llm_error = None

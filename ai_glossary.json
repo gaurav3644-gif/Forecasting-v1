@@ -1,0 +1,55 @@
+{
+  "purpose": "Semantic mapping layer for PiTensor's AI assistant. This glossary helps the assistant translate business terms (SKU, store, forecast, stockout, service level, etc.) into the actual column names present in the user's data tables.",
+  "entities": {
+    "sku": {
+      "also_known_as": ["item", "product", "sku_id", "sku"],
+      "typical_columns": ["item", "sku_id", "sku"]
+    },
+    "store": {
+      "also_known_as": ["location", "site", "warehouse", "branch"],
+      "typical_columns": ["store", "location"]
+    },
+    "date": {
+      "also_known_as": ["day", "week", "month", "period_start", "timestamp"],
+      "typical_columns": ["date", "period_start"]
+    },
+    "sales": {
+      "also_known_as": ["demand", "units_sold", "qty", "actual"],
+      "typical_columns": ["sales", "actual"]
+    },
+    "forecast": {
+      "also_known_as": ["prediction", "fcst", "forecast_qty", "forecast_demand"],
+      "typical_columns": ["forecast", "forecast_demand"]
+    },
+    "stockout": {
+      "also_known_as": ["lost_sales", "unmet_demand", "stock-out"],
+      "typical_columns": ["stockout_qty", "risk_flag"]
+    },
+    "inventory": {
+      "also_known_as": ["on_hand", "available_inventory", "net_on_hand"],
+      "typical_columns": ["beginning_on_hand", "starting_net_on_hand", "ending_on_hand", "inventory_position"]
+    }
+  },
+  "tables": {
+    "raw_sales": {
+      "description": "Uploaded historical sales facts. Use this for actuals, trend, seasonality, and recent performance.",
+      "expected_columns": ["date", "sales", "item", "store"],
+      "notes": "Extra feature columns may exist (e.g., Price, Promotion_Flag, Category)."
+    },
+    "forecast_output": {
+      "description": "Generated forecast output. Usually includes forecast values per date and grain (item/store). Quantile columns may exist (p10/p30/p60/p90).",
+      "expected_columns": ["date", "forecast", "item", "store"],
+      "notes": "If forecast is aggregate, item/store may be 'ALL'."
+    },
+    "supply_plan": {
+      "description": "Generated supply plan results including planned receipts/order_qty and risk indicators like stockout_qty and risk_flag.",
+      "expected_columns": ["period_start", "forecast_demand", "order_qty", "ending_on_hand", "stockout_qty", "risk_flag", "item", "store"]
+    }
+  },
+  "query_hints": [
+    "If the user asks for a number, use SQL to fetch it (SELECT, aggregates like SUM/AVG are allowed).",
+    "Prefer filtering on a specific item/store when provided.",
+    "If the answer is not present in the tables, respond exactly: Data not available."
+  ]
+}
+
