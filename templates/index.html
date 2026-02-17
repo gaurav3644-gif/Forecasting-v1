@@ -1691,7 +1691,12 @@
                     footer_desc: 'Empowering businesses with AI-driven sales forecasting since 2026',
                     footer_quick_links: 'Quick Links',
                     footer_contact: 'Contact',
-                    footer_copyright: '\u00a9 2026 PiTensor. All rights reserved.'
+                    footer_copyright: '\u00a9 2026 PiTensor. All rights reserved.',
+                    // Pricing modal
+                    pricing_title: 'Pricing',
+                    pricing_contact_info: 'Contact information for pricing',
+                    pricing_reach_out: 'Reach out and we\u2019ll share plans and a tailored quote.',
+                    pricing_close: 'Close'
                 },
                 id: {
                     lang_en: 'EN',
@@ -1828,7 +1833,12 @@
                     footer_desc: 'Memberdayakan bisnis dengan peramalan penjualan berbasis AI sejak 2026.',
                     footer_quick_links: 'Tautan Cepat',
                     footer_contact: 'Kontak',
-                    footer_copyright: '\u00a9 2026 PiTensor. Hak cipta dilindungi.'
+                    footer_copyright: '\u00a9 2026 PiTensor. Hak cipta dilindungi.',
+                    // Pricing modal
+                    pricing_title: 'Harga',
+                    pricing_contact_info: 'Informasi kontak untuk harga',
+                    pricing_reach_out: 'Hubungi kami dan kami akan berbagi paket serta penawaran yang disesuaikan.',
+                    pricing_close: 'Tutup'
                 }
             };
 
@@ -2075,38 +2085,38 @@
                 modal.id = 'pricing-modal';
                 modal.className = 'modal fade';
                 modal.tabIndex = -1;
-                modal.innerHTML = `
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Pricing</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="mb-2 fw-semibold">Contact information for pricing</div>
-                                <div class="text-muted small mb-3">Reach out and we’ll share plans and a tailored quote.</div>
-                                <div class="d-grid gap-2">
-                                    <div class="border rounded-3 p-2 bg-light small">
-                                        <i class="fas fa-envelope me-2"></i>
-                                        <a href="mailto:support@pitensor.com" class="text-decoration-none">support@pitensor.com</a>
-                                    </div>
-                                    <div class="border rounded-3 p-2 bg-light small">
-                                        <i class="fab fa-whatsapp me-2"></i>
-                                        <a href="https://wa.me/12052398219?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-decoration-none">+12052398219</a>
-                                        <span class="text-muted mx-2">·</span>
-                                        <i class="fab fa-whatsapp me-2"></i>
-                                        <a href="https://wa.me/6282218459081?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-decoration-none">+6282218459081</a>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
                 document.body.appendChild(modal);
             }
+            modal.innerHTML = `
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">${t('pricing_title')}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-2 fw-semibold">${t('pricing_contact_info')}</div>
+                            <div class="text-muted small mb-3">${t('pricing_reach_out')}</div>
+                            <div class="d-grid gap-2">
+                                <div class="border rounded-3 p-2 bg-light small">
+                                    <i class="fas fa-envelope me-2"></i>
+                                    <a href="mailto:support@pitensor.com" class="text-decoration-none">support@pitensor.com</a>
+                                </div>
+                                <div class="border rounded-3 p-2 bg-light small">
+                                    <i class="fab fa-whatsapp me-2"></i>
+                                    <a href="https://wa.me/12052398219?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-decoration-none">+12052398219</a>
+                                    <span class="text-muted mx-2">·</span>
+                                    <i class="fab fa-whatsapp me-2"></i>
+                                    <a href="https://wa.me/6282218459081?text=Hi%20PiTensor%20team%2C%20I%27d%20like%20to%20request%20a%20demo.%20Thanks%21" target="_blank" rel="noopener" class="text-decoration-none">+6282218459081</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('pricing_close')}</button>
+                        </div>
+                    </div>
+                </div>
+            `;
 
             try {
                 const existing = bootstrap.Modal.getInstance(modal);
