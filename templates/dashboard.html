@@ -151,8 +151,11 @@
     </div>
 
     <div class="col-lg-7 col-xl-8">
-      {% if running_forecast %}
-        <div class="card shadow-sm border mb-3">
+      {% if running_forecasts and (running_forecasts|length) %}
+        {% for rf in running_forecasts %}
+          {% set running_meta = rf.meta %}
+          {% set running_forecast = rf.progress %}
+        <div class="card shadow-sm border mb-3 js-running-card" data-run="{{ rf.run_session_id }}">
           <div class="card-body">
             <div class="d-flex align-items-start justify-content-between gap-2">
               <div>
@@ -163,24 +166,25 @@
                   Months: {{ running_meta.months or "&mdash;" | safe }}
                 </div>
               </div>
-              <div class="text-muted small text-end" id="dash-running-status">
+              <div class="text-muted small text-end js-running-status">
                 {{ running_forecast.status or "Working..." }}
               </div>
             </div>
 
             <div class="progress mt-3" style="height: 10px;">
               {% set pct = (running_forecast.progress or 0) * 100 %}
-              <div id="dash-running-bar" class="progress-bar" role="progressbar" style="width: {{ pct }}%;" aria-valuenow="{{ pct|round(0) }}" aria-valuemin="0" aria-valuemax="100"></div>
+              <div class="progress-bar js-running-bar" role="progressbar" style="width: {{ pct }}%;" aria-valuenow="{{ pct|round(0) }}" aria-valuemin="0" aria-valuemax="100"></div>
             </div>
             <div class="d-flex align-items-center justify-content-between mt-2">
-              <div class="text-muted small" id="dash-running-pct">{{ (pct|round(0)) }}%</div>
+              <div class="text-muted small js-running-pct">{{ (pct|round(0)) }}%</div>
               <div class="d-flex gap-2">
-                <a href="/forecast" class="btn btn-outline-secondary btn-sm">View</a>
-                <button type="button" class="btn btn-outline-danger btn-sm" id="dash-stop-forecast">Stop</button>
+                <a href="/forecast?run_session_id={{ rf.run_session_id }}" class="btn btn-outline-secondary btn-sm">View</a>
+                <button type="button" class="btn btn-outline-danger btn-sm js-stop-forecast" data-run="{{ rf.run_session_id }}">Stop</button>
               </div>
             </div>
           </div>
         </div>
+        {% endfor %}
       {% endif %}
 
   {% if is_admin and pending_users and (pending_users|length) %}
@@ -489,16 +493,17 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   (function() {
-    const btn = document.getElementById('dash-stop-forecast');
-    if (btn) {
+    document.querySelectorAll('button.js-stop-forecast').forEach((btn) => {
       btn.addEventListener('click', async () => {
+        const rid = (btn.getAttribute('data-run') || '').trim();
         btn.disabled = true;
         try {
-          await fetch('/forecast_stop', { method: 'POST', credentials: 'same-origin' });
+          const qs = rid ? ('?run_session_id=' + encodeURIComponent(rid)) : '';
+          await fetch('/forecast_stop' + qs, { method: 'POST', credentials: 'same-origin' });
         } catch (e) {}
         window.location.reload();
       });
-    }
+    });
   })();
 
   (function() {
@@ -528,32 +533,46 @@
   })();
 
   (function() {
-    const bar = document.getElementById('dash-running-bar');
-    const pctEl = document.getElementById('dash-running-pct');
-    const statusEl = document.getElementById('dash-running-status');
-    if (!bar || !pctEl || !statusEl) return;
+    const cards = Array.from(document.querySelectorAll('.js-running-card'));
+    if (!cards.length) return;
 
     let stopped = false;
     async function tick() {
       if (stopped) return;
-      try {
-        const res = await fetch('/forecast_status', { credentials: 'same-origin' });
-        const data = await res.json();
-        const pct = Math.max(0, Math.min(100, Math.round(((data && data.progress) || 0) * 100)));
-        bar.style.width = pct + '%';
-        bar.setAttribute('aria-valuenow', String(pct));
-        pctEl.textContent = pct + '%';
-        statusEl.textContent = (data && data.status) ? String(data.status) : '';
+      let shouldReload = false;
 
-        if (data && (data.done || data.cancelled || data.error)) {
-          stopped = true;
-          // Give the backend a moment to persist the history, then refresh so it appears in "Your Runs".
-          setTimeout(() => window.location.reload(), 800);
-          return;
+      for (const card of cards) {
+        const rid = (card.getAttribute('data-run') || '').trim();
+        const bar = card.querySelector('.js-running-bar');
+        const pctEl = card.querySelector('.js-running-pct');
+        const statusEl = card.querySelector('.js-running-status');
+        if (!bar || !pctEl || !statusEl) continue;
+
+        try {
+          const qs = rid ? ('?run_session_id=' + encodeURIComponent(rid)) : '';
+          const res = await fetch('/forecast_status' + qs, { credentials: 'same-origin' });
+          const data = await res.json();
+          const pct = Math.max(0, Math.min(100, Math.round(((data && data.progress) || 0) * 100)));
+          bar.style.width = pct + '%';
+          bar.setAttribute('aria-valuenow', String(pct));
+          pctEl.textContent = pct + '%';
+          statusEl.textContent = (data && data.status) ? String(data.status) : '';
+
+          if (data && (data.done || data.cancelled || data.error)) {
+            shouldReload = true;
+          }
+        } catch (e) {
+          // Keep trying; transient errors shouldn't freeze the UI.
         }
-      } catch (e) {
-        // Keep trying; transient errors shouldn't freeze the UI.
       }
+
+      if (shouldReload) {
+        stopped = true;
+        // Give the backend a moment to persist the history, then refresh so it appears in "Your Runs".
+        setTimeout(() => window.location.reload(), 800);
+        return;
+      }
+
       setTimeout(tick, 800);
     }
 

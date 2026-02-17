@@ -3,6 +3,7 @@ import time
 import asyncio
 import random
 import json
+import uuid
 from fastapi import Body
 from typing import Any, Dict, Optional
 import os
@@ -854,9 +855,157 @@ except Exception as _e:
 # Global storage for simplicity (use database for production SaaS)
 data_store = {}
 app.state.data_store = data_store
+_data_store_lock = threading.Lock()
+
+# ------------------------------
+# Multi-run support (run slots)
+# ------------------------------
+# Historically, this app stored all state at `data_store[session_id]` (where session_id is per-user).
+# To allow multiple concurrent forecasts per user, we now store run-specific state under:
+#   data_store[session_id]["runs"][run_session_id] = { ... per-run keys ... }
+# while keeping session-level settings (e.g. auth / UI prefs) at the session root.
+
+_RUN_STATE_KEYS: set[str] = {
+    # dataset / raw
+    "df",
+    "raw_df",
+    "uploaded_filename",
+    "dataset_id",
+    "history_last_error",
+    # forecast config / artifacts
+    "start_month",
+    "months",
+    "grain",
+    "extra_features",
+    "oos_enabled",
+    "oos_column",
+    "oos_imputed",
+    "original_sales_df",
+    "forecast_df",
+    "feature_importance",
+    "driver_artifacts",
+    "forecast_run_id",
+    # progress / cancellation
+    "forecast_progress",
+    "forecast_cancel_requested",
+    # supply planning
+    "supply_plan_df",
+    "supply_plan_full_df",
+    # planning insights follow-up
+    "planning_last",
+}
+
+def _new_run_session_id(prefix: str = "run_") -> str:
+    return prefix + uuid.uuid4().hex
+
+def _normalize_run_session_id(value: Optional[str]) -> Optional[str]:
+    v = (value or "").strip()
+    if not v:
+        return None
+    # keep the token safe for URLs/logs; reject obviously bad values
+    for ch in v:
+        if not (ch.isalnum() or ch in ["_", "-", ":"]):
+            return None
+    return v
+
+def _ensure_session_container(session_id: str) -> dict[str, Any]:
+    with _data_store_lock:
+        session = data_store.setdefault(session_id, {})
+        if not isinstance(session, dict):
+            session = {}
+            data_store[session_id] = session
+
+        runs = session.get("runs")
+        if not isinstance(runs, dict):
+            runs = {}
+            session["runs"] = runs
+
+        active = _normalize_run_session_id(session.get("active_run_session_id"))
+        if active and active not in runs:
+            session["active_run_session_id"] = None
+
+        # Migrate legacy (single-run) sessions into a run slot.
+        legacy_keys_present = any(k in session for k in _RUN_STATE_KEYS)
+        if legacy_keys_present:
+            rid = _normalize_run_session_id(session.get("active_run_session_id"))
+            if not rid or rid not in runs:
+                rid = _new_run_session_id(prefix="legacy_")
+                runs[rid] = {"run_session_id": rid, "created_at": datetime.now(timezone.utc).isoformat()}
+                session["active_run_session_id"] = rid
+            run = runs[rid]
+            for k in list(session.keys()):
+                if k in _RUN_STATE_KEYS:
+                    run[k] = session.pop(k)
+
+        return session
+
+def _get_run_state(session_id: str, run_session_id: Optional[str], *, create: bool = False) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    session = _ensure_session_container(session_id)
+    runs: dict[str, Any] = session.get("runs") or {}
+    rid = _normalize_run_session_id(run_session_id) or _normalize_run_session_id(session.get("active_run_session_id"))
+
+    if rid and rid in runs:
+        session["active_run_session_id"] = rid
+        run = runs[rid]
+        if isinstance(run, dict) and "run_session_id" not in run:
+            run["run_session_id"] = rid
+        return run if isinstance(run, dict) else None, rid
+
+    if not runs:
+        if not create:
+            return None, None
+        rid = _new_run_session_id()
+        runs[rid] = {"run_session_id": rid, "created_at": datetime.now(timezone.utc).isoformat()}
+        session["runs"] = runs
+        session["active_run_session_id"] = rid
+        return runs[rid], rid
+
+    # Fall back to most-recent run (in insertion order) when no explicit run is given.
+    if not create:
+        last_rid = next(reversed(runs.keys()))
+        session["active_run_session_id"] = last_rid
+        run = runs[last_rid]
+        return run if isinstance(run, dict) else None, last_rid
+
+    rid = _new_run_session_id()
+    runs[rid] = {"run_session_id": rid, "created_at": datetime.now(timezone.utc).isoformat()}
+    session["active_run_session_id"] = rid
+    return runs[rid], rid
 
 _otp_mem_lock = threading.Lock()
 _otp_mem_store: dict[str, dict[str, Any]] = {}
+
+def _get_forecast_progress(session_id: str, run_session_id: Optional[str] = None) -> dict[str, Any]:
+    try:
+        run, _ = _get_run_state(session_id, run_session_id, create=False)
+        prog = (run or {}).get("forecast_progress")
+        return prog if isinstance(prog, dict) else {}
+    except Exception:
+        return {}
+
+
+def _is_forecast_running(session_id: str) -> bool:
+    """
+    True if ANY run slot for this user has an in-flight forecast.
+    """
+    try:
+        session = _ensure_session_container(session_id)
+        runs = session.get("runs") or {}
+        for rid in list(runs.keys()):
+            prog = _get_forecast_progress(session_id, rid)
+            if not prog:
+                continue
+            if bool(prog.get("done", False)):
+                continue
+            if bool(prog.get("cancelled", False)):
+                continue
+            if prog.get("error"):
+                continue
+            return True
+    except Exception:
+        pass
+    return False
+
 
 def _otp_mem_put(*, otp_id: str, email: str, code_hash: str, expires_at: str) -> None:
     with _otp_mem_lock:
@@ -1747,15 +1896,24 @@ def _local_chat_answer(user_message: str, session: dict) -> str:
     return " ".join(blocks[:3])
 
 # Helper to update progress
-def set_forecast_progress(session_id, progress, status=None, done=False, error=None):
-    if session_id not in data_store:
-        data_store[session_id] = {}
-    existing = data_store[session_id].get("forecast_progress") or {}
-    logging.debug(f"[LOG] set_forecast_progress: session_id={session_id}, progress={progress}, status={status}, done={done}, error={error}")
-    data_store[session_id]["forecast_progress"] = {
-        "progress": progress,
+def set_forecast_progress(session_id, progress, status=None, done=False, error=None, run_session_id: Optional[str] = None):
+    run, rid = _get_run_state(session_id, run_session_id, create=True)
+    if not isinstance(run, dict) or not rid:
+        return
+    existing = run.get("forecast_progress") or {}
+    logging.debug(
+        "[LOG] set_forecast_progress: session_id=%s run_session_id=%s progress=%s status=%s done=%s error=%s",
+        session_id,
+        rid,
+        progress,
+        status,
+        done,
+        error,
+    )
+    run["forecast_progress"] = {
+        "progress": float(progress or 0.0),
         "status": status or "",
-        "done": done,
+        "done": bool(done),
         "error": error or "",
         # Preserve cancellation state unless explicitly set elsewhere.
         "cancelled": bool(existing.get("cancelled", False)),
@@ -1765,17 +1923,35 @@ class ForecastCancelled(Exception):
     pass
 
 def _forecast_cancel_requested(session_id: str) -> bool:
-    return bool(data_store.get(session_id, {}).get("forecast_cancel_requested", False))
+    # Backward compatible default: check the active run.
+    run, _ = _get_run_state(session_id, None, create=False)
+    return bool((run or {}).get("forecast_cancel_requested", False))
+
+def _forecast_cancel_requested_run(session_id: str, run_session_id: Optional[str]) -> bool:
+    run, _ = _get_run_state(session_id, run_session_id, create=False)
+    return bool((run or {}).get("forecast_cancel_requested", False))
 
 def _set_forecast_cancel_requested(session_id: str, requested: bool) -> None:
-    s = data_store.setdefault(session_id, {})
-    s["forecast_cancel_requested"] = bool(requested)
+    # Backward compatible default: set on the active run.
+    run, _ = _get_run_state(session_id, None, create=True)
+    if isinstance(run, dict):
+        run["forecast_cancel_requested"] = bool(requested)
+
+def _set_forecast_cancel_requested_run(session_id: str, run_session_id: Optional[str], requested: bool) -> None:
+    run, _ = _get_run_state(session_id, run_session_id, create=True)
+    if isinstance(run, dict):
+        run["forecast_cancel_requested"] = bool(requested)
 
 def _set_forecast_cancelled(session_id: str, status: str = "Forecast cancelled.") -> None:
-    if session_id not in data_store:
-        data_store[session_id] = {}
-    prev = data_store[session_id].get("forecast_progress") or {}
-    data_store[session_id]["forecast_progress"] = {
+    # Backward compatible default: mark cancelled on the active run.
+    _set_forecast_cancelled_run(session_id, None, status=status)
+
+def _set_forecast_cancelled_run(session_id: str, run_session_id: Optional[str], status: str = "Forecast cancelled.") -> None:
+    run, _ = _get_run_state(session_id, run_session_id, create=True)
+    if not isinstance(run, dict):
+        return
+    prev = run.get("forecast_progress") or {}
+    run["forecast_progress"] = {
         "progress": float(prev.get("progress", 0.0) or 0.0),
         "status": status,
         "done": True,
@@ -1787,16 +1963,14 @@ def _set_forecast_cancelled(session_id: str, status: str = "Forecast cancelled."
 @app.get("/forecast_status")
 async def forecast_status(request: Request):
     session_id = _session_id_from_request(request)
-    if session_id in data_store:
-        logging.error("===== STATUS ROUTE DF =====")
-        logging.error(data_store[session_id]["df"].columns.tolist())
-        logging.error(data_store[session_id]["df"].shape)
-    prog = data_store.get(session_id, {}).get("forecast_progress", None)
+    run_session_id = _normalize_run_session_id(request.query_params.get("run_session_id"))
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    prog = (run or {}).get("forecast_progress", None)
     forecast_ready = (
-        session_id in data_store and
-        "forecast_df" in data_store[session_id] and
-        isinstance(data_store[session_id]["forecast_df"], pd.DataFrame) and
-        not data_store[session_id]["forecast_df"].empty
+        isinstance(run, dict)
+        and "forecast_df" in run
+        and isinstance(run.get("forecast_df"), pd.DataFrame)
+        and not run.get("forecast_df").empty  # type: ignore[union-attr]
     )
     # print(f"[LOG] /forecast_status: progress={prog}, forecast_ready={forecast_ready}")
     if not prog:
@@ -1805,7 +1979,8 @@ async def forecast_status(request: Request):
     cancelled = bool(prog.get("cancelled", False))
     # Only set done: true if forecast is actually ready (unless cancelled)
     result = dict(prog)
-    result["cancel_requested"] = _forecast_cancel_requested(session_id)
+    result["run_session_id"] = rid
+    result["cancel_requested"] = _forecast_cancel_requested_run(session_id, rid)
     result["cancelled"] = cancelled
     if cancelled:
         result["done"] = True
@@ -1817,11 +1992,13 @@ async def forecast_status(request: Request):
 @app.post("/forecast_stop")
 async def forecast_stop(request: Request):
     session_id = _session_id_from_request(request)
-    _set_forecast_cancel_requested(session_id, True)
-    prog = data_store.get(session_id, {}).get("forecast_progress") or {}
+    run_session_id = _normalize_run_session_id(request.query_params.get("run_session_id"))
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    _set_forecast_cancel_requested_run(session_id, rid, True)
+    prog = (run or {}).get("forecast_progress") or {}
     if prog and not prog.get("done", False):
-        set_forecast_progress(session_id, prog.get("progress", 0.0) or 0.0, "Cancelling...")
-    return {"ok": True}
+        set_forecast_progress(session_id, prog.get("progress", 0.0) or 0.0, "Cancelling...", run_session_id=rid)
+    return {"ok": True, "run_session_id": rid}
 
 
 @app.post("/request_demo")
@@ -2639,6 +2816,9 @@ async def auth_github(request: Request, next: Optional[str] = None):
 
 @app.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...)):
+    # Create a new run slot per upload so users can run multiple forecasts concurrently.
+    session_id = _session_id_from_request(request)
+
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be CSV")
     contents = await file.read()
@@ -2675,7 +2855,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid date format in 'date' column: {str(e)}")
     
-    session_id = _session_id_from_request(request)
+    # session_id already computed above
     stored_df = df.copy()
     user_email = _get_user_email(request)
     dataset_id = None
@@ -2688,25 +2868,30 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
             logging.warning(f"[HISTORY] Failed to save dataset for {user_email}: {e}")
             history_last_error = f"Failed to save dataset history: {e}"
 
-    data_store[session_id] = {
+    session = _ensure_session_container(session_id)
+    runs: dict[str, Any] = session.get("runs") or {}
+    run_session_id = _new_run_session_id()
+    runs[run_session_id] = {
+        "run_session_id": run_session_id,
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "df": stored_df,
         "raw_df": stored_df.copy(),
         "uploaded_filename": file.filename,
         "dataset_id": dataset_id,
         "history_last_error": history_last_error,
     }
-    return RedirectResponse("/forecast", status_code=303)
+    session["runs"] = runs
+    session["active_run_session_id"] = run_session_id
+    return RedirectResponse(f"/forecast?run_session_id={quote(run_session_id)}", status_code=303)
 
 @app.get("/forecast", response_class=HTMLResponse)
-async def forecast_page(request: Request):
+async def forecast_page(request: Request, run_session_id: Optional[str] = None):
     session_id = _session_id_from_request(request)
-    if session_id not in data_store or "df" not in data_store[session_id]:
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    if not isinstance(run, dict) or "df" not in run:
         return RedirectResponse("/?error=no_data", status_code=303)
 
-    df = data_store[session_id]["df"]
-    logging.error("===== BEFORE FORECAST DF =====")
-    logging.error(df.columns.tolist())
-    logging.error(df.shape)
+    df = run["df"]
 
     max_date = df['date'].max()
     last_month = max_date.strftime('%Y-%m')
@@ -2725,6 +2910,7 @@ async def forecast_page(request: Request):
 
     return templates.TemplateResponse("forecast.html", {
         "request": request,
+        "run_session_id": rid,
         "data_shape": df.shape,
         "columns": df.columns.tolist(),
         "numeric_columns": numeric_columns,
@@ -2734,17 +2920,20 @@ async def forecast_page(request: Request):
     })
 
 @app.get("/status")
-async def get_status(request: Request):
+async def get_status(request: Request, run_session_id: Optional[str] = None):
     session_id = _session_id_from_request(request)
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
     status = {
         "session_exists": session_id in data_store,
-        "data_keys": list(data_store.get(session_id, {}).keys()) if session_id in data_store else [],
-        "data_shape": data_store[session_id]["df"].shape if session_id in data_store and "df" in data_store[session_id] else None,
-        "horizon": data_store[session_id].get("horizon"),  # Keep for backward compatibility
-        "start_month": data_store[session_id].get("start_month"),
-        "months": data_store[session_id].get("months"),
-        "forecast_ready": "forecast_df" in data_store.get(session_id, {}),
-        "forecast_shape": data_store[session_id]["forecast_df"].shape if session_id in data_store and "forecast_df" in data_store[session_id] else None
+        "run_session_id": rid,
+        "run_exists": isinstance(run, dict),
+        "data_keys": list(run.keys()) if isinstance(run, dict) else [],
+        "data_shape": run["df"].shape if isinstance(run, dict) and "df" in run else None,
+        "horizon": (run or {}).get("horizon") if isinstance(run, dict) else None,  # backward compatibility
+        "start_month": (run or {}).get("start_month") if isinstance(run, dict) else None,
+        "months": (run or {}).get("months") if isinstance(run, dict) else None,
+        "forecast_ready": bool(isinstance(run, dict) and isinstance(run.get("forecast_df"), pd.DataFrame) and not run.get("forecast_df").empty),
+        "forecast_shape": run["forecast_df"].shape if isinstance(run, dict) and isinstance(run.get("forecast_df"), pd.DataFrame) else None,
     }
     return status
 
@@ -2786,6 +2975,7 @@ from typing import List
 @app.post("/forecast")
 async def run_forecast(
     request: Request,
+    run_session_id: Optional[str] = Form(None),
     start_month: str = Form(...),
     months: int = Form(...),
     grain: List[str] = Form(None),
@@ -2798,56 +2988,64 @@ async def run_forecast(
     print(f"=== FORECAST FORM SUBMITTED ===")
     logging.debug(f"Start Month: {start_month}")
     logging.debug(f"Months: {months}")
-    logging.debug(f"Session data exists: {session_id in data_store}")
-    if session_id in data_store:
-        logging.debug(f"Session data keys: {list(data_store[session_id].keys())}")
-    else:
-        logging.error("ERROR: No session data found!")
-        return RedirectResponse("/?error=no_data", status_code=303)
+
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    if not isinstance(run, dict) or "df" not in run:
+        logging.error("ERROR: No run data found!")
+        return JSONResponse({"started": False, "error": "No uploaded data found for this run. Upload data first."}, status_code=400)
+
+    # Prevent starting a second forecast for the same run slot while one is already running.
+    prog = _get_forecast_progress(session_id, rid)
+    if prog and not bool(prog.get("done", False)) and not bool(prog.get("cancelled", False)) and not bool(prog.get("error")):
+        return JSONResponse(
+            {"started": False, "error": "A forecast is already running for this run. Stop it before starting a new one.", "run_session_id": rid},
+            status_code=409,
+        )
 
     # Store OOS settings
     oos_enabled = enable_oos_imputation == "on"
     oos_col = oos_column if (oos_enabled and oos_column) else None
 
-    data_store[session_id]["start_month"] = start_month
-    data_store[session_id]["months"] = months
-    data_store[session_id]["grain"] = grain if grain else []
-    data_store[session_id]["extra_features"] = extra_features if extra_features else []
-    data_store[session_id]["oos_enabled"] = oos_enabled
-    data_store[session_id]["oos_column"] = oos_col
-    logging.debug(f"Start month stored in session: {data_store[session_id].get('start_month')}")
-    logging.debug(f"Months stored in session: {data_store[session_id].get('months')}")
-    logging.debug(f"Forecast grain columns stored in session: {data_store[session_id].get('grain')}")
-    logging.debug(f"Extra features for training: {data_store[session_id].get('extra_features')}")
+    run["start_month"] = start_month
+    run["months"] = months
+    run["grain"] = grain if grain else []
+    run["extra_features"] = extra_features if extra_features else []
+    run["oos_enabled"] = oos_enabled
+    run["oos_column"] = oos_col
+    logging.debug(f"Start month stored in run: {run.get('start_month')}")
+    logging.debug(f"Months stored in run: {run.get('months')}")
+    logging.debug(f"Forecast grain columns stored in run: {run.get('grain')}")
+    logging.debug(f"Extra features for training: {run.get('extra_features')}")
     logging.debug(f"OOS imputation enabled: {oos_enabled}, column: {oos_col}")
 
     # Reset cancel state for a new run.
-    _set_forecast_cancel_requested(session_id, False)
+    _set_forecast_cancel_requested_run(session_id, rid, False)
     try:
-        if "forecast_progress" in data_store.get(session_id, {}):
-            data_store[session_id]["forecast_progress"]["cancelled"] = False
+        if isinstance(run.get("forecast_progress"), dict):
+            run["forecast_progress"]["cancelled"] = False
     except Exception:
         pass
 
     # Start forecast in a background thread and return immediately
     def forecast_task():
-        logging.debug(f"[LOG] Forecast thread started for session_id={session_id}")
+        logging.debug(f"[LOG] Forecast thread started for session_id={session_id} run_session_id={rid}")
         try:
-            if _forecast_cancel_requested(session_id):
-                _set_forecast_cancelled(session_id, "Forecast cancelled.")
+            if _forecast_cancel_requested_run(session_id, rid):
+                _set_forecast_cancelled_run(session_id, rid, "Forecast cancelled.")
                 return
-            set_forecast_progress(session_id, 0.05, "Preparing data...")
-            raw_df = data_store[session_id].get("raw_df")
+            set_forecast_progress(session_id, 0.05, "Preparing data...", run_session_id=rid)
+            run_state, _ = _get_run_state(session_id, rid, create=False)
+            if not isinstance(run_state, dict):
+                set_forecast_progress(session_id, 1.0, "Error", done=True, error="Run state not found.", run_session_id=rid)
+                return
+            raw_df = run_state.get("raw_df")
             if raw_df is None:
-                raw_df = data_store[session_id]["df"]
+                raw_df = run_state["df"]
             df = raw_df.copy()
-            data_store[session_id]["df"] = df
-            logging.error("===== UPLOAD STORED DF =====")
-            logging.error(data_store[session_id]["df"].columns.tolist())
-            logging.error(data_store[session_id]["df"].shape)
+            run_state["df"] = df
 
-            extra_features = data_store[session_id].get("extra_features", [])
-            grain = data_store[session_id].get("grain", [])
+            extra_features = run_state.get("extra_features", [])
+            grain = run_state.get("grain", [])
 
             # 🔥 FIX: Auto-detect grain if empty
             if not grain:
@@ -2859,54 +3057,54 @@ async def run_forecast(
             logging.debug(f"[DEBUG] Grain parameter: {grain}")
             logging.debug(f"[DEBUG] Extra features parameter: {extra_features}")
             if df is None or df.empty:
-                set_forecast_progress(session_id, 1.0, "No data available", done=True, error="No data available for forecasting")
+                set_forecast_progress(session_id, 1.0, "No data available", done=True, error="No data available for forecasting", run_session_id=rid)
                 logging.debug(f"[LOG] Forecast thread: No data available, exiting.")
                 return
 
-            if _forecast_cancel_requested(session_id):
-                _set_forecast_cancelled(session_id, "Forecast cancelled.")
+            if _forecast_cancel_requested_run(session_id, rid):
+                _set_forecast_cancelled_run(session_id, rid, "Forecast cancelled.")
                 return
             start_date = pd.to_datetime(start_month + "-01")
             from run_forecast2 import forecast_all_combined_prob, impute_oos_sales
 
             # Conditional OOS imputation
-            oos_enabled = data_store[session_id].get("oos_enabled", False)
-            oos_col = data_store[session_id].get("oos_column")
+            oos_enabled = run_state.get("oos_enabled", False)
+            oos_col = run_state.get("oos_column")
             if oos_enabled and oos_col and oos_col in df.columns:
-                set_forecast_progress(session_id, 0.15, "Imputing out-of-stock sales...")
+                set_forecast_progress(session_id, 0.15, "Imputing out-of-stock sales...", run_session_id=rid)
                 # Store original sales data before imputation
-                data_store[session_id]["original_sales_df"] = df.copy()
+                run_state["original_sales_df"] = df.copy()
                 df = impute_oos_sales(df, grain=grain, oos_col=oos_col)
-                data_store[session_id]["oos_imputed"] = True
+                run_state["oos_imputed"] = True
                 logging.debug(f"[LOG] OOS imputation performed using column: {oos_col}")
             else:
-                data_store[session_id]["oos_imputed"] = False
-                data_store[session_id]["original_sales_df"] = None
+                run_state["oos_imputed"] = False
+                run_state["original_sales_df"] = None
                 logging.debug(f"[LOG] OOS imputation skipped (enabled={oos_enabled}, column={oos_col})")
 
-            if _forecast_cancel_requested(session_id):
-                _set_forecast_cancelled(session_id, "Forecast cancelled.")
+            if _forecast_cancel_requested_run(session_id, rid):
+                _set_forecast_cancelled_run(session_id, rid, "Forecast cancelled.")
                 return
 
-            set_forecast_progress(session_id, 0.35, "Running forecast model...")
-            df = data_store[session_id]["df"].copy()
-            extra_features = data_store[session_id].get("extra_features", [])
-            grain = data_store[session_id].get("grain", [])
+            set_forecast_progress(session_id, 0.35, "Running forecast model...", run_session_id=rid)
+            df = run_state["df"].copy()
+            extra_features = run_state.get("extra_features", [])
+            grain = run_state.get("grain", [])
             print("gg grain before calling combined prob", grain)
 
             def _progress_cb(p, msg=None):
-                if _forecast_cancel_requested(session_id):
+                if _forecast_cancel_requested_run(session_id, rid):
                     raise ForecastCancelled()
-                set_forecast_progress(session_id, 0.35 + 0.6 * p, msg or "Forecasting...")
+                set_forecast_progress(session_id, 0.35 + 0.6 * p, msg or "Forecasting...", run_session_id=rid)
 
             forecast_df, feature_importance, driver_artifacts = forecast_all_combined_prob(
                 df, start_date=start_date, months=months, grain=grain, extra_features=extra_features,
                 progress_callback=_progress_cb
             )
             logging.debug(f"[LOG] Forecast thread: forecast_df shape={getattr(forecast_df, 'shape', None)}")
-            data_store[session_id]["forecast_df"] = forecast_df
-            data_store[session_id]["feature_importance"] = feature_importance
-            data_store[session_id]["driver_artifacts"] = driver_artifacts or {}
+            run_state["forecast_df"] = forecast_df
+            run_state["feature_importance"] = feature_importance
+            run_state["driver_artifacts"] = driver_artifacts or {}
 
             # Persist run history (best-effort; does not affect the forecast flow).
             if user_email:
@@ -2915,20 +3113,20 @@ async def run_forecast(
                     params = {
                         "start_month": start_month,
                         "months": months,
-                        "grain": data_store.get(session_id, {}).get("grain", []),
-                        "extra_features": data_store.get(session_id, {}).get("extra_features", []),
-                        "oos_enabled": bool(data_store.get(session_id, {}).get("oos_enabled", False)),
-                        "oos_column": data_store.get(session_id, {}).get("oos_column"),
-                        "uploaded_filename": data_store.get(session_id, {}).get("uploaded_filename"),
+                        "grain": run_state.get("grain", []),
+                        "extra_features": run_state.get("extra_features", []),
+                        "oos_enabled": bool(run_state.get("oos_enabled", False)),
+                        "oos_column": run_state.get("oos_column"),
+                        "uploaded_filename": run_state.get("uploaded_filename"),
                     }
-                    ds_id = data_store.get(session_id, {}).get("dataset_id")
-                    if not ds_id and isinstance(data_store.get(session_id, {}).get("raw_df"), pd.DataFrame):
+                    ds_id = run_state.get("dataset_id")
+                    if not ds_id and isinstance(run_state.get("raw_df"), pd.DataFrame):
                         ds_id = history_store.save_dataset(
                             user_email,
-                            str(data_store.get(session_id, {}).get("uploaded_filename") or "uploaded.csv"),
-                            data_store[session_id]["raw_df"],
+                            str(run_state.get("uploaded_filename") or "uploaded.csv"),
+                            run_state["raw_df"],
                         )
-                        data_store[session_id]["dataset_id"] = ds_id
+                        run_state["dataset_id"] = ds_id
                     run_id = history_store.save_forecast_run(
                         user_email,
                         ds_id,
@@ -2937,36 +3135,36 @@ async def run_forecast(
                         feature_importance=feature_importance,
                         driver_artifacts=(driver_artifacts or {}),
                     )
-                    data_store[session_id]["forecast_run_id"] = run_id
-                    data_store[session_id]["history_last_error"] = None
+                    run_state["forecast_run_id"] = run_id
+                    run_state["history_last_error"] = None
                 except Exception as e:
                     logging.warning(f"[HISTORY] Failed to save forecast run for {user_email}: {e}")
                     try:
-                        data_store[session_id]["history_last_error"] = f"Failed to save forecast run history: {e}"
+                        run_state["history_last_error"] = f"Failed to save forecast run history: {e}"
                     except Exception:
                         pass
 
             # Index data for RAG system
             try:
-                asyncio.run(_index_session_data(data_store[session_id]))
+                asyncio.run(_index_session_data(run_state))
             except Exception as e:
                 logging.warning(f"[LOG] Failed to index data for RAG: {e}")
 
-            set_forecast_progress(session_id, 1.0, "Forecast complete!", done=True)
+            set_forecast_progress(session_id, 1.0, "Forecast complete!", done=True, run_session_id=rid)
             logging.debug("[LOG] Forecast generated and stored in session.")
         except ForecastCancelled:
-            _set_forecast_cancelled(session_id, "Forecast cancelled.")
+            _set_forecast_cancelled_run(session_id, rid, "Forecast cancelled.")
         except Exception as e:
             logging.exception(f"[LOG] ERROR during forecast generation: {e}")
-            set_forecast_progress(session_id, 1.0, "Error during forecast", done=True, error=str(e))
-        logging.debug(f"[LOG] Forecast thread ended for session_id={session_id}")
+            set_forecast_progress(session_id, 1.0, "Error during forecast", done=True, error=str(e), run_session_id=rid)
+        logging.debug(f"[LOG] Forecast thread ended for session_id={session_id} run_session_id={rid}")
 
-    set_forecast_progress(session_id, 0.01, "Starting forecast...")
-    logging.debug(f"[LOG] Starting forecast thread for session_id={session_id}")
+    set_forecast_progress(session_id, 0.01, "Starting forecast...", run_session_id=rid)
+    logging.debug(f"[LOG] Starting forecast thread for session_id={session_id} run_session_id={rid}")
     thread = threading.Thread(target=forecast_task)
     thread.start()
-    logging.debug(f"[LOG] Forecast thread launched for session_id={session_id}")
-    return JSONResponse({"started": True})
+    logging.debug(f"[LOG] Forecast thread launched for session_id={session_id} run_session_id={rid}")
+    return JSONResponse({"started": True, "run_session_id": rid})
 
 @app.post("/generate_forecast")
 @app.post("/generate_forecast")
@@ -3063,17 +3261,17 @@ async def generate_forecast(request: Request):
         return {"status": "error", "message": error_msg}
 
 @app.get("/results", response_class=HTMLResponse)
-async def get_results(request: Request):
+async def get_results(request: Request, run_session_id: Optional[str] = None):
     session_id = _session_id_from_request(request)
     logging.debug(f"[LOG] === RESULTS PAGE REQUESTED ===")
-    logging.debug(f"[LOG] Session data keys: {list(data_store.get(session_id, {}).keys())}")
-    if "forecast_df" not in data_store.get(session_id, {}):
-        logging.error("[LOG] ERROR: No forecast_df in session")
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    if not isinstance(run, dict) or not isinstance(run.get("forecast_df"), pd.DataFrame):
+        logging.error("[LOG] ERROR: No forecast_df in run")
         raise HTTPException(status_code=400, detail="No forecast available")
-    forecast_df = data_store[session_id]["forecast_df"]
-    feature_importance = data_store[session_id].get("feature_importance", {})
-    grain = data_store[session_id].get("grain", ["item", "store"])
-    raw_df = data_store.get(session_id, {}).get("df")
+    forecast_df = run["forecast_df"]
+    feature_importance = run.get("feature_importance", {})
+    grain = run.get("grain", ["item", "store"])
+    raw_df = run.get("df")
     logging.debug(f"[LOG] Using grain columns for filtering: {grain}")
     logging.debug(f"[LOG] Forecast DF shape: {getattr(forecast_df, 'shape', None)}")
     logging.debug(f"[LOG] Forecast DF columns: {getattr(forecast_df, 'columns', None)}")
@@ -3165,11 +3363,11 @@ async def get_results(request: Request):
             raw_numeric_cols = []
 
     # Out-of-stock imputation data (reported vs imputed sales)
-    oos_imputed = data_store[session_id].get("oos_imputed", False)
+    oos_imputed = (run or {}).get("oos_imputed", False) if isinstance(run, dict) else False
     reported_sales_month = None
     try:
         if oos_imputed:
-            original_sales_df = data_store[session_id].get("original_sales_df")
+            original_sales_df = (run or {}).get("original_sales_df") if isinstance(run, dict) else None
             if original_sales_df is not None and not original_sales_df.empty:
                 # Process original sales data
                 orig_sales = original_sales_df.copy()
@@ -3442,7 +3640,7 @@ async def get_results(request: Request):
     try:
         driver_model = driver_artifacts.get("model")
         driver_features = driver_artifacts.get("features") or []
-        raw_df = data_store.get(session_id, {}).get("df")
+        raw_df = (run or {}).get("df") if isinstance(run, dict) else None
 
         is_single_series = True
         series_key = {}
@@ -3557,6 +3755,7 @@ async def get_results(request: Request):
     quantile_cols = [col for col in filtered_df.columns if col.startswith("forecast_p")]
     return templates.TemplateResponse("results_v2.html", {
         "request": request,
+        "run_session_id": rid,
         "actual_total": f"{actual_total:,.0f}",
         "forecast_total": f"{forecast_total:,.0f}",
         "delta_pct": f"{delta_pct:.1f}%",
@@ -3575,8 +3774,8 @@ async def get_results(request: Request):
         "all_grain_values": all_grain_values,
         "selected_grain_values": selected_grain_values,
         "current_date": datetime.now().strftime("%B %d, %Y"),
-        "forecast_start_month": data_store.get(session_id, {}).get("start_month"),
-        "forecast_months": data_store.get(session_id, {}).get("months"),
+        "forecast_start_month": (run or {}).get("start_month") if isinstance(run, dict) else None,
+        "forecast_months": (run or {}).get("months") if isinstance(run, dict) else None,
         "latest_sales_month": latest_sales_month,
         "latest_sales_value": latest_sales_value,
         "latest_raw_sales_value": latest_raw_sales_value,
@@ -3632,22 +3831,33 @@ async def dashboard_page(request: Request):
     except Exception:
         history_error = None
 
-    running_forecast = None
-    running_meta = {}
+    running_forecasts: list[dict[str, Any]] = []
     try:
-        s = data_store.get(session_id, {}) or {}
-        prog = s.get("forecast_progress") or None
-        if isinstance(prog, dict) and prog and not bool(prog.get("done", False)) and not bool(prog.get("cancelled", False)):
-            running_forecast = prog
-            running_meta = {
-                "uploaded_filename": s.get("uploaded_filename"),
-                "start_month": s.get("start_month"),
-                "months": s.get("months"),
-                "grain": s.get("grain"),
-            }
+        sess = _ensure_session_container(session_id)
+        runs = sess.get("runs") or {}
+        for rid, r in runs.items():
+            if not isinstance(r, dict):
+                continue
+            prog = r.get("forecast_progress") or None
+            if not (isinstance(prog, dict) and prog):
+                continue
+            if bool(prog.get("done", False)) or bool(prog.get("cancelled", False)) or bool(prog.get("error")):
+                continue
+            running_forecasts.append(
+                {
+                    "run_session_id": rid,
+                    "progress": prog,
+                    "meta": {
+                        "uploaded_filename": r.get("uploaded_filename"),
+                        "start_month": r.get("start_month"),
+                        "months": r.get("months"),
+                        "grain": r.get("grain"),
+                        "created_at": r.get("created_at"),
+                    },
+                }
+            )
     except Exception:
-        running_forecast = None
-        running_meta = {}
+        running_forecasts = []
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -3661,8 +3871,7 @@ async def dashboard_page(request: Request):
             "history_backend": history_backend,
             "history_info": history_info,
             "history_error": history_error,
-            "running_forecast": running_forecast,
-            "running_meta": running_meta,
+            "running_forecasts": running_forecasts,
         },
     )
 
@@ -3681,8 +3890,6 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
         else history_store.load_forecast_run(user_email, int(run_id))
     )
 
-    # Rehydrate session state so existing pages keep working without logic changes.
-    session = data_store.setdefault(session_id, {})
     raw_df = run.get("raw_df") if isinstance(run, dict) else None
     forecast_df = run.get("forecast_df") if isinstance(run, dict) else None
     if not isinstance(raw_df, pd.DataFrame) or raw_df.empty:
@@ -3702,19 +3909,30 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
     if not isinstance(params, dict):
         params = {}
 
-    session["df"] = raw_df
-    session["raw_df"] = raw_df.copy()
-    session["forecast_df"] = forecast_df
-    session["feature_importance"] = run.get("feature_importance") if isinstance(run.get("feature_importance"), dict) else {}
-    session["driver_artifacts"] = run.get("driver_artifacts") if isinstance(run.get("driver_artifacts"), dict) else {}
-    session["uploaded_filename"] = run.get("filename")
-    session["start_month"] = params.get("start_month")
-    session["months"] = params.get("months")
-    session["grain"] = params.get("grain") or session.get("grain") or ["item", "store"]
-    session["extra_features"] = params.get("extra_features") or session.get("extra_features") or []
-    session["oos_enabled"] = bool(params.get("oos_enabled") or False)
-    session["oos_column"] = params.get("oos_column")
-    session["forecast_run_id"] = int(run_id)
+    # Rehydrate into a NEW run slot so users can keep multiple runs isolated.
+    sess = _ensure_session_container(session_id)
+    runs: dict[str, Any] = sess.get("runs") or {}
+    rid = _new_run_session_id(prefix="hist_")
+    run_state: dict[str, Any] = {
+        "run_session_id": rid,
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "df": raw_df,
+        "raw_df": raw_df.copy(),
+        "forecast_df": forecast_df,
+        "feature_importance": run.get("feature_importance") if isinstance(run.get("feature_importance"), dict) else {},
+        "driver_artifacts": run.get("driver_artifacts") if isinstance(run.get("driver_artifacts"), dict) else {},
+        "uploaded_filename": run.get("filename"),
+        "start_month": params.get("start_month"),
+        "months": params.get("months"),
+        "grain": params.get("grain") or ["item", "store"],
+        "extra_features": params.get("extra_features") or [],
+        "oos_enabled": bool(params.get("oos_enabled") or False),
+        "oos_column": params.get("oos_column"),
+        "forecast_run_id": int(run_id),
+    }
+    runs[rid] = run_state
+    sess["runs"] = runs
+    sess["active_run_session_id"] = rid
 
     if str(target or "").lower() == "supply_plan":
         try:
@@ -3729,17 +3947,17 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
                 if "period_start" in sp_df.columns:
                     sp_df = sp_df.copy()
                     sp_df["period_start"] = pd.to_datetime(sp_df["period_start"], errors="coerce")
-                session["supply_plan_df"] = sp_df
+                run_state["supply_plan_df"] = sp_df
             if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
                 if "period_start" in sp_full.columns:
                     sp_full = sp_full.copy()
                     sp_full["period_start"] = pd.to_datetime(sp_full["period_start"], errors="coerce")
-                session["supply_plan_full_df"] = sp_full
+                run_state["supply_plan_full_df"] = sp_full
         except KeyError:
             raise HTTPException(status_code=404, detail="No saved supply plan for this run.")
-        return RedirectResponse("/supply_plan", status_code=303)
+        return RedirectResponse(f"/supply_plan?run_session_id={quote(rid)}", status_code=303)
 
-    return RedirectResponse("/results", status_code=303)
+    return RedirectResponse(f"/results?run_session_id={quote(rid)}", status_code=303)
 
 
 @app.post("/history/delete")
@@ -3899,13 +4117,15 @@ async def admin_delete_user_post(request: Request, email: str = Form(...)):
 async def api_update_plot(request: Request):
     """AJAX endpoint to update plot and KPIs without full page reload"""
     session_id = _session_id_from_request(request)
-    if "forecast_df" not in data_store.get(session_id, {}):
+    run_session_id = _normalize_run_session_id(request.query_params.get("run_session_id"))
+    run, _ = _get_run_state(session_id, run_session_id, create=False)
+    if not isinstance(run, dict) or not isinstance(run.get("forecast_df"), pd.DataFrame):
         return JSONResponse({"error": "No forecast available"}, status_code=400)
 
-    forecast_df = data_store[session_id]["forecast_df"]
-    feature_importance = data_store[session_id].get("feature_importance", {})
-    grain = data_store[session_id].get("grain", ["item", "store"])
-    raw_df = data_store.get(session_id, {}).get("df")
+    forecast_df = run["forecast_df"]
+    feature_importance = run.get("feature_importance", {})
+    grain = run.get("grain", ["item", "store"])
+    raw_df = run.get("df")
 
     if forecast_df.empty:
         return JSONResponse({"error": "Forecast data is empty"}, status_code=400)
@@ -3985,11 +4205,11 @@ async def api_update_plot(request: Request):
             raw_numeric_cols = []
 
     # Out-of-stock imputation data (reported vs imputed sales)
-    oos_imputed = data_store[session_id].get("oos_imputed", False)
+    oos_imputed = run.get("oos_imputed", False) if isinstance(run, dict) else False
     reported_sales_month = None
     try:
         if oos_imputed:
-            original_sales_df = data_store[session_id].get("original_sales_df")
+            original_sales_df = run.get("original_sales_df") if isinstance(run, dict) else None
             if original_sales_df is not None and not original_sales_df.empty:
                 # Process original sales data
                 orig_sales = original_sales_df.copy()
@@ -4188,15 +4408,16 @@ async def api_update_plot(request: Request):
 from fastapi import Form
 
 @app.get("/supply_plan", response_class=HTMLResponse)
-async def supply_plan_page(request: Request):
+async def supply_plan_page(request: Request, run_session_id: Optional[str] = None):
     logging.debug("[LOG] /supply_plan GET endpoint called")
     session_id = _session_id_from_request(request)
-    forecast_df = data_store.get(session_id, {}).get("forecast_df")
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    forecast_df = (run or {}).get("forecast_df") if isinstance(run, dict) else None
     has_forecast = forecast_df is not None and isinstance(forecast_df, pd.DataFrame) and not forecast_df.empty
-    raw_df = data_store.get(session_id, {}).get("df")
+    raw_df = (run or {}).get("df") if isinstance(run, dict) else None
     has_raw_data = raw_df is not None and isinstance(raw_df, pd.DataFrame) and not raw_df.empty
-    forecast_start_month = data_store.get(session_id, {}).get("start_month")
-    forecast_months = data_store.get(session_id, {}).get("months")
+    forecast_start_month = (run or {}).get("start_month") if isinstance(run, dict) else None
+    forecast_months = (run or {}).get("months") if isinstance(run, dict) else None
 
     grain_cols = []
     if has_forecast:
@@ -4273,6 +4494,7 @@ async def supply_plan_page(request: Request):
         "supply_plan.html",
         {
             "request": request,
+            "run_session_id": rid,
             "has_forecast": has_forecast,
             "has_raw_data": has_raw_data,
             "grain_label": grain_label,
@@ -4294,17 +4516,18 @@ async def supply_plan_page(request: Request):
 from fastapi import Body
 
 @app.get("/supply_plan_defaults")
-async def supply_plan_defaults(request: Request, combo_key: str):
+async def supply_plan_defaults(request: Request, combo_key: str, run_session_id: Optional[str] = None):
     """
     Returns default inputs for a selected series so the UI can prefill editable fields.
     """
     session_id = _session_id_from_request(request)
-    forecast_df = data_store.get(session_id, {}).get("forecast_df")
+    run, _ = _get_run_state(session_id, run_session_id, create=False)
+    forecast_df = (run or {}).get("forecast_df") if isinstance(run, dict) else None
     if forecast_df is None or not isinstance(forecast_df, pd.DataFrame) or forecast_df.empty:
         raise HTTPException(status_code=400, detail="No forecast data available.")
 
-    start_month = data_store.get(session_id, {}).get("start_month")
-    months_val = data_store.get(session_id, {}).get("months")
+    start_month = (run or {}).get("start_month") if isinstance(run, dict) else None
+    months_val = (run or {}).get("months") if isinstance(run, dict) else None
     if not start_month or not months_val:
         raise HTTPException(status_code=400, detail="Forecast start month / horizon not found.")
 
@@ -4423,7 +4646,14 @@ async def supply_plan_submit(
     logging.debug("[LOG] /supply_plan POST endpoint called")
     session_id = _session_id_from_request(request)
     user_email = _get_user_email(request)
-    forecast_df = data_store.get(session_id, {}).get("forecast_df")
+    rid_in = None
+    try:
+        rid_in = payload.get("run_session_id")
+    except Exception:
+        rid_in = None
+    run_session_id = _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None)
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    forecast_df = (run or {}).get("forecast_df") if isinstance(run, dict) else None
     try:
         from io import StringIO
         import json
@@ -4700,8 +4930,8 @@ async def supply_plan_submit(
             if forecast_df is None or not isinstance(forecast_df, pd.DataFrame) or forecast_df.empty:
                 return {"error": "No forecast data available in this session. Run a forecast first, then open Supply Planning again."}
 
-            start_month = data_store.get(session_id, {}).get("start_month")
-            months_val = data_store.get(session_id, {}).get("months")
+            start_month = (run or {}).get("start_month") if isinstance(run, dict) else None
+            months_val = (run or {}).get("months") if isinstance(run, dict) else None
             if not start_month or not months_val:
                 return {"error": "Forecast start month / horizon not found. Please run a forecast again."}
             start_date_str = f"{start_month}-01"
@@ -4972,15 +5202,16 @@ async def supply_plan_submit(
             if "location" in supply_plan_export.columns and loc_col and loc_col in supply_plan_export.columns:
                 supply_plan_export = supply_plan_export.drop(columns=["location"])
 
-        data_store[session_id]["supply_plan_df"] = supply_plan_export
-        # Keep a full copy for downstream analysis (risks/actions/assistant context).
-        data_store[session_id]["supply_plan_full_df"] = supply_plan.copy()
+        if isinstance(run, dict):
+            run["supply_plan_df"] = supply_plan_export
+            # Keep a full copy for downstream analysis (risks/actions/assistant context).
+            run["supply_plan_full_df"] = supply_plan.copy()
 
         # Persist supply plan history (best-effort).
         if user_email:
             try:
                 import history_store
-                run_id = data_store.get(session_id, {}).get("forecast_run_id")
+                run_id = (run or {}).get("forecast_run_id") if isinstance(run, dict) else None
                 if run_id:
                     plan_params = {
                         "combo_key": payload.get("combo_key"),
@@ -4996,11 +5227,13 @@ async def supply_plan_submit(
                         supply_export_df=supply_plan_export,
                         supply_full_df=supply_plan,
                     )
-                    data_store[session_id]["history_last_error"] = None
+                    if isinstance(run, dict):
+                        run["history_last_error"] = None
             except Exception as e:
                 logging.warning(f"[HISTORY] Failed to save supply plan for {user_email}: {e}")
                 try:
-                    data_store[session_id]["history_last_error"] = f"Failed to save supply plan history: {e}"
+                    if isinstance(run, dict):
+                        run["history_last_error"] = f"Failed to save supply plan history: {e}"
                 except Exception:
                     pass
 
@@ -5173,9 +5406,10 @@ async def supply_plan_submit(
 
 # Download endpoint for supply plan
 @app.get("/download_supply_plan")
-async def download_supply_plan(request: Request):
+async def download_supply_plan(request: Request, run_session_id: Optional[str] = None):
     session_id = _session_id_from_request(request)
-    supply_plan = data_store.get(session_id, {}).get("supply_plan_df")
+    run, _ = _get_run_state(session_id, run_session_id, create=False)
+    supply_plan = (run or {}).get("supply_plan_df") if isinstance(run, dict) else None
     if supply_plan is None or supply_plan.empty:
         raise HTTPException(status_code=404, detail="No supply plan available. Please generate it first.")
     stream = io.StringIO()
@@ -5185,16 +5419,19 @@ async def download_supply_plan(request: Request):
 
 # --- Planning Pipeline Endpoints ---
 @app.get("/planning/context")
-async def planning_context(request: Request, combo_key: Optional[str] = None):
+async def planning_context(request: Request, combo_key: Optional[str] = None, run_session_id: Optional[str] = None):
     session_id = _session_id_from_request(request)
-    session = data_store.get(session_id, {})
+    run, _ = _get_run_state(session_id, run_session_id, create=False)
+    session = run if isinstance(run, dict) else {}
     return build_planning_context(session, combo_key=combo_key)
 
 @app.post("/risks/detect")
 async def risks_detect(request: Request, payload: Dict = Body(default={})):
     session_id = _session_id_from_request(request)
     combo_key = payload.get("combo_key")
-    session = data_store.get(session_id, {})
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run, _ = _get_run_state(session_id, _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None), create=False)
+    session = run if isinstance(run, dict) else {}
     context = build_planning_context(session, combo_key=combo_key)
     risks = detect_risks(session, context=context)
     return {"context": context, "risks": risks}
@@ -5203,7 +5440,9 @@ async def risks_detect(request: Request, payload: Dict = Body(default={})):
 async def actions_generate(request: Request, payload: Dict = Body(default={})):
     session_id = _session_id_from_request(request)
     combo_key = payload.get("combo_key")
-    session = data_store.get(session_id, {})
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run, _ = _get_run_state(session_id, _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None), create=False)
+    session = run if isinstance(run, dict) else {}
     context = payload.get("context") or build_planning_context(session, combo_key=combo_key)
     risks = payload.get("risks") or detect_risks(session, context=context)
     actions = generate_actions(session, context=context, risks=risks)
@@ -5219,7 +5458,9 @@ async def ai_recommendations(request: Request, payload: Dict = Body(default={}))
     combo_key = payload.get("combo_key")
     question = payload.get("question") or "Provide prioritized recommendations and next steps."
     request_id = payload.get("request_id")
-    session = data_store.get(session_id, {})
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run, _ = _get_run_state(session_id, _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None), create=False)
+    session = run if isinstance(run, dict) else {}
     # Planning recommendations are intended to use OpenAI when configured.
     # If OPENAI_API_KEY isn't set, fall back deterministically to local (no external calls).
     openai_configured = bool((os.getenv("OPENAI_API_KEY") or "").strip())
@@ -5312,7 +5553,9 @@ async def planning_full(request: Request, payload: Dict = Body(default={})):
     session_id = _session_id_from_request(request)
     combo_key = payload.get("combo_key")
     request_id = payload.get("request_id")
-    session = data_store.get(session_id, {})
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run, rid = _get_run_state(session_id, _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None), create=False)
+    session = run if isinstance(run, dict) else {}
 
     try:
         context = build_planning_context(session, combo_key=combo_key)
@@ -5320,6 +5563,7 @@ async def planning_full(request: Request, payload: Dict = Body(default={})):
         actions = generate_actions(session, context=context, risks=risks)
 
         recs_payload = {
+            "run_session_id": rid,
             "combo_key": combo_key,
             "context": context,
             "risks": risks,
@@ -5329,11 +5573,14 @@ async def planning_full(request: Request, payload: Dict = Body(default={})):
         }
         recs = await ai_recommendations(request, recs_payload)
         try:
-            # Store last planning state for follow-up Q&A (per session).
-            store = data_store.setdefault(session_id, session)
+            # Store last planning state for follow-up Q&A (per run slot).
+            store = run if isinstance(run, dict) else None
+            if not isinstance(store, dict):
+                store, _ = _get_run_state(session_id, rid, create=True)
             context_packet = _build_llm_context_packet(session, combo_key=combo_key)
             store["planning_last"] = {
                 "ts": time.time(),
+                "run_session_id": rid,
                 "combo_key": combo_key,
                 "question": payload.get("question"),
                 "context": context,
@@ -5376,11 +5623,13 @@ async def planning_followup(request: Request, payload: Dict = Body(default={})):
     request_id = payload.get("request_id")
     history = payload.get("history") or []
     combo_key = payload.get("combo_key")
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run, rid = _get_run_state(session_id, _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None), create=False)
 
     if not question:
         return {"answer": "Please enter a question.", "provider": "local", "llm_provider": _default_provider(), "llm_error": None, "cached": False}
 
-    session = data_store.get(session_id, {})
+    session = run if isinstance(run, dict) else {}
     last = session.get("planning_last") if isinstance(session, dict) else None
     if not isinstance(last, dict) or not last.get("context"):
         raise HTTPException(status_code=400, detail="No planning insights found. Click Generate first.")
@@ -5392,7 +5641,7 @@ async def planning_followup(request: Request, payload: Dict = Body(default={})):
     attempted_provider = "openai"
     cache_key = None
     if openai_configured and isinstance(request_id, str) and request_id.strip():
-        cache_key = f"planqa:{attempted_provider}:{session_id}:{request_id.strip()}"
+        cache_key = f"planqa:{attempted_provider}:{session_id}:{rid or 'active'}:{request_id.strip()}"
         cached = _cache_get(cache_key)
         if cached is not None:
             return {"answer": cached, "provider": attempted_provider, "llm_provider": attempted_provider, "llm_error": None, "cached": True}
@@ -5469,14 +5718,17 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
         return {"answer": "Please enter a question about your forecast results."}
 
     session_id = _session_id_from_request(request)
-    session = data_store.get(session_id, {})
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run_session_id = _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None)
+    session, rid = _get_run_state(session_id, run_session_id, create=False)
+    session = session if isinstance(session, dict) else {}
     combo_key = payload.get("combo_key")
     request_id = payload.get("request_id")
     provider = _default_provider()
-    _assistant_debug(f"/chat start: session={session_id} request_id={request_id!r}")
+    _assistant_debug(f"/chat start: session={session_id} run_session_id={rid!r} request_id={request_id!r}")
     cache_key = None
     if isinstance(request_id, str) and request_id.strip():
-        cache_key = f"chat:{provider}:{session_id}:{request_id.strip()}"
+        cache_key = f"chat:{provider}:{session_id}:{rid or 'active'}:{request_id.strip()}"
         cached = _cache_get(cache_key)
         if cached is not None:
             _assistant_debug(f"/chat cache hit (request_id): {cache_key}")
@@ -5484,7 +5736,7 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
 
     # Also de-dupe identical questions briefly (helps with browser/proxy retries).
     q_hash = hashlib.sha256(user_message.strip().encode("utf-8")).hexdigest()[:16]
-    hash_key = f"chatq:{provider}:{session_id}:{q_hash}"
+    hash_key = f"chatq:{provider}:{session_id}:{rid or 'active'}:{q_hash}"
     cached = _cache_get(hash_key)
     if cached is not None:
         _assistant_debug(f"/chat cache hit (question_hash): {hash_key}")

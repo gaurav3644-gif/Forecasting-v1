@@ -172,6 +172,7 @@
                         <p class="text-muted">Set your forecast parameters</p>
                     </div>
                     <form action="/forecast" method="post" id="forecastForm" autocomplete="off">
+                        <input type="hidden" name="run_session_id" value="{{ run_session_id }}">
                                                 <div class="mb-3">
                                                     <label class="form-label"><i class="fas fa-layer-group"></i> <span data-i18n="forecast_grain">Forecast Grain</span></label>
                                                     <div class="form-text mb-2">Select one or more columns to define the level of forecasting (e.g. Country, Store, Item)</div>
@@ -271,6 +272,7 @@
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
         const progressStatus = document.getElementById('progressStatus');
+        const runSessionId = (document.querySelector('input[name=\"run_session_id\"]') || {}).value || '';
 
         // OOS imputation toggle
         const oosCheckbox = document.getElementById('enable_oos_imputation');
@@ -300,7 +302,20 @@
                     body: formData
                 })
                 .then(response => {
-                    // Always start polling for progress
+                    if (!response.ok) {
+                        return response.json()
+                            .then((data) => {
+                                const msg = (data && data.error) ? String(data.error) : 'Could not start forecast.';
+                                progressStatus.textContent = msg;
+                                runBtn.disabled = false;
+                                if (stopBtn) stopBtn.disabled = true;
+                            })
+                            .catch(() => {
+                                progressStatus.textContent = 'Could not start forecast.';
+                                runBtn.disabled = false;
+                                if (stopBtn) stopBtn.disabled = true;
+                            });
+                    }
                     pollProgress();
                 })
                 .catch(err => {
@@ -315,12 +330,14 @@
             stopBtn.addEventListener('click', function() {
                 stopBtn.disabled = true;
                 progressStatus.textContent = 'Cancelling...';
-                fetch('/forecast_stop', { method: 'POST' }).catch(() => { /* ignore */ });
+                const qs = runSessionId ? ('?run_session_id=' + encodeURIComponent(runSessionId)) : '';
+                fetch('/forecast_stop' + qs, { method: 'POST' }).catch(() => { /* ignore */ });
             });
         }
 
         function pollProgress() {
-            fetch('/forecast_status')
+            const qs = runSessionId ? ('?run_session_id=' + encodeURIComponent(runSessionId)) : '';
+            fetch('/forecast_status' + qs)
                 .then(res => res.json())
                 .then(data => {
                     let pct = Math.round((data.progress || 0) * 100);
@@ -336,7 +353,8 @@
                         progressBar.style.width = '100%';
                         progressBar.textContent = '100%';
                         progressStatus.textContent = 'Forecast complete! Redirecting...';
-                        setTimeout(() => { window.location.href = '/results'; }, 800);
+                        const dest = runSessionId ? ('/results?run_session_id=' + encodeURIComponent(runSessionId)) : '/results';
+                        setTimeout(() => { window.location.href = dest; }, 800);
                     } else if (data.error) {
                         progressStatus.textContent = 'Error: ' + data.error;
                         runBtn.disabled = false;
@@ -354,7 +372,7 @@
 
         // If a forecast is already running (e.g., user navigated away to Dashboard and came back),
         // pick up the existing progress instead of showing the Run button state.
-        fetch('/forecast_status')
+        fetch('/forecast_status' + (runSessionId ? ('?run_session_id=' + encodeURIComponent(runSessionId)) : ''))
             .then(res => res.json())
             .then(data => {
                 const statusText = String((data && data.status) || '');

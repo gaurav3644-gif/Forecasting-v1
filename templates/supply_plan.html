@@ -166,7 +166,7 @@
 
             <div class="d-grid gap-2">
                 <button type="submit" class="btn btn-primary" id="generateSupplyBtn"><span data-i18n="sp_generate">Generate</span></button>
-                <a href="/download_supply_plan" class="btn btn-outline-success disabled" id="downloadPlanBtn" target="_blank" aria-disabled="true">Download CSV</a>
+                <a href="/download_supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-success disabled" id="downloadPlanBtn" target="_blank" aria-disabled="true">Download CSV</a>
                 <div id="supplyPlanAlert" class="small text-muted"></div>
             </div>
         </form>
@@ -333,11 +333,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     })();
  
+    const runSessionId = "{{ run_session_id or '' }}";
+
     async function loadDefaults() {
         const combo = document.getElementById('combo_key');
         if (!combo) return;
         try {
-            const res = await fetch(`/supply_plan_defaults?combo_key=${encodeURIComponent(combo.value)}`);
+            const qs = new URLSearchParams({ combo_key: combo.value });
+            if (runSessionId) qs.set('run_session_id', runSessionId);
+            const res = await fetch(`/supply_plan_defaults?${qs.toString()}`);
             if (!res.ok) return;
             const data = await res.json();
             if (data.constraints) {
@@ -451,7 +455,7 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                session_id: "default",
+                run_session_id: runSessionId || undefined,
                 combo_key: comboKey,
                 question: question,
                 history: trimmedHistory,
@@ -493,7 +497,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: "default",
+                        run_session_id: runSessionId || undefined,
                         combo_key: comboKey,
                         question: q,
                         request_id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2))
@@ -814,6 +818,7 @@ document.getElementById('supplyPlanForm').addEventListener('submit', async funct
     if (alertEl) alertEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Generating...`;
 
     const payload = {
+        run_session_id: runSessionId || undefined,
         combo_key: document.getElementById('combo_key') ? document.getElementById('combo_key').value : null,
         use_latest_forecast: true,
         auto_fill: true,

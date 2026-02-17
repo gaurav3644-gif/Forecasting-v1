@@ -189,7 +189,7 @@
       <span class="badge text-bg-light border">Horizon: {{ forecast_start_month }} ({{ forecast_months }} months)</span>
       {% endif %}
       <span class="badge text-bg-light border">Grain: {{ grain|join(" · ") }}</span>
-      <a href="/supply_plan" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener"><span data-i18n="results_supply_plan">Supply Plan</span></a>
+      <a href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener"><span data-i18n="results_supply_plan">Supply Plan</span></a>
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal"><span data-i18n="results_ai_assistant">AI Assistant</span></button>
     </div>
   </div>
@@ -205,6 +205,9 @@
             </div>
 
             <form action="/results" method="get" id="filter-form" class="d-grid gap-3">
+              {% if run_session_id %}
+              <input type="hidden" name="run_session_id" value="{{ run_session_id }}">
+              {% endif %}
               {% for col in grain %}
                 {% if col in all_grain_values %}
                   <div class="filter-section">
@@ -948,6 +951,8 @@
     try {
       const comboKey = computeComboKey();
       const payload = { message: q, request_id: requestId };
+      const runSessionId = "{{ run_session_id or '' }}";
+      if (runSessionId) payload.run_session_id = runSessionId;
       if (comboKey) payload.combo_key = comboKey;
       const res = await fetch('/chat', {
         method: 'POST',
