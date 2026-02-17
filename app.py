@@ -4644,7 +4644,7 @@ async def supply_plan_submit(
     payload: Dict = Body(...),
     background_tasks: BackgroundTasks = None,
 ):
-    logging.info("[LOG] /supply_plan POST endpoint called")
+    print("=== POST /supply_plan CALLED ===", flush=True)
     session_id = _session_id_from_request(request)
     user_email = _get_user_email(request)
     rid_in = None
@@ -4653,13 +4653,13 @@ async def supply_plan_submit(
     except Exception:
         rid_in = None
     run_session_id = _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None)
-    logging.info(f"[SUPPLY_PLAN] session={session_id[:12]}.. run_session_id={run_session_id}")
+    print(f"[SUPPLY_PLAN] session={session_id[:12]}.. run_session_id={run_session_id}", flush=True)
     run, rid = _get_run_state(session_id, run_session_id, create=False)
     if run is None:
-        logging.warning(f"[SUPPLY_PLAN] No run state found for rid={run_session_id}")
+        print(f"[SUPPLY_PLAN] ERROR: No run state found for rid={run_session_id}", flush=True)
         return {"error": "Session not found. Please navigate back to the results page and try again."}
     forecast_df = (run or {}).get("forecast_df") if isinstance(run, dict) else None
-    logging.info(f"[SUPPLY_PLAN] forecast_df available: {forecast_df is not None and isinstance(forecast_df, pd.DataFrame)}, shape={forecast_df.shape if isinstance(forecast_df, pd.DataFrame) else 'N/A'}")
+    print(f"[SUPPLY_PLAN] forecast_df available: {forecast_df is not None and isinstance(forecast_df, pd.DataFrame)}, shape={forecast_df.shape if isinstance(forecast_df, pd.DataFrame) else 'N/A'}", flush=True)
     try:
         from io import StringIO
         import json
@@ -4935,13 +4935,17 @@ async def supply_plan_submit(
         start_date_str: str | None = None
         horizon_months: int | None = None
 
+        print(f"[SUPPLY_PLAN] use_latest_forecast={use_latest_forecast}, auto_fill={auto_fill}, combo_key={combo_key}", flush=True)
+
         if use_latest_forecast:
             if forecast_df is None or not isinstance(forecast_df, pd.DataFrame) or forecast_df.empty:
+                print("[SUPPLY_PLAN] ERROR: No forecast_df", flush=True)
                 return {"error": "No forecast data available in this session. Run a forecast first, then open Supply Planning again."}
 
             start_month = (run or {}).get("start_month") if isinstance(run, dict) else None
             months_val = (run or {}).get("months") if isinstance(run, dict) else None
             if not start_month or not months_val:
+                print(f"[SUPPLY_PLAN] ERROR: Missing start_month={start_month} or months={months_val}", flush=True)
                 return {"error": "Forecast start month / horizon not found. Please run a forecast again."}
             start_date_str = f"{start_month}-01"
             horizon_months = int(months_val)
@@ -5203,7 +5207,7 @@ async def supply_plan_submit(
         else:
             _sp_forecast = forecast_input_df
 
-        logging.info(f"[SUPPLY_PLAN] Computing plan for {_sp_forecast[['sku_id','location']].drop_duplicates().shape[0]} combo(s), {horizon_months} months")
+        print(f"[SUPPLY_PLAN] Computing plan for {_sp_forecast[['sku_id','location']].drop_duplicates().shape[0]} combo(s), {horizon_months} months, selected_sku={selected_sku}, selected_location={selected_location}", flush=True)
         supply_plan = generate_time_phased_supply_plan(
             forecast_df=_sp_forecast,
             inventory_df=inventory_df,
@@ -5213,7 +5217,7 @@ async def supply_plan_submit(
             months=horizon_months or 10,
             strict=False,
         )
-        logging.info(f"[SUPPLY_PLAN] Plan computed: {supply_plan.shape}")
+        print(f"[SUPPLY_PLAN] Plan computed: {supply_plan.shape}", flush=True)
 
         if meta_df is not None and not meta_df.empty:
             supply_plan = supply_plan.merge(meta_df, on=["sku_id", "location"], how="left")
@@ -5432,9 +5436,10 @@ async def supply_plan_submit(
             row = {str(k): _json_safe(v) for k, v in r.to_dict().items()}
             table_rows.append(row)
 
-        logging.info(f"[SUPPLY_PLAN] Success - returning plot with {len(table_rows)} table rows")
+        print(f"[SUPPLY_PLAN] SUCCESS - returning plot with {len(table_rows)} table rows", flush=True)
         return {"head": head, "plot_json": fig_json, "table_columns": table_columns, "table_rows": table_rows, "inventory_source": inventory_source}
     except Exception as e:
+        print(f"[SUPPLY_PLAN] EXCEPTION: {e}", flush=True)
         logging.exception(f"[SUPPLY_PLAN] Error in supply planning: {e}")
         return {"error": f"Supply planning error: {e}"}
 
