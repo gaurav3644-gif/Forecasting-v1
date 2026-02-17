@@ -383,12 +383,11 @@
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-1">
             <div class="fw-semibold">Local drivers</div>
-            {% if local_driver_meta %}
-            <span class="text-muted small">{{ local_driver_meta.date }}</span>
-            {% endif %}
+            <span class="text-muted small" id="localDriversDate">{% if local_driver_meta %}{{ local_driver_meta.date }}{% endif %}</span>
           </div>
           <div class="text-muted small mb-2">What drove this specific forecast point (SHAP contributions).</div>
 
+          <div id="localDriversContent">
           {% if local_driver_error %}
             <div class="text-muted small">{{ local_driver_error }}</div>
           {% else %}
@@ -438,6 +437,7 @@
               </table>
             </div>
           {% endif %}
+          </div>
         </div>
       </div>
 
@@ -446,6 +446,7 @@
           <div class="fw-semibold mb-1">Directional impact</div>
           <div class="text-muted small mb-2">High/Medium/Low strength + whether a feature tends to push forecasts up or down.</div>
 
+          <div id="directionalImpactContent">
           {% if directional_view and directional_view|length > 0 %}
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
@@ -488,6 +489,7 @@
           {% else %}
             <div class="text-muted small">Directional impact isn’t available yet (rerun forecast to enable drivers).</div>
           {% endif %}
+          </div>
         </div>
       </div>
 
@@ -811,6 +813,125 @@
       const data = await response.json();
 
       if (data.success) {
+        const escHtml = (s) => String(s ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+        function renderLocalDrivers(dr) {
+          const content = document.getElementById('localDriversContent');
+          const dateEl = document.getElementById('localDriversDate');
+          if (!content) return;
+
+          const err = dr && dr.local_driver_error ? String(dr.local_driver_error) : '';
+          const meta = dr && dr.local_driver_meta && typeof dr.local_driver_meta === 'object' ? dr.local_driver_meta : null;
+          const drivers = dr && Array.isArray(dr.local_drivers) ? dr.local_drivers : [];
+
+          if (dateEl) dateEl.textContent = (meta && meta.date) ? String(meta.date) : '';
+
+          if (err) {
+            content.innerHTML = `<div class="text-muted small">${escHtml(err)}</div>`;
+            return;
+          }
+          if (!drivers.length) {
+            content.innerHTML = `<div class="text-muted small">No local drivers available for this selection.</div>`;
+            return;
+          }
+
+          const metaHtml = meta ? `
+            <div class="small mb-2">
+              <span class="text-muted">Explaining</span>
+              <span class="fw-semibold">${escHtml(meta.forecast_col || '')}</span>
+              <span class="text-muted">prediction:</span>
+              <span class="fw-semibold">${escHtml((meta.prediction ?? '').toString())}</span>
+            </div>
+          ` : '';
+
+          const rowsHtml = drivers.slice(0, 12).map(d => {
+            const dir = String(d.direction || '');
+            const pillClass = (dir === '↑' || dir.includes('↑')) ? 'pill-up' : (dir === '↓' || dir.includes('↓')) ? 'pill-down' : 'pill-mixed';
+            const contrib = (typeof d.contribution === 'number') ? d.contribution.toFixed(1) : String(d.contribution ?? '');
+            const pct = (typeof d.pct === 'number') ? ` <span class="text-muted small">(${d.pct.toFixed(0)}%)</span>` : '';
+            const label = d.label || d.feature || '';
+            const feat = d.feature || '';
+            const dirText = (dir || '—') + (pillClass === 'pill-up' ? ' Positive' : pillClass === 'pill-down' ? ' Negative' : ' Neutral');
+            return `
+              <tr>
+                <td>
+                  <div class="fw-semibold">${escHtml(label)}</div>
+                  <div class="text-muted small">${escHtml(feat)}</div>
+                </td>
+                <td class="text-end fw-semibold">${escHtml((contrib.startsWith('-') || contrib.startsWith('+')) ? contrib : ((Number(contrib) > 0) ? '+' + contrib : contrib))}${pct}</td>
+                <td class="text-end"><span class="driver-pill ${pillClass}">${escHtml(dirText)}</span></td>
+              </tr>
+            `;
+          }).join('');
+
+          content.innerHTML = `
+            ${metaHtml}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr class="text-muted small">
+                    <th>Driver</th>
+                    <th class="text-end">Contribution</th>
+                    <th class="text-end">Direction</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          `;
+        }
+
+        function renderDirectionalImpact(dr) {
+          const content = document.getElementById('directionalImpactContent');
+          if (!content) return;
+          const rows = dr && Array.isArray(dr.directional_view) ? dr.directional_view : [];
+          if (!rows.length) {
+            content.innerHTML = `<div class="text-muted small">Directional impact isn’t available yet (rerun forecast to enable drivers).</div>`;
+            return;
+          }
+          const body = rows.slice(0, 18).map(r => {
+            const strength = Math.max(0, Math.min(1, Number(r.strength_norm || 0)));
+            const dir = String(r.direction || 'Mixed');
+            const pillClass = (dir.includes('↑') || dir.includes('â†‘')) ? 'pill-up' : (dir.includes('↓') || dir.includes('â†“')) ? 'pill-down' : 'pill-mixed';
+            return `
+              <tr>
+                <td>
+                  <div class="fw-semibold">${escHtml(r.label || r.feature || '')}</div>
+                  <div class="text-muted small">${escHtml(r.feature || '')}</div>
+                </td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="strength-bar flex-grow-1">
+                      <div class="strength-fill" style="width:${(strength * 100).toFixed(0)}%;"></div>
+                    </div>
+                    <span class="text-muted small">${escHtml(r.effect || '')}</span>
+                  </div>
+                </td>
+                <td class="text-end"><span class="driver-pill ${pillClass}">${escHtml(dir)}</span></td>
+              </tr>
+            `;
+          }).join('');
+          content.innerHTML = `
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr class="text-muted small">
+                    <th>Feature</th>
+                    <th style="width:42%;">Effect</th>
+                    <th class="text-end">Direction</th>
+                  </tr>
+                </thead>
+                <tbody>${body}</tbody>
+              </table>
+            </div>
+          `;
+        }
+
         // Update plot using Plotly.react() (same as supply plan page)
         if (data.plot_json && plotContent) {
           try {
@@ -874,6 +995,16 @@
           const fmt = (window.PiTensorI18n && window.PiTensorI18n.fmt) ? window.PiTensorI18n.fmt : ((tpl, v) => String(tpl).replace('{n}', String(v.n)));
           rowsCount.textContent = fmt(t('results_rows_count'), { n: data.filtered_rows });
           rowsCount.setAttribute('data-rows-count', String(data.filtered_rows));
+        }
+
+        // Update driver cards (local + directional) based on the same filters.
+        try {
+          if (data.drivers) {
+            renderLocalDrivers(data.drivers);
+            renderDirectionalImpact(data.drivers);
+          }
+        } catch (e) {
+          // ignore driver UI failures (plot should still work)
         }
 
       } else {

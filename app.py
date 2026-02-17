@@ -4161,6 +4161,146 @@ async def api_update_plot(request: Request):
     if filtered_df.empty:
         return JSONResponse({"error": "No data matches the selected filters"}, status_code=400)
 
+    # --- Drivers (directional + local) ---
+    driver_artifacts = run.get("driver_artifacts") if isinstance(run, dict) else {}
+    if not isinstance(driver_artifacts, dict):
+        driver_artifacts = {}
+
+    directional_view: list[dict[str, Any]] = []
+    try:
+        for row in (driver_artifacts.get("directional") or []):
+            try:
+                directional_view.append(
+                    {
+                        "feature": row.get("feature"),
+                        "label": _humanize_feature_name(row.get("feature")),
+                        "effect": row.get("effect") or "Low",
+                        "direction": row.get("direction") or "Mixed",
+                        "strength_norm": float(row.get("strength_norm") or 0.0),
+                    }
+                )
+            except Exception:
+                continue
+    except Exception:
+        directional_view = []
+
+    local_drivers: list[dict[str, Any]] = []
+    local_driver_meta: Optional[dict[str, Any]] = None
+    local_driver_error: Optional[str] = None
+    try:
+        driver_model = driver_artifacts.get("model")
+        driver_features = driver_artifacts.get("features") or []
+
+        # Determine whether the filter corresponds to a single series (one value per grain col)
+        is_single_series = True
+        series_key: dict[str, str] = {}
+        for col in grain:
+            if col not in filtered_df.columns:
+                continue
+            uniq = filtered_df[col].dropna().astype(str).unique()
+            if len(uniq) != 1:
+                is_single_series = False
+                break
+            series_key[col] = str(uniq[0])
+
+        forecast_col_for_drivers = None
+        for col in ["forecast", "forecast_p60", "forecast_p50", "forecast_p90", "forecast_p30", "forecast_p10"]:
+            if col in filtered_df.columns:
+                forecast_col_for_drivers = col
+                break
+
+        start_month = (run or {}).get("start_month") if isinstance(run, dict) else None
+        start_dt = pd.to_datetime(f"{start_month}-01") if start_month else None
+
+        driver_date = None
+        if is_single_series and forecast_col_for_drivers and start_dt is not None:
+            cand = filtered_df[(filtered_df["date"] >= start_dt) & (filtered_df[forecast_col_for_drivers].fillna(0) > 0)]
+            if not cand.empty:
+                driver_date = pd.to_datetime(cand["date"].min())
+
+        if not is_single_series:
+            local_driver_error = "Select a single series in filters to see local drivers."
+        elif driver_model is None or not hasattr(driver_model, "get_booster") or not driver_features or raw_df is None or not isinstance(raw_df, pd.DataFrame) or raw_df.empty:
+            local_driver_error = "Drivers are not available yet (rerun forecast to enable drivers)."
+        elif driver_date is None:
+            local_driver_error = "No forecast point found to explain for the current selection."
+        else:
+            from features import add_features as _add_features, get_feature_columns as _get_feature_columns
+            import config as _config
+            import numpy as np
+            import xgboost as xgb
+
+            df_series = raw_df.copy()
+            df_series["date"] = pd.to_datetime(df_series["date"])
+            mask = pd.Series([True] * len(df_series))
+            for col, val in series_key.items():
+                if col in df_series.columns:
+                    mask &= df_series[col].astype(str) == str(val)
+            df_series = df_series[mask].sort_values("date")
+            if df_series.empty:
+                raise ValueError("No raw rows found for selected series.")
+
+            df_hist = df_series[df_series["date"] < driver_date].copy()
+            if df_hist.empty:
+                raise ValueError("Not enough history before the explained date.")
+
+            last = df_hist.iloc[-1].to_dict()
+            new_row = dict(last)
+            new_row["date"] = driver_date
+            if "sales" in new_row:
+                new_row["sales"] = 0
+            df_feat_in = pd.concat([df_hist, pd.DataFrame([new_row])], ignore_index=True)
+
+            df_feat = _add_features(df_feat_in, seasonal_flags=_config.SEASONAL_FLAGS)
+            df_feat = df_feat.replace([np.inf, -np.inf], np.nan).fillna(0)
+            _, cat_cols = _get_feature_columns(df_feat)
+            existing_cat = [c for c in cat_cols if c in df_feat.columns]
+            if existing_cat:
+                df_feat = pd.get_dummies(df_feat, columns=existing_cat, drop_first=True, dtype=int)
+            for f in driver_features:
+                if f not in df_feat.columns:
+                    df_feat[f] = 0
+
+            row = df_feat[df_feat["date"] == driver_date]
+            if row.empty:
+                raise ValueError("Could not build feature row for explained date.")
+            X = row[driver_features].iloc[-1:]
+
+            booster = driver_model.get_booster()
+            dm = xgb.DMatrix(X, feature_names=driver_features)
+            contrib = booster.predict(dm, pred_contribs=True)[0]
+            bias = float(contrib[-1])
+            shap_vals = contrib[:-1]
+            pred_raw = float(bias + float(np.sum(shap_vals)))
+            pred_display = max(0.0, pred_raw)
+
+            pairs = list(zip(driver_features, shap_vals, X.iloc[0].tolist()))
+            pairs.sort(key=lambda t: abs(float(t[1])), reverse=True)
+            top = pairs[:8]
+            for feat, sv, val in top:
+                sv_f = float(sv)
+                direction = "↑" if sv_f > 0 else ("↓" if sv_f < 0 else "—")
+                pct = (sv_f / pred_raw * 100.0) if abs(pred_raw) > 1e-9 else None
+                local_drivers.append(
+                    {
+                        "feature": feat,
+                        "label": _humanize_feature_name(feat),
+                        "value": float(val) if isinstance(val, (int, float, np.floating, np.integer)) else val,
+                        "contribution": sv_f,
+                        "direction": direction,
+                        "pct": pct,
+                    }
+                )
+
+            local_driver_meta = {
+                "date": driver_date.strftime("%Y-%m-%d"),
+                "forecast_col": forecast_col_for_drivers,
+                "prediction": pred_display,
+                "base": bias,
+            }
+    except Exception as e:
+        local_driver_error = f"Local drivers unavailable: {e}"
+
     # Aggregate
     groupby_cols = [col for col in ["date"] + grain if col in filtered_df.columns]
     quantile_cols = [col for col in filtered_df.columns if col.startswith("forecast_p")]
@@ -4412,7 +4552,13 @@ async def api_update_plot(request: Request):
         "actual_total": f"{actual_total:,.0f}",
         "forecast_total": f"{forecast_total:,.0f}",
         "delta_pct": f"{delta_pct:.1f}%",
-        "filtered_rows": len(filtered_df)
+        "filtered_rows": len(filtered_df),
+        "drivers": {
+            "directional_view": directional_view,
+            "local_drivers": local_drivers,
+            "local_driver_meta": local_driver_meta,
+            "local_driver_error": local_driver_error,
+        },
     })
 
 
