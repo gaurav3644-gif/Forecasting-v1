@@ -74,14 +74,78 @@ def _summarize_packet(packet: dict[str, Any]) -> dict[str, Any]:
     try:
         sp = packet.get("supply_plan_and_risks")
         if isinstance(sp, dict):
+            # Keep only minimal planning context; avoid including long/free-text summaries that the model tends to echo.
+            pc_in = sp.get("planning_context") if isinstance(sp.get("planning_context"), dict) else {}
+            planning_context_min: dict[str, Any] = {}
+            for k in (
+                "selected_combo_key",
+                "selected_sku",
+                "selected_location",
+                "has_raw_data",
+                "has_forecast",
+                "has_supply_plan",
+            ):
+                if k in pc_in:
+                    planning_context_min[k] = _jsonable(pc_in.get(k))
+
+            # Keep risk/action structure but drop messages (they often contain digits inside strings,
+            # which triggers "invented numbers" validation when echoed).
+            risks_min: list[dict[str, Any]] = []
+            for r in (sp.get("risks") or []) if isinstance(sp.get("risks"), list) else []:
+                if not isinstance(r, dict):
+                    continue
+                rr: dict[str, Any] = {}
+                for k in ("type", "severity"):
+                    if k in r:
+                        rr[k] = _jsonable(r.get(k))
+                if rr:
+                    risks_min.append(rr)
+
+            actions_min: list[dict[str, Any]] = []
+            for a in (sp.get("actions") or []) if isinstance(sp.get("actions"), list) else []:
+                if not isinstance(a, dict):
+                    continue
+                aa: dict[str, Any] = {}
+                for k in ("type", "priority"):
+                    if k in a:
+                        aa[k] = _jsonable(a.get(k))
+                if aa:
+                    actions_min.append(aa)
+
             out["supply_plan_and_risks"] = {
-                "planning_context": _jsonable(sp.get("planning_context")) if isinstance(sp.get("planning_context"), dict) else {},
-                "risks": _jsonable(sp.get("risks")) if isinstance(sp.get("risks"), list) else [],
-                "actions": _jsonable(sp.get("actions")) if isinstance(sp.get("actions"), list) else [],
+                "planning_context": planning_context_min,
+                "risks": risks_min,
+                "actions": actions_min,
             }
     except Exception:
         pass
     return out
+
+
+def _fmt_number(v: Any) -> str:
+    try:
+        fv = float(v)
+    except Exception:
+        return str(v)
+    if abs(fv - round(fv)) < 1e-9:
+        return f"{int(round(fv)):,}"
+    return f"{fv:,.2f}"
+
+
+def _is_top_month_sales_question(q: str) -> bool:
+    ql = (q or "").strip().lower()
+    if not ql:
+        return False
+    if "month" not in ql:
+        return False
+    if not any(w in ql for w in ("highest", "top", "most", "max")):
+        return False
+    if not any(w in ql for w in ("sale", "sales", "actual", "demand", "units")):
+        return False
+    # Exclude questions that clearly ask for forecast month rather than raw sales.
+    if "forecast" in ql or "prediction" in ql:
+        return False
+    return True
 
 
 def _jsonable(v: Any) -> Any:
@@ -353,11 +417,52 @@ async def answer_question_agentic(
         "- First directly answer the user's question, then add brief reasoning.\n"
     )
 
-    # Keep some context always visible to the model.
+    # Compact packet for prompting (avoid large dumps).
     schema_text = json.dumps(schema, ensure_ascii=False)
     glossary_text = json.dumps(glossary, ensure_ascii=False)
     packet_summary = _summarize_packet(packet)
     packet_text = json.dumps(packet_summary, ensure_ascii=False)
+
+    # Deterministic fast-path: "which month has highest sales?"
+    if _is_top_month_sales_question(q):
+        try:
+            rs = packet_summary.get("raw_sales") if isinstance(packet_summary.get("raw_sales"), dict) else {}
+            date_col = rs.get("date_col") if isinstance(rs.get("date_col"), str) else "date"
+            metrics = rs.get("metrics") if isinstance(rs.get("metrics"), dict) else {}
+            sales_col = metrics.get("sales_col") if isinstance(metrics.get("sales_col"), str) else "sales"
+            sql = (
+                f"SELECT substr({date_col}, 1, 7) AS month, "
+                f"SUM(CAST({sales_col} AS REAL)) AS total_sales "
+                f"FROM raw_sales "
+                f"WHERE {date_col} IS NOT NULL "
+                f"GROUP BY month "
+                f"ORDER BY total_sales DESC "
+                f"LIMIT 3"
+            )
+            res = _run_sql(conn, sql)
+            rows = res.get("rows") if isinstance(res.get("rows"), list) else []
+            rows = [r for r in rows if isinstance(r, dict) and r.get("month") is not None and r.get("total_sales") is not None]
+            if rows:
+                best = rows[0]
+                best_month = str(best.get("month"))
+                best_sales = best.get("total_sales")
+                others = rows[1:]
+                extra = ""
+                if others:
+                    extra = " Next highest: " + ", ".join(
+                        f"{str(o.get('month'))} ({_fmt_number(o.get('total_sales'))})" for o in others
+                    ) + "."
+                answer = (
+                    f"{best_month} has the highest sales ({_fmt_number(best_sales)})."
+                    f"{extra}\n\n"
+                    "How this was computed:\n"
+                    "- Grouped raw sales by month and summed the sales column.\n"
+                    "- Used only the uploaded raw sales data (no outside assumptions)."
+                ).strip()
+                return AgenticRAGResult(answer=answer, tool_calls=1, provider="deterministic")
+        except Exception:
+            # Fall through to the agent.
+            pass
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": base_rules},

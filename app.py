@@ -6223,10 +6223,11 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
     combo_key = payload.get("combo_key")
     request_id = payload.get("request_id")
     provider = _default_provider()
+    ai_engine = (os.getenv("PITENSOR_AI_ASSISTANT_ENGINE") or "").strip().lower() or "agentic"
     _assistant_debug(f"/chat start: session={session_id} run_session_id={rid!r} request_id={request_id!r}")
     cache_key = None
     if isinstance(request_id, str) and request_id.strip():
-        cache_key = f"chat:{provider}:{session_id}:{rid or 'active'}:{request_id.strip()}"
+        cache_key = f"chat:{provider}:{ai_engine}:{session_id}:{rid or 'active'}:{request_id.strip()}"
         cached = _cache_get(cache_key)
         if cached is not None:
             _assistant_debug(f"/chat cache hit (request_id): {cache_key}")
@@ -6234,7 +6235,7 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
 
     # Also de-dupe identical questions briefly (helps with browser/proxy retries).
     q_hash = hashlib.sha256(user_message.strip().encode("utf-8")).hexdigest()[:16]
-    hash_key = f"chatq:{provider}:{session_id}:{rid or 'active'}:{q_hash}"
+    hash_key = f"chatq:{provider}:{ai_engine}:{session_id}:{rid or 'active'}:{q_hash}"
     cached = _cache_get(hash_key)
     if cached is not None:
         _assistant_debug(f"/chat cache hit (question_hash): {hash_key}")
@@ -6263,7 +6264,6 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
             context_packet = _build_llm_context_packet(session, combo_key=combo_key)
             logging.info(f"[PACKET DEBUG] Context packet keys: {list(context_packet.keys())}")
 
-            ai_engine = (os.getenv("PITENSOR_AI_ASSISTANT_ENGINE") or "").strip().lower() or "agentic"
             use_agentic = (
                 provider == "openai"
                 and ai_engine in ("agentic", "agentic_rag", "agentic-rag", "rag_agent", "rag-agent")
