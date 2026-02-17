@@ -1858,6 +1858,63 @@ def _local_chat_answer(user_message: str, session: dict) -> str:
         if term in ql:
             return f"`{term}`: {meaning}"
 
+    # Drivers / feature importance (forecast explainability)
+    if any(k in ql for k in ["driver", "drivers", "feature importance", "feature_importance", "what drives", "main factor", "influenc"]):
+        try:
+            da = session.get("driver_artifacts")
+            if isinstance(da, dict):
+                rows = da.get("directional") or []
+                if isinstance(rows, list) and rows:
+                    clean = []
+                    for r in rows:
+                        if not isinstance(r, dict):
+                            continue
+                        feat = str(r.get("feature") or "").strip()
+                        if not feat:
+                            continue
+                        strength = float(r.get("strength") or 0.0)
+                        eff = str(r.get("effect") or "").strip() or "Low"
+                        direction = str(r.get("direction") or "").strip() or "Mixed"
+                        direction = direction.replace("â†‘", "↑").replace("â†“", "↓")
+                        clean.append((feat, strength, eff, direction))
+                    clean.sort(key=lambda t: t[1], reverse=True)
+                    top = clean[:3]
+                    if top:
+                        main_feat, _, main_eff, main_dir = top[0]
+                        bullets = "\n".join(
+                            f"- {_humanize_feature_name(f)}: {eff} impact, {d}"
+                            for f, _, eff, d in top
+                        )
+                        return (
+                            f"Main driver: {_humanize_feature_name(main_feat)} ({main_eff} impact, {main_dir}).\n\n"
+                            "Top drivers (global):\n"
+                            f"{bullets}\n\n"
+                            "Note: These are global drivers (overall model influence). For a single forecast point, use Local Drivers on the Results page."
+                        )
+
+            fi = session.get("feature_importance")
+            if isinstance(fi, dict) and fi:
+                items = []
+                for k, v in fi.items():
+                    try:
+                        items.append((str(k), float(v)))
+                    except Exception:
+                        continue
+                items.sort(key=lambda t: t[1], reverse=True)
+                top = items[:3]
+                if top:
+                    main_feat = top[0][0]
+                    bullets = "\n".join(f"- {_humanize_feature_name(f)}" for f, _ in top)
+                    return (
+                        f"Main driver: {_humanize_feature_name(main_feat)}.\n\n"
+                        "Top drivers (global feature importance):\n"
+                        f"{bullets}\n\n"
+                        "Note: Feature importance is a global ranking. For per-point explanations, enable Local Drivers."
+                    )
+        except Exception:
+            pass
+        return "Drivers are not available yet (rerun forecast to enable drivers)."
+
     raw_df = session.get("df")
     forecast_df = session.get("forecast_df")
     supply_plan_df = session.get("supply_plan_df")

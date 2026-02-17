@@ -148,6 +148,99 @@ def _is_top_month_sales_question(q: str) -> bool:
     return True
 
 
+def _is_main_driver_question(q: str) -> bool:
+    ql = (q or "").strip().lower()
+    if not ql:
+        return False
+    if "driver" in ql or "feature importance" in ql or "feature_importance" in ql:
+        return True
+    if "what drives" in ql or "main factor" in ql or "most important factor" in ql:
+        return True
+    return False
+
+
+def _humanize_feature(feature: str) -> str:
+    f = str(feature or "")
+    if f.startswith("lag_"):
+        return f"Sales {f.replace('lag_', '')}d ago"
+    if f.startswith("rolling_mean_"):
+        return f"Rolling mean ({f.replace('rolling_mean_', '')}d)"
+    if f.startswith("rolling_std_"):
+        return f"Rolling std dev ({f.replace('rolling_std_', '')}d)"
+    if f in {"dow", "month"}:
+        return "Day of week" if f == "dow" else "Month"
+    known = {
+        "price": "Price",
+        "promo": "Promotion",
+        "out_of_stock": "Out of stock",
+        "sin_y": "Yearly seasonality (sin)",
+        "cos_y": "Yearly seasonality (cos)",
+        "time_idx": "Time trend",
+    }
+    if f in known:
+        return known[f]
+    if "_" in f:
+        prefix, rest = f.split("_", 1)
+        if prefix not in {"lag", "rolling", "time", "sin", "cos"}:
+            return f"{prefix} = {rest}"
+    return f
+
+
+def _driver_answer_from_session(session: dict[str, Any]) -> Optional[str]:
+    try:
+        da = session.get("driver_artifacts")
+        if isinstance(da, dict):
+            rows = da.get("directional") or []
+            if isinstance(rows, list) and rows:
+                clean = []
+                for r in rows:
+                    if not isinstance(r, dict):
+                        continue
+                    feat = str(r.get("feature") or "").strip()
+                    if not feat:
+                        continue
+                    strength = float(r.get("strength") or 0.0)
+                    eff = str(r.get("effect") or "").strip() or "Low"
+                    direction = str(r.get("direction") or "").strip() or "Mixed"
+                    direction = direction.replace("â†‘", "↑").replace("â†“", "↓")
+                    clean.append((feat, strength, eff, direction))
+                clean.sort(key=lambda t: t[1], reverse=True)
+                top = clean[:3]
+                if top:
+                    main_feat, _, main_eff, main_dir = top[0]
+                    bullets = "\n".join(
+                        f"- {_humanize_feature(f)}: {eff} impact, {d}" for f, _, eff, d in top
+                    )
+                    return (
+                        f"Main driver: {_humanize_feature(main_feat)} ({main_eff} impact, {main_dir}).\n\n"
+                        "Top drivers (global):\n"
+                        f"{bullets}\n\n"
+                        "Note: These are global drivers (overall model influence). For a single forecast point, use Local Drivers."
+                    )
+        fi = session.get("feature_importance")
+        if isinstance(fi, dict) and fi:
+            items = []
+            for k, v in fi.items():
+                try:
+                    items.append((str(k), float(v)))
+                except Exception:
+                    continue
+            items.sort(key=lambda t: t[1], reverse=True)
+            top = items[:3]
+            if top:
+                main_feat = top[0][0]
+                bullets = "\n".join(f"- {_humanize_feature(f)}" for f, _ in top)
+                return (
+                    f"Main driver: {_humanize_feature(main_feat)}.\n\n"
+                    "Top drivers (global feature importance):\n"
+                    f"{bullets}\n\n"
+                    "Note: Feature importance is a global ranking. For per-point explanations, enable Local Drivers."
+                )
+    except Exception:
+        return None
+    return None
+
+
 def _jsonable(v: Any) -> Any:
     if v is None:
         return None
@@ -422,6 +515,12 @@ async def answer_question_agentic(
     glossary_text = json.dumps(glossary, ensure_ascii=False)
     packet_summary = _summarize_packet(packet)
     packet_text = json.dumps(packet_summary, ensure_ascii=False)
+
+    # Deterministic fast-path: "main driver for forecasts?"
+    if _is_main_driver_question(q):
+        ans = _driver_answer_from_session(session)
+        if ans:
+            return AgenticRAGResult(answer=ans, tool_calls=0, provider="deterministic")
 
     # Deterministic fast-path: "which month has highest sales?"
     if _is_top_month_sales_question(q):
