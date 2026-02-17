@@ -4641,7 +4641,8 @@ async def supply_plan_defaults(request: Request, combo_key: str, run_session_id:
 @app.post("/supply_plan")
 async def supply_plan_submit(
     request: Request,
-    payload: Dict = Body(...)
+    payload: Dict = Body(...),
+    background_tasks: BackgroundTasks = None,
 ):
     logging.info("[LOG] /supply_plan POST endpoint called")
     session_id = _session_id_from_request(request)
@@ -5202,9 +5203,8 @@ async def supply_plan_submit(
         else:
             _sp_forecast = forecast_input_df
 
-        # Run the heavy computation in a thread pool to avoid blocking the event loop.
-        supply_plan = await asyncio.to_thread(
-            generate_time_phased_supply_plan,
+        logging.info(f"[SUPPLY_PLAN] Computing plan for {_sp_forecast[['sku_id','location']].drop_duplicates().shape[0]} combo(s), {horizon_months} months")
+        supply_plan = generate_time_phased_supply_plan(
             forecast_df=_sp_forecast,
             inventory_df=inventory_df,
             constraints_df=constraints_df,
@@ -5213,6 +5213,7 @@ async def supply_plan_submit(
             months=horizon_months or 10,
             strict=False,
         )
+        logging.info(f"[SUPPLY_PLAN] Plan computed: {supply_plan.shape}")
 
         if meta_df is not None and not meta_df.empty:
             supply_plan = supply_plan.merge(meta_df, on=["sku_id", "location"], how="left")
@@ -5234,8 +5235,8 @@ async def supply_plan_submit(
             # Keep a full copy for downstream analysis (risks/actions/assistant context).
             run["supply_plan_full_df"] = supply_plan.copy()
 
-        # Persist supply plan history (best-effort).
-        if user_email:
+        # Persist supply plan history in background (best-effort, non-blocking).
+        if user_email and background_tasks:
             try:
                 import history_store
                 run_id = (run or {}).get("forecast_run_id") if isinstance(run, dict) else None
@@ -5247,23 +5248,27 @@ async def supply_plan_submit(
                         "override_enabled": bool(payload.get("override_enabled") or False),
                         "inventory_column": payload.get("inventory_column"),
                     }
-                    await asyncio.to_thread(
-                        history_store.save_supply_plan,
-                        user_email,
-                        int(run_id),
-                        params=plan_params,
-                        supply_export_df=supply_plan_export,
-                        supply_full_df=supply_plan,
-                    )
-                    if isinstance(run, dict):
-                        run["history_last_error"] = None
+                    def _bg_save():
+                        try:
+                            history_store.save_supply_plan(
+                                user_email,
+                                int(run_id),
+                                params=plan_params,
+                                supply_export_df=supply_plan_export,
+                                supply_full_df=supply_plan,
+                            )
+                            if isinstance(run, dict):
+                                run["history_last_error"] = None
+                        except Exception as e:
+                            logging.warning(f"[HISTORY] Failed to save supply plan for {user_email}: {e}")
+                            try:
+                                if isinstance(run, dict):
+                                    run["history_last_error"] = f"Failed to save supply plan history: {e}"
+                            except Exception:
+                                pass
+                    background_tasks.add_task(_bg_save)
             except Exception as e:
-                logging.warning(f"[HISTORY] Failed to save supply plan for {user_email}: {e}")
-                try:
-                    if isinstance(run, dict):
-                        run["history_last_error"] = f"Failed to save supply plan history: {e}"
-                except Exception:
-                    pass
+                logging.warning(f"[HISTORY] Failed to queue supply plan save: {e}")
 
         # Filter plan to selected series for display/plot
         plot_df = supply_plan.copy()
@@ -5427,9 +5432,10 @@ async def supply_plan_submit(
             row = {str(k): _json_safe(v) for k, v in r.to_dict().items()}
             table_rows.append(row)
 
+        logging.info(f"[SUPPLY_PLAN] Success - returning plot with {len(table_rows)} table rows")
         return {"head": head, "plot_json": fig_json, "table_columns": table_columns, "table_rows": table_rows, "inventory_source": inventory_source}
     except Exception as e:
-        logging.exception(f"[LOG] Error in supply planning: {e}")
+        logging.exception(f"[SUPPLY_PLAN] Error in supply planning: {e}")
         return {"error": f"Supply planning error: {e}"}
 
 # Download endpoint for supply plan
