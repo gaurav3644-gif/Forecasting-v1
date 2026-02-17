@@ -900,6 +900,41 @@ def save_supply_plan(
             conn.close()
 
 
+def has_supply_plan(email: str, forecast_run_id: int) -> bool:
+    """
+    True if a supply plan exists for this (user, forecast_run_id).
+    This is a lightweight existence check (does not load the CSV blobs).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                user_id = _get_or_create_user_id_pg(conn, email)
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT 1 FROM supply_plans WHERE user_id = %s AND forecast_run_id = %s LIMIT 1",
+                    (user_id, int(forecast_run_id)),
+                )
+                return cur.fetchone() is not None
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            user_id = _get_or_create_user_id(conn, email)
+            row = conn.execute(
+                "SELECT 1 FROM supply_plans WHERE user_id = ? AND forecast_run_id = ? LIMIT 1",
+                (user_id, int(forecast_run_id)),
+            ).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
+
 def list_forecast_runs(email: str, limit: int = 50) -> list[dict[str, Any]]:
     init_db()
     with _LOCK:

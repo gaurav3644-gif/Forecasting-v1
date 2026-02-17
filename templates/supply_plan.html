@@ -166,6 +166,7 @@
 
             <div class="d-grid gap-2">
                 <button type="submit" class="btn btn-primary" id="generateSupplyBtn"><span data-i18n="sp_generate">Generate</span></button>
+                <button type="button" class="btn btn-outline-primary disabled" id="saveSupplyBtn" aria-disabled="true" disabled>Save</button>
                 <a href="/download_supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-success disabled" id="downloadPlanBtn" target="_blank" aria-disabled="true">Download CSV</a>
                 <div id="supplyPlanAlert" class="small text-muted"></div>
             </div>
@@ -505,6 +506,7 @@ document.addEventListener('DOMContentLoaded', function() {
             alertEl.innerHTML = `${message ? esc(message) : 'Updated.'} <span class="badge text-bg-light border ms-2">Inventory: ${esc(srcLabel)}</span>`;
         }
         setDownloadEnabled(true);
+        setSaveEnabled(true);
 
         try {
             if (payload && payload.plot_json) {
@@ -827,6 +829,20 @@ function setDownloadEnabled(enabled) {
     }
 }
 
+function setSaveEnabled(enabled) {
+    const btn = document.getElementById('saveSupplyBtn');
+    if (!btn) return;
+    if (enabled) {
+        btn.classList.remove('disabled');
+        btn.setAttribute('aria-disabled', 'false');
+        btn.disabled = false;
+    } else {
+        btn.classList.add('disabled');
+        btn.setAttribute('aria-disabled', 'true');
+        btn.disabled = true;
+    }
+}
+
 function renderSupplyTable(columns, rows) {
     const el = document.getElementById('supplyPlanTable');
     if (!el) return;
@@ -931,6 +947,7 @@ document.getElementById('supplyPlanForm').addEventListener('submit', async funct
             alertEl.innerHTML = `Updated. <span class="badge text-bg-light border ms-2">Inventory: ${srcLabel}</span>`;
         }
         setDownloadEnabled(true);
+        setSaveEnabled(true);
 
         if (data.plot_json) {
             const plotObj = JSON.parse(data.plot_json);
@@ -947,6 +964,64 @@ document.getElementById('supplyPlanForm').addEventListener('submit', async funct
         console.error('Supply plan error:', err);
     } finally {
         if (btn) btn.disabled = false;
+    }
+});
+
+async function saveSupplyPlan({ overwrite } = { overwrite: false }) {
+    const alertEl = document.getElementById('supplyPlanAlert');
+    const saveBtn = document.getElementById('saveSupplyBtn');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        if (alertEl) alertEl.innerHTML = `<span class="text-muted">Saving...</span>`;
+        const res = await fetch('/supply_plan/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                run_session_id: runSessionId || undefined,
+                overwrite: !!overwrite,
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+            const ok = window.confirm('A saved supply plan already exists for this forecast. Overwrite it?');
+            if (!ok) {
+                if (alertEl) alertEl.innerHTML = `<span class="text-muted">Save cancelled.</span>`;
+                return;
+            }
+            return await saveSupplyPlan({ overwrite: true });
+        }
+        if (!res.ok) {
+            const msg = (data && (data.detail || data.message)) ? String(data.detail || data.message) : `Save failed (HTTP ${res.status}).`;
+            if (alertEl) alertEl.innerHTML = `<span class="text-danger">${msg}</span>`;
+            return;
+        }
+        const overwrote = !!(data && data.overwrote);
+        if (alertEl) alertEl.innerHTML = `<span class="text-success">Saved${overwrote ? ' (overwritten)' : ''}.</span>`;
+    } catch (e) {
+        if (alertEl) alertEl.innerHTML = `<span class="text-danger">Save failed: ${e}</span>`;
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const saveBtn = document.getElementById('saveSupplyBtn');
+    if (saveBtn) {
+        // Enable if we already restored a saved plan on load.
+        try {
+            if (initialSupplyPlanUI && typeof initialSupplyPlanUI === 'object') {
+                setSaveEnabled(true);
+            } else {
+                setSaveEnabled(false);
+            }
+        } catch (e) {
+            setSaveEnabled(false);
+        }
+
+        saveBtn.addEventListener('click', function() {
+            if (saveBtn.classList.contains('disabled') || saveBtn.getAttribute('aria-disabled') === 'true') return;
+            saveSupplyPlan({ overwrite: false });
+        });
     }
 });
 </script>

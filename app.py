@@ -5737,6 +5737,61 @@ async def supply_plan_submit(
         logging.exception(f"[SUPPLY_PLAN] Error in supply planning: {e}")
         return {"error": f"Supply planning error: {e}"}
 
+
+@app.post("/supply_plan/save")
+async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
+    """
+    Persist the currently generated supply plan for this run.
+    - Overwrites the existing saved supply plan for the same forecast_run_id (when overwrite=true).
+    - Returns 409 if a supply plan already exists and overwrite is not set.
+    """
+    session_id = _session_id_from_request(request)
+    user_email = _get_user_email(request)
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Please sign in to save supply plans.")
+
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run_session_id = _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None)
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    if not isinstance(run, dict):
+        raise HTTPException(status_code=400, detail="Run not found.")
+
+    overwrite = bool(payload.get("overwrite") or False)
+    run_id = run.get("forecast_run_id")
+    if not run_id:
+        raise HTTPException(status_code=400, detail="No forecast run id found for this session. Run a forecast first.")
+
+    sp_export = run.get("supply_plan_df")
+    sp_full = run.get("supply_plan_full_df")
+    if not (isinstance(sp_export, pd.DataFrame) and not sp_export.empty):
+        raise HTTPException(status_code=400, detail="No supply plan found to save. Click Generate first.")
+
+    try:
+        import history_store
+        exists = bool(history_store.has_supply_plan(user_email, int(run_id)))
+        if exists and not overwrite:
+            return JSONResponse({"detail": "Supply plan already saved.", "exists": True}, status_code=409)
+
+        params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
+        saved_id = history_store.save_supply_plan(
+            user_email,
+            int(run_id),
+            params=dict(params or {}),
+            supply_export_df=sp_export,
+            supply_full_df=sp_full if isinstance(sp_full, pd.DataFrame) and not sp_full.empty else None,
+        )
+        try:
+            run["supply_plan_saved_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            run["supply_plan_saved_id"] = int(saved_id)
+        except Exception:
+            pass
+        return {"ok": True, "saved_id": int(saved_id), "overwrote": bool(exists)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.warning(f"[HISTORY] Failed to save supply plan (manual) for {user_email}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save supply plan: {e}")
+
 # Download endpoint for supply plan
 @app.get("/download_supply_plan")
 async def download_supply_plan(request: Request, run_session_id: Optional[str] = None):
