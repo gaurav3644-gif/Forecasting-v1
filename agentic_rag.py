@@ -738,7 +738,7 @@ async def answer_question_agentic(
         "tool_results": tool_results_for_validation,
     }
     try:
-        _validate_no_invented_numbers(final_answer, validation_packet)
+        _validate_no_invented_numbers(final_answer, packet=validation_packet)
     except AssistantLLMError:
         # Retry once with a stricter "no digits" constraint to prevent invented numbers.
         messages.append(
