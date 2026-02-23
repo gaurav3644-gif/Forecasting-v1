@@ -95,60 +95,65 @@
                 </div>
 
                 <div class="row g-3">
-                    <div class="col-md-6">
+                    <div class="col-12">
                         <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
                             <div class="fw-bold mb-2">Supply Constraints</div>
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">Lead time (days)</label>
-                                    <input type="number" class="form-control" id="override_lead_time_days" value="14" min="0">
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">MOQ</label>
-                                    <input type="number" class="form-control" id="override_moq" value="100" min="0">
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">Order multiple</label>
-                                    <input type="number" class="form-control" id="override_order_multiple" value="10" min="1">
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">Max capacity / week</label>
-                                    <input type="number" class="form-control" id="override_max_capacity_per_week" value="1200" min="0">
-                                </div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                                <label class="form-label small mb-0">Lead time (days)</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_lead_time_days" value="14" min="0">
+                            </div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                                <label class="form-label small mb-0">MOQ</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_moq" value="100" min="0">
+                            </div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                                <label class="form-label small mb-0">Order multiple</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_order_multiple" value="10" min="1">
+                            </div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3">
+                                <label class="form-label small mb-0">Max capacity / week</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_max_capacity_per_week" value="1200" min="0">
                             </div>
                         </div>
                     </div>
 
-                    <div class="col-md-6">
+                    <div class="col-12">
                         <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
                             <div class="fw-bold mb-2">Policy + Inventory Snapshot</div>
-                            <div class="row g-2">
-                                <div class="col-12 mb-2">
-                                    <label class="form-label small mb-1">Inventory column (optional)</label>
-                                    <select class="form-select" id="inventory_column_select">
-                                        <option value="">Auto (detect or generate)</option>
-                                        {% for c in raw_inventory_columns %}
-                                        <option value="{{ c }}" {% if detected_inventory_col and detected_inventory_col == c %}selected{% endif %}>{{ c }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    <div class="form-text small">Choose which column in your uploaded CSV represents on-hand inventory. Leave blank to auto-detect or generate.</div>
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">Service level</label>
-                                    <input type="number" class="form-control" id="override_service_level" value="0.95" min="0.5" max="0.999" step="0.01">
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">On hand</label>
-                                    <input type="number" class="form-control" id="override_on_hand" value="500" min="0">
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">Allocated</label>
-                                    <input type="number" class="form-control" id="override_allocated" value="0" min="0">
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-1">Backorders</label>
-                                    <input type="number" class="form-control" id="override_backorders" value="0" min="0">
-                                </div>
+
+                            <div class="d-flex align-items-start justify-content-between gap-3 mb-1">
+                                <label class="form-label small mb-0 pt-2">Inventory column (optional)</label>
+                                <select class="form-select" style="max-width: 340px;" id="inventory_column_select">
+                                    <option value="">Auto (detect or generate)</option>
+                                    {% for c in raw_inventory_columns %}
+                                    <option value="{{ c }}" {% if detected_inventory_col and detected_inventory_col == c %}selected{% endif %}>{{ c }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-text small mb-2">Choose which column in your uploaded CSV represents on-hand inventory. Leave blank to auto-detect or generate.</div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                                <label class="form-label small mb-0">Service level</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_service_level" value="0.95" min="0.5" max="0.999" step="0.01">
+                            </div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                                <label class="form-label small mb-0">On hand</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_on_hand" value="500" min="0">
+                            </div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                                <label class="form-label small mb-0">Allocated</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_allocated" value="0" min="0">
+                            </div>
+
+                            <div class="d-flex align-items-center justify-content-between gap-3">
+                                <label class="form-label small mb-0">Backorders</label>
+                                <input type="number" class="form-control" style="max-width: 220px;" id="override_backorders" value="0" min="0">
                             </div>
                         </div>
                     </div>
