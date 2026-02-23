@@ -4163,25 +4163,26 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     chart_top_sales_skus = ""
     if sku_col:
         top_sales = df.groupby(sku_col, as_index=False)[sales_col].sum().sort_values(sales_col, ascending=False).head(10)
-        fig_top = go.Figure(data=[go.Bar(x=top_sales[sku_col].astype(str), y=top_sales[sales_col])])
-        fig_top.update_layout(xaxis_title="SKU", yaxis_title="Sales")
+        fig_top = go.Figure(data=[go.Bar(x=top_sales[sales_col], y=top_sales[sku_col], orientation="h")])
+        fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
         try:
-            fig_top.update_yaxes(tickformat=",.0f", exponentformat="none")
-            fig_top.update_xaxes(tickangle=-35, automargin=True)
-            fig_top.update_traces(hovertemplate="%{x}<br>Sales: %{y:,.0f}<extra></extra>")
+            fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
+            fig_top.update_traces(hovertemplate="%{y}<br>Sales: %{x:,.0f}<extra></extra>")
         except Exception:
             pass
+        fig_top.update_yaxes(autorange="reversed")
         chart_top_sales_skus = _fig_html(fig_top, height=300, showlegend=False)
     else:
         # single series/no sku column
         top_sales = df.groupby(df.index // max(1, len(df)), as_index=False)[sales_col].sum().head(1)
-        fig_top = go.Figure(data=[go.Bar(x=["ALL"], y=[total_sales])])
-        fig_top.update_layout(xaxis_title="SKU", yaxis_title="Sales")
+        fig_top = go.Figure(data=[go.Bar(x=[total_sales], y=["ALL"], orientation="h")])
+        fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
         try:
-            fig_top.update_yaxes(tickformat=",.0f", exponentformat="none")
-            fig_top.update_traces(hovertemplate="%{x}<br>Sales: %{y:,.0f}<extra></extra>")
+            fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
+            fig_top.update_traces(hovertemplate="%{y}<br>Sales: %{x:,.0f}<extra></extra>")
         except Exception:
             pass
+        fig_top.update_yaxes(autorange="reversed")
         chart_top_sales_skus = _fig_html(fig_top, height=220, showlegend=False)
 
     # Revenue SKUs (sales * price)
@@ -4192,14 +4193,14 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         if not rev.empty:
             rev["revenue"] = rev[sales_col] * rev[price_col]
             top_rev = rev.groupby(sku_col, as_index=False)["revenue"].sum().sort_values("revenue", ascending=False).head(10)
-            fig_rev = go.Figure(data=[go.Bar(x=top_rev[sku_col].astype(str), y=top_rev["revenue"], marker_color="#0d6efd")])
-            fig_rev.update_layout(xaxis_title="SKU", yaxis_title="Revenue")
+            fig_rev = go.Figure(data=[go.Bar(x=top_rev["revenue"], y=top_rev[sku_col], orientation="h", marker_color="#0d6efd")])
+            fig_rev.update_layout(xaxis_title="Revenue", yaxis_title="SKU")
             try:
-                fig_rev.update_yaxes(tickformat=",.0f", exponentformat="none")
-                fig_rev.update_xaxes(tickangle=-35, automargin=True)
-                fig_rev.update_traces(hovertemplate="%{x}<br>Revenue: %{y:,.0f}<extra></extra>")
+                fig_rev.update_xaxes(tickformat=",.0f", exponentformat="none")
+                fig_rev.update_traces(hovertemplate="%{y}<br>Revenue: %{x:,.0f}<extra></extra>")
             except Exception:
                 pass
+            fig_rev.update_yaxes(autorange="reversed")
             chart_top_revenue_skus = _fig_html(fig_rev, height=300, showlegend=False)
         else:
             revenue_unavailable = "Revenue chart unavailable (price column is empty)."
@@ -4222,13 +4223,13 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             joined = joined.dropna(subset=["pct_change"])
             joined = joined.sort_values("pct_change", ascending=True).head(10)
             if not joined.empty:
-                fig_dec = go.Figure(data=[go.Bar(x=joined.index.astype(str), y=joined["pct_change"], marker_color="#dc3545")])
-                fig_dec.update_layout(xaxis_title="SKU", yaxis_title=f"% change ({prev_m} → {last_m})")
+                fig_dec = go.Figure(data=[go.Bar(x=joined["pct_change"], y=joined.index.astype(str), orientation="h", marker_color="#dc3545")])
+                fig_dec.update_layout(xaxis_title=f"% change ({prev_m} → {last_m})", yaxis_title="SKU")
                 try:
-                    fig_dec.update_xaxes(tickangle=-35, automargin=True)
-                    fig_dec.update_traces(hovertemplate="%{x}<br>% change: %{y:.1f}%<extra></extra>")
+                    fig_dec.update_traces(hovertemplate="%{y}<br>% change: %{x:.1f}%<extra></extra>")
                 except Exception:
                     pass
+                fig_dec.update_yaxes(autorange="reversed")
                 chart_declining_skus = _fig_html(fig_dec, height=300, showlegend=False)
                 decline_note = "Computed from the last two months of actuals in raw data."
 
@@ -4243,14 +4244,14 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             by_so = p.groupby(sku_p, as_index=False)["_stockout_units"].sum().sort_values("_stockout_units", ascending=False)
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
             if not by_so.empty:
-                fig_so = go.Figure(data=[go.Bar(x=by_so[sku_p].astype(str), y=by_so["_stockout_units"], marker_color="#dc3545")])
-                fig_so.update_layout(xaxis_title="SKU", yaxis_title="Stockout units")
+                fig_so = go.Figure(data=[go.Bar(x=by_so["_stockout_units"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
+                fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
                 try:
-                    fig_so.update_yaxes(tickformat=",.0f", exponentformat="none")
-                    fig_so.update_xaxes(tickangle=-35, automargin=True)
-                    fig_so.update_traces(hovertemplate="%{x}<br>Stockout units: %{y:,.0f}<extra></extra>")
+                    fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
+                    fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
                 except Exception:
                     pass
+                fig_so.update_yaxes(autorange="reversed")
                 chart_stockout_skus = _fig_html(fig_so, height=300, showlegend=False)
             else:
                 stockout_unavailable = "No stockouts found in the saved supply plan."
@@ -4269,14 +4270,14 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             by_ov = p.groupby(sku_p, as_index=False)["overstock_units"].sum().sort_values("overstock_units", ascending=False).head(10)
             by_ov = by_ov[by_ov["overstock_units"] > 0]
             if not by_ov.empty:
-                fig_ov = go.Figure(data=[go.Bar(x=by_ov[sku_p].astype(str), y=by_ov["overstock_units"], marker_color="#0d6efd")])
-                fig_ov.update_layout(xaxis_title="SKU", yaxis_title="Overstock units (sum)")
+                fig_ov = go.Figure(data=[go.Bar(x=by_ov["overstock_units"], y=by_ov[sku_p].astype(str), orientation="h", marker_color="#0d6efd")])
+                fig_ov.update_layout(xaxis_title="Overstock units (sum)", yaxis_title="SKU")
                 try:
-                    fig_ov.update_yaxes(tickformat=",.0f", exponentformat="none")
-                    fig_ov.update_xaxes(tickangle=-35, automargin=True)
-                    fig_ov.update_traces(hovertemplate="%{x}<br>Overstock units: %{y:,.0f}<extra></extra>")
+                    fig_ov.update_xaxes(tickformat=",.0f", exponentformat="none")
+                    fig_ov.update_traces(hovertemplate="%{y}<br>Overstock units: %{x:,.0f}<extra></extra>")
                 except Exception:
                     pass
+                fig_ov.update_yaxes(autorange="reversed")
                 chart_overstock_skus = _fig_html(fig_ov, height=280, showlegend=False)
                 overstock_note = "Overstock = max(0, ending_on_hand − target_level), summed over horizon."
             else:
