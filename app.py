@@ -4245,6 +4245,8 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
             print("gg 4246 ", by_so)
             if not by_so.empty:
+                print("FINAL VALUES BEING PLOTTED:")
+                print(by_so[["_stockout_units"]])
                 fig_so = go.Figure(data=[go.Bar(x=by_so["_stockout_units"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
                 # fig_so.update_xaxes(tickformat=",",separatethousands=True,tickmode="auto")
