@@ -4152,7 +4152,15 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             other = float(by_store[sales_col].iloc[top_n:].sum()) if by_store.shape[0] > top_n else 0.0
             if other > 0:
                 top = pd.concat([top, pd.DataFrame([{store_col: "Other", sales_col: other}])], ignore_index=True)
-            fig_store = go.Figure(data=[go.Pie(labels=top[store_col], values=top[sales_col], hole=0.55)])
+            fig_store = go.Figure(
+                data=[
+                    go.Pie(
+                        labels=top[store_col].astype(str).tolist(),
+                        values=pd.to_numeric(top[sales_col], errors="coerce").fillna(0.0).tolist(),
+                        hole=0.55,
+                    )
+                ]
+            )
             chart_store_share = _fig_html(fig_store, height=260, showlegend=False)
         else:
             store_share_note = "No store values found."
@@ -4163,7 +4171,15 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     chart_top_sales_skus = ""
     if sku_col:
         top_sales = df.groupby(sku_col, as_index=False)[sales_col].sum().sort_values(sales_col, ascending=False).head(10)
-        fig_top = go.Figure(data=[go.Bar(x=top_sales[sales_col], y=top_sales[sku_col], orientation="h")])
+        fig_top = go.Figure(
+            data=[
+                go.Bar(
+                    x=pd.to_numeric(top_sales[sales_col], errors="coerce").fillna(0.0).tolist(),
+                    y=top_sales[sku_col].astype(str).tolist(),
+                    orientation="h",
+                )
+            ]
+        )
         fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
         try:
             fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
@@ -4175,7 +4191,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     else:
         # single series/no sku column
         top_sales = df.groupby(df.index // max(1, len(df)), as_index=False)[sales_col].sum().head(1)
-        fig_top = go.Figure(data=[go.Bar(x=[total_sales], y=["ALL"], orientation="h")])
+        fig_top = go.Figure(data=[go.Bar(x=[float(total_sales)], y=["ALL"], orientation="h")])
         fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
         try:
             fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
@@ -4193,7 +4209,16 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         if not rev.empty:
             rev["revenue"] = rev[sales_col] * rev[price_col]
             top_rev = rev.groupby(sku_col, as_index=False)["revenue"].sum().sort_values("revenue", ascending=False).head(10)
-            fig_rev = go.Figure(data=[go.Bar(x=top_rev["revenue"], y=top_rev[sku_col], orientation="h", marker_color="#0d6efd")])
+            fig_rev = go.Figure(
+                data=[
+                    go.Bar(
+                        x=pd.to_numeric(top_rev["revenue"], errors="coerce").fillna(0.0).tolist(),
+                        y=top_rev[sku_col].astype(str).tolist(),
+                        orientation="h",
+                        marker_color="#0d6efd",
+                    )
+                ]
+            )
             fig_rev.update_layout(xaxis_title="Revenue", yaxis_title="SKU")
             try:
                 fig_rev.update_xaxes(tickformat=",.0f", exponentformat="none")
@@ -4223,7 +4248,16 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             joined = joined.dropna(subset=["pct_change"])
             joined = joined.sort_values("pct_change", ascending=True).head(10)
             if not joined.empty:
-                fig_dec = go.Figure(data=[go.Bar(x=joined["pct_change"], y=joined.index.astype(str), orientation="h", marker_color="#dc3545")])
+                fig_dec = go.Figure(
+                    data=[
+                        go.Bar(
+                            x=pd.to_numeric(joined["pct_change"], errors="coerce").fillna(0.0).tolist(),
+                            y=joined.index.astype(str).tolist(),
+                            orientation="h",
+                            marker_color="#dc3545",
+                        )
+                    ]
+                )
                 fig_dec.update_layout(xaxis_title=f"% change ({prev_m} → {last_m})", yaxis_title="SKU")
                 try:
                     fig_dec.update_traces(hovertemplate="%{y}<br>% change: %{x:.1f}%<extra></extra>")
@@ -4243,13 +4277,18 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         if sku_p and not p.empty:
             by_so = p.groupby(sku_p, as_index=False)["_stockout_units"].sum().sort_values("_stockout_units", ascending=False)
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
-            print("gg 4246 ", by_so)
             if not by_so.empty:
-                print("FINAL VALUES BEING PLOTTED:")
-                print(by_so[["_stockout_units"]])
-                fig_so = go.Figure(data=[go.Bar(x=by_so["_stockout_units"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
+                fig_so = go.Figure(
+                    data=[
+                        go.Bar(
+                            x=pd.to_numeric(by_so["_stockout_units"], errors="coerce").fillna(0.0).tolist(),
+                            y=by_so[sku_p].astype(str).tolist(),
+                            orientation="h",
+                            marker_color="#dc3545",
+                        )
+                    ]
+                )
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
-                fig_so.update_xaxes(tickmode="linear",dtick=200,tickformat=",.0f")
                 try:
                     fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
                     fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
@@ -4274,7 +4313,16 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             by_ov = p.groupby(sku_p, as_index=False)["overstock_units"].sum().sort_values("overstock_units", ascending=False).head(10)
             by_ov = by_ov[by_ov["overstock_units"] > 0]
             if not by_ov.empty:
-                fig_ov = go.Figure(data=[go.Bar(x=by_ov["overstock_units"], y=by_ov[sku_p].astype(str), orientation="h", marker_color="#0d6efd")])
+                fig_ov = go.Figure(
+                    data=[
+                        go.Bar(
+                            x=pd.to_numeric(by_ov["overstock_units"], errors="coerce").fillna(0.0).tolist(),
+                            y=by_ov[sku_p].astype(str).tolist(),
+                            orientation="h",
+                            marker_color="#0d6efd",
+                        )
+                    ]
+                )
                 fig_ov.update_layout(xaxis_title="Overstock units (sum)", yaxis_title="SKU")
                 try:
                     fig_ov.update_xaxes(tickformat=",.0f", exponentformat="none")
