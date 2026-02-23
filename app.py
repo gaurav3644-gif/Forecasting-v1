@@ -3908,6 +3908,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
         plan_df = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
 
+    print("gg plan_df 3911", plan_df.columns.tolist() if isinstance(plan_df, pd.DataFrame) else "No plan_df")
     # If we loaded this run from history via /history/load (target=insights), we likely did not
     # hydrate the supply plan into the in-memory run_state. Load it lazily here so the Insights
     # page can render stockout/overstock charts when a saved supply plan exists.
@@ -4053,12 +4054,29 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     date_range = None
     if not d_nonnull.empty:
         date_range = f"{d_nonnull.min().date().isoformat()} to {d_nonnull.max().date().isoformat()}"
-    total_sales = float(df[sales_col].sum())
+
+    # KPI scope: latest month in the uploaded (actual) sales data.
+    # This matches how planners typically read "current performance".
+    latest_month_label = None
+    df_kpi = df
+    if not d_nonnull.empty:
+        try:
+            latest_ts = pd.to_datetime(d_nonnull.max(), errors="coerce")
+            if pd.notna(latest_ts):
+                m_start = latest_ts.to_period("M").to_timestamp()
+                m_end = m_start + pd.offsets.MonthBegin(1)
+                df_kpi = df[(df[date_col] >= m_start) & (df[date_col] < m_end)].copy()
+                latest_month_label = m_start.strftime("%B %Y")
+        except Exception:
+            df_kpi = df
+            latest_month_label = None
+
+    total_sales = float(df_kpi[sales_col].sum())
 
     top_sku_label = None
     top_sku_val = None
     if sku_col:
-        by_sku = df.groupby(sku_col, as_index=True)[sales_col].sum().sort_values(ascending=False)
+        by_sku = df_kpi.groupby(sku_col, as_index=True)[sales_col].sum().sort_values(ascending=False)
         if not by_sku.empty:
             top_sku_label = str(by_sku.index[0])
             top_sku_val = float(by_sku.iloc[0])
@@ -4253,7 +4271,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             "error": None,
             "header_text": header_text,
             "kpi_total_sales": _fmt_int(total_sales),
-            "kpi_sales_range": f"Date range: {date_range}" if date_range else "",
+            "kpi_sales_range": f"Latest month: {latest_month_label}" if latest_month_label else (f"Date range: {date_range}" if date_range else ""),
             "kpi_top_sku": top_sku_label,
             "kpi_top_sku_value": f"{_fmt_int(top_sku_val)} units" if top_sku_val is not None else "",
             "kpi_stockout_units": _fmt_int(stockout_units) if stockout_units is not None else "—",
