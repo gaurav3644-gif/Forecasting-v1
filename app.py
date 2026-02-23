@@ -3908,6 +3908,47 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
         plan_df = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
 
+    # If we loaded this run from history via /history/load (target=insights), we likely did not
+    # hydrate the supply plan into the in-memory run_state. Load it lazily here so the Insights
+    # page can render stockout/overstock charts when a saved supply plan exists.
+    if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
+        try:
+            import history_store
+
+            user_email = _get_user_email(request)
+            is_admin = bool(user_email and _is_admin_email(user_email))
+            run_id = (run or {}).get("forecast_run_id") if isinstance(run, dict) else None
+            if user_email and run_id:
+                sp = (
+                    history_store.load_supply_plan_admin(run_id=int(run_id))
+                    if is_admin
+                    else history_store.load_supply_plan(user_email, int(run_id))
+                )
+                sp_df = sp.get("supply_plan_df")
+                sp_full = sp.get("supply_plan_full_df")
+                if isinstance(sp_df, pd.DataFrame) and not sp_df.empty and "period_start" in sp_df.columns:
+                    sp_df = sp_df.copy()
+                    sp_df["period_start"] = pd.to_datetime(sp_df["period_start"], errors="coerce")
+                if isinstance(sp_full, pd.DataFrame) and not sp_full.empty and "period_start" in sp_full.columns:
+                    sp_full = sp_full.copy()
+                    sp_full["period_start"] = pd.to_datetime(sp_full["period_start"], errors="coerce")
+
+                if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
+                    plan_df = sp_full
+                elif isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
+                    plan_df = sp_df
+
+                # Cache into the in-memory run_state to avoid reloading within the same session.
+                if isinstance(run, dict):
+                    if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
+                        run["supply_plan_df"] = sp_df
+                    if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
+                        run["supply_plan_full_df"] = sp_full
+        except KeyError:
+            pass
+        except Exception:
+            pass
+
     if not isinstance(raw_df, pd.DataFrame) or raw_df.empty:
         return templates.TemplateResponse(
             "insights.html",
@@ -4417,6 +4458,28 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
         return RedirectResponse(f"/supply_plan?run_session_id={quote(rid)}", status_code=303)
 
     if str(target or "").lower() == "insights":
+        # Best-effort: hydrate a saved supply plan (if it exists) so the Insights page can
+        # render stockout/overstock charts immediately when opened from the dashboard.
+        try:
+            sp = (
+                history_store.load_supply_plan_admin(run_id=int(run_id))
+                if is_admin
+                else history_store.load_supply_plan(user_email, int(run_id))
+            )
+            sp_df = sp.get("supply_plan_df")
+            sp_full = sp.get("supply_plan_full_df")
+            if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
+                if "period_start" in sp_df.columns:
+                    sp_df = sp_df.copy()
+                    sp_df["period_start"] = pd.to_datetime(sp_df["period_start"], errors="coerce")
+                run_state["supply_plan_df"] = sp_df
+            if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
+                if "period_start" in sp_full.columns:
+                    sp_full = sp_full.copy()
+                    sp_full["period_start"] = pd.to_datetime(sp_full["period_start"], errors="coerce")
+                run_state["supply_plan_full_df"] = sp_full
+        except Exception:
+            pass
         return RedirectResponse(f"/insights?run_session_id={quote(rid)}", status_code=303)
 
     return RedirectResponse(f"/results?run_session_id={quote(rid)}", status_code=303)
