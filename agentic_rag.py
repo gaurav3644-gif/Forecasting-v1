@@ -241,6 +241,29 @@ def _driver_answer_from_session(session: dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _parse_target_lead_time_months(q: str) -> Optional[int]:
+    text = (q or "").lower()
+    # Common phrasings: "lead time to 2 months", "leadtime 2 months", "lead time = 2 mo"
+    m = re.search(r"lead\s*time[^0-9]{0,20}(\d{1,2})\s*(?:months|month|mo)\b", text)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except Exception:
+        return None
+
+
+def _is_lead_time_whatif_question(q: str) -> bool:
+    ql = (q or "").strip().lower()
+    if not ql:
+        return False
+    if "lead time" not in ql and "leadtime" not in ql:
+        return False
+    if "what if" in ql or "what happens" in ql or "if i" in ql or "if we" in ql:
+        return True
+    return False
+
+
 def _jsonable(v: Any) -> Any:
     if v is None:
         return None
@@ -499,7 +522,8 @@ async def answer_question_agentic(
         "You are PiTensor, a supply chain decision assistant.\n\n"
         "Rules:\n"
         "- Answer ONLY using the data provided in the tool outputs and data blocks.\n"
-        "- Do NOT use outside knowledge.\n"
+        "- You MAY use general supply-chain principles for qualitative cause/effect reasoning.\n"
+        "- Do NOT present general principles as if they were measured facts from this dataset.\n"
         '- If the data is insufficient, say exactly: \"Data not available\".\n'
         "- Do NOT invent numbers.\n"
         "- The safest way to include numbers is to fetch them via sql_query.\n"
@@ -521,6 +545,53 @@ async def answer_question_agentic(
         ans = _driver_answer_from_session(session)
         if ans:
             return AgenticRAGResult(answer=ans, tool_calls=0, provider="deterministic")
+
+    # Deterministic fast-path: "what if lead time changes?"
+    if _is_lead_time_whatif_question(q) and ("supply_plan" in tables):
+        target_m = _parse_target_lead_time_months(q)
+        try:
+            sql = "SELECT DISTINCT lead_time_months, lead_time_days FROM supply_plan WHERE lead_time_months IS NOT NULL OR lead_time_days IS NOT NULL LIMIT 5"
+            res = _run_sql(conn, sql)
+            rows = res.get("rows") if isinstance(res.get("rows"), list) else []
+            # pick a single representative current lead time (most common if possible)
+            current_months = None
+            current_days = None
+            if rows:
+                # prefer months if present
+                r0 = rows[0] if isinstance(rows[0], dict) else {}
+                current_months = r0.get("lead_time_months")
+                current_days = r0.get("lead_time_days")
+
+            if current_months is None and current_days is None:
+                raise ValueError("Lead time not found in supply plan.")
+
+            # Compose answer without doing numeric invention; only echo numbers that exist (or are in the user's question).
+            parts = []
+            if current_months is not None:
+                parts.append(f"Current plan lead time: {int(float(current_months))} months.")
+            elif current_days is not None:
+                parts.append(f"Current plan lead time: {int(float(current_days))} days.")
+
+            if target_m is not None and current_months is not None:
+                cur_m_i = int(float(current_months))
+                if cur_m_i == target_m:
+                    parts.append(f"Your supply plan already uses {target_m} months, so increasing to {target_m} months would not change the plan outputs.")
+                else:
+                    parts.append(
+                        f"If you increase lead time to {target_m} months, receipts arrive later. "
+                        "Qualitatively, that usually increases stockout risk unless you order earlier and/or carry more inventory."
+                    )
+                    parts.append("To quantify the impact in PiTensor, regenerate the supply plan with the updated lead time override.")
+            else:
+                parts.append(
+                    "Lead time affects when receipts arrive. Increasing lead time pushes receipts out, which can increase stockout risk unless you adjust ordering/inventory buffers."
+                )
+                parts.append("To quantify it, regenerate the supply plan with the updated lead time override.")
+
+            return AgenticRAGResult(answer=" ".join(parts).strip(), tool_calls=1, provider="deterministic")
+        except Exception:
+            # If this fast-path fails, fall back to the agent loop.
+            pass
 
     # Deterministic fast-path: "which month has highest sales?"
     if _is_top_month_sales_question(q):
