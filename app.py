@@ -3988,6 +3988,25 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     if price_col:
         df[price_col] = pd.to_numeric(df[price_col], errors="coerce")
 
+    def _stockout_units_series(plan: pd.DataFrame) -> pd.Series:
+        """
+        Return a per-row stockout units series.
+
+        Some saved plans may contain a binary `stockout_qty` (0/1). In that case,
+        derive unmet demand units from available columns to match the supply plan table.
+        """
+        if not isinstance(plan, pd.DataFrame) or plan.empty or "stockout_qty" not in plan.columns:
+            return pd.Series(dtype="float64")
+
+        s = pd.to_numeric(plan["stockout_qty"], errors="coerce")
+        uniq = set(pd.Series(s.dropna().unique()).tolist())
+        if uniq and uniq.issubset({0, 1}) and ("forecast_demand" in plan.columns) and ("beginning_on_hand" in plan.columns):
+            d = pd.to_numeric(plan["forecast_demand"], errors="coerce").fillna(0.0)
+            b = pd.to_numeric(plan["beginning_on_hand"], errors="coerce").fillna(0.0)
+            return (d - b).clip(lower=0.0)
+
+        return s.fillna(0.0)
+
     # KPIs
     d_nonnull = df[date_col].dropna()
     date_range = None
@@ -4007,8 +4026,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     stockout_units = None
     stockout_hint = None
     if isinstance(plan_df, pd.DataFrame) and not plan_df.empty and "stockout_qty" in plan_df.columns:
-        s = pd.to_numeric(plan_df["stockout_qty"], errors="coerce").fillna(0.0)
-        stockout_units = float(s.sum())
+        stockout_units = float(_stockout_units_series(plan_df).sum())
         stockout_hint = "From saved supply plan."
 
     header_bits = []
@@ -4141,13 +4159,13 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     stockout_unavailable = "Stockout SKUs unavailable (no saved supply plan for this run)."
     if isinstance(plan_df, pd.DataFrame) and not plan_df.empty and "stockout_qty" in plan_df.columns:
         p = plan_df.copy()
-        p["stockout_qty"] = pd.to_numeric(p["stockout_qty"], errors="coerce").fillna(0.0)
+        p["_stockout_units"] = _stockout_units_series(p)
         sku_p = _pick_col_ci(p, ["sku_id", "item", "sku"])
         if sku_p and not p.empty:
-            by_so = p.groupby(sku_p, as_index=False)["stockout_qty"].sum().sort_values("stockout_qty", ascending=False)
-            by_so = by_so[by_so["stockout_qty"] > 0].head(10)
+            by_so = p.groupby(sku_p, as_index=False)["_stockout_units"].sum().sort_values("_stockout_units", ascending=False)
+            by_so = by_so[by_so["_stockout_units"] > 0].head(10)
             if not by_so.empty:
-                fig_so = go.Figure(data=[go.Bar(x=by_so["stockout_qty"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
+                fig_so = go.Figure(data=[go.Bar(x=by_so["_stockout_units"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
                 try:
                     fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
