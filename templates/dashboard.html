@@ -187,56 +187,10 @@
         {% endfor %}
       {% endif %}
 
-  {% if is_admin and pending_users and (pending_users|length) %}
-        <div class="card shadow-sm mb-3">
-          <div class="card-body p-0">
-            <div class="p-3 d-flex align-items-center justify-content-between">
-              <div class="fw-semibold">Pending Users</div>
-              <div class="text-muted small">{{ pending_users|length }} pending</div>
-            </div>
-            <div class="table-responsive">
-              <table class="table mb-0 align-middle">
-                <thead class="table-light">
-                  <tr>
-                    <th class="ps-3">Email</th>
-                    <th>Last request</th>
-                    <th>Count</th>
-                    <th class="text-end pe-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for u in pending_users %}
-                    <tr>
-                      <td class="ps-3 small">{{ u.email }}</td>
-                      <td class="text-muted small">{{ u.last_requested_at or u.created_at or "&mdash;" | safe }}</td>
-                      <td class="small">{{ u.request_count or 0 }}</td>
-                      <td class="text-end pe-3">
-                        <form method="post" action="/admin/approve-user" class="d-inline">
-                          <input type="hidden" name="email" value="{{ u.email }}">
-                          <button type="submit" class="btn btn-outline-success btn-sm">Approve</button>
-                        </form>
-                        <form method="post" action="/admin/revoke-user" class="d-inline js-revoke-user">
-                          <input type="hidden" name="email" value="{{ u.email }}">
-                          <input type="hidden" name="reason" value="revoked by admin">
-                          <button type="submit" class="btn btn-outline-warning btn-sm">Revoke</button>
-                        </form>
-                        <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
-                          <input type="hidden" name="email" value="{{ u.email }}">
-                          <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                        </form>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      {% endif %}
-
       {% if is_admin %}
         <div class="card shadow-sm mb-3">
           <div class="card-body p-0">
+            {% set pending_count = (pending_users|length) if pending_users is defined and pending_users else 0 %}
             <ul class="nav nav-tabs px-3 pt-3" id="admin-tabs" role="tablist">
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="tab-runs-btn" data-bs-toggle="tab" data-bs-target="#tab-runs" type="button" role="tab" aria-controls="tab-runs" aria-selected="true">
@@ -251,6 +205,14 @@
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="tab-revoked-btn" data-bs-toggle="tab" data-bs-target="#tab-revoked" type="button" role="tab" aria-controls="tab-revoked" aria-selected="false">
                   Revoked Users
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-pending-btn" data-bs-toggle="tab" data-bs-target="#tab-pending" type="button" role="tab" aria-controls="tab-pending" aria-selected="false">
+                  Pending Users
+                  {% if pending_count %}
+                    <span class="badge rounded-pill text-bg-light border ms-2">{{ pending_count }}</span>
+                  {% endif %}
                 </button>
               </li>
             </ul>
@@ -405,6 +367,55 @@
                               <form method="post" action="/admin/approve-user" class="d-inline">
                                 <input type="hidden" name="email" value="{{ u.email }}">
                                 <button type="submit" class="btn btn-outline-success btn-sm">Restore</button>
+                              </form>
+                              <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                              </form>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="tab-pane fade" id="tab-pending" role="tabpanel" aria-labelledby="tab-pending-btn">
+                <div class="p-3 d-flex align-items-center justify-content-between">
+                  <div class="fw-semibold">Pending Users</div>
+                  <div class="text-muted small">{{ pending_count }} pending</div>
+                </div>
+                {% if not pending_users %}
+                  <div class="px-3 pb-3">
+                    <div class="alert alert-light border mb-0">No pending users.</div>
+                  </div>
+                {% else %}
+                  <div class="table-responsive">
+                    <table class="table mb-0 align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th class="ps-3">Email</th>
+                          <th>Last request</th>
+                          <th>Count</th>
+                          <th class="text-end pe-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for u in pending_users %}
+                          <tr>
+                            <td class="ps-3 small">{{ u.email }}</td>
+                            <td class="text-muted small">{{ u.last_requested_at or u.created_at or "&mdash;" | safe }}</td>
+                            <td class="small">{{ u.request_count or 0 }}</td>
+                            <td class="text-end pe-3">
+                              <form method="post" action="/admin/approve-user" class="d-inline">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <button type="submit" class="btn btn-outline-success btn-sm">Approve</button>
+                              </form>
+                              <form method="post" action="/admin/revoke-user" class="d-inline js-revoke-user">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <input type="hidden" name="reason" value="revoked by admin">
+                                <button type="submit" class="btn btn-outline-warning btn-sm">Revoke</button>
                               </form>
                               <form method="post" action="/admin/delete-user" class="d-inline js-delete-user">
                                 <input type="hidden" name="email" value="{{ u.email }}">
