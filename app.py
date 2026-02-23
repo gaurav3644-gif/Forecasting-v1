@@ -4243,10 +4243,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         if sku_p and not p.empty:
             by_so = p.groupby(sku_p, as_index=False)["_stockout_units"].sum().sort_values("_stockout_units", ascending=False)
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
+            print("gg 4246 ", by_so)
             if not by_so.empty:
                 fig_so = go.Figure(data=[go.Bar(x=by_so["_stockout_units"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
-                fig_so.update_xaxes(tickformat=",",separatethousands=True,tickmode="auto")
+                # fig_so.update_xaxes(tickformat=",",separatethousands=True,tickmode="auto")
                 try:
                     fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
                     fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
