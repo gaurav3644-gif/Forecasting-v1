@@ -19,7 +19,9 @@
   .kpi .label { color: rgba(18,24,39,0.65); font-size: 0.85rem; }
   .kpi .value { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
   .chart-wrap { border-radius: 16px; overflow: hidden; }
-  .chart-wrap { padding: 8px; background: rgba(18,24,39,0.02); border: 1px solid rgba(18,24,39,0.06); }
+  .chart-wrap { padding: 10px; background: rgba(18,24,39,0.02); border: 1px solid rgba(18,24,39,0.06); }
+  /* Plotly sometimes uses axis exponent labels; keep them visible inside the container. */
+  .chart-wrap .js-plotly-plot { overflow: visible !important; }
   .muted { color: rgba(18,24,39,0.60); }
 </style>
 {% endblock %}

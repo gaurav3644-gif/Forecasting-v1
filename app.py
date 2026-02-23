@@ -4149,6 +4149,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             if not by_so.empty:
                 fig_so = go.Figure(data=[go.Bar(x=by_so["stockout_qty"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
+                try:
+                    fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
+                    fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
+                except Exception:
+                    pass
                 fig_so.update_yaxes(autorange="reversed")
                 chart_stockout_skus = _fig_html(fig_so, height=300, showlegend=False)
             else:
@@ -4170,6 +4175,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             if not by_ov.empty:
                 fig_ov = go.Figure(data=[go.Bar(x=by_ov["overstock_units"], y=by_ov[sku_p].astype(str), orientation="h", marker_color="#0d6efd")])
                 fig_ov.update_layout(xaxis_title="Overstock units (sum)", yaxis_title="SKU")
+                try:
+                    fig_ov.update_xaxes(tickformat=",.0f", exponentformat="none")
+                    fig_ov.update_traces(hovertemplate="%{y}<br>Overstock units: %{x:,.0f}<extra></extra>")
+                except Exception:
+                    pass
                 fig_ov.update_yaxes(autorange="reversed")
                 chart_overstock_skus = _fig_html(fig_ov, height=280, showlegend=False)
                 overstock_note = "Overstock = max(0, ending_on_hand − target_level), summed over horizon."
