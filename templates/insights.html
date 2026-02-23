@@ -19,6 +19,7 @@
   .kpi .label { color: rgba(18,24,39,0.65); font-size: 0.85rem; }
   .kpi .value { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
   .chart-wrap { border-radius: 16px; overflow: hidden; }
+  .chart-wrap { padding: 8px; background: rgba(18,24,39,0.02); border: 1px solid rgba(18,24,39,0.06); }
   .muted { color: rgba(18,24,39,0.60); }
 </style>
 {% endblock %}
@@ -45,7 +46,7 @@
     <div class="alert alert-warning">{{ error }}</div>
   {% endif %}
 
-  <div class="row g-3 mb-3">
+  <div class="row g-3 mb-4">
     <div class="col-md-4">
       <div class="kpi">
         <div class="label" data-i18n="insights_kpi_total_sales">Total Actual Sales</div>
@@ -69,7 +70,7 @@
     </div>
   </div>
 
-  <div class="row g-3">
+  <div class="row g-4">
     <div class="col-xl-8">
       <div class="card-soft p-3">
         <div class="d-flex align-items-center justify-content-between mb-2">
@@ -143,4 +144,3 @@
   </div>
 </div>
 {% endblock %}
-

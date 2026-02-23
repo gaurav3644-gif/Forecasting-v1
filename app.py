@@ -4018,19 +4018,20 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         header_bits.append(f"Forecast: start {run.get('start_month')} · {run.get('months')} months")
     header_text = " | ".join(header_bits) if header_bits else None
 
-    def _fig_html(fig: go.Figure) -> str:
+    def _fig_html(fig: go.Figure, *, height: int = 320, showlegend: bool = True) -> str:
         try:
             fig.update_layout(
+                height=int(height),
                 margin=dict(l=30, r=20, t=10, b=30),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", size=13),
-                showlegend=True,
+                showlegend=bool(showlegend),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
             )
         except Exception:
             pass
-        return fig.to_html(full_html=False, include_plotlyjs=False, config={"displayModeBar": False})
+        return fig.to_html(full_html=False, include_plotlyjs=False, config={"displayModeBar": False, "responsive": True})
 
     # Monthly sales vs forecast
     monthly_note = None
@@ -4061,7 +4062,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     if "forecast" in m.columns:
         fig_main.add_trace(go.Scatter(x=m["month"], y=m["forecast"], name="Forecast", mode="lines+markers", line=dict(color="#198754")))
     fig_main.update_layout(xaxis_title="Month", yaxis_title="Units")
-    chart_sales_vs_forecast = _fig_html(fig_main)
+    chart_sales_vs_forecast = _fig_html(fig_main, height=320, showlegend=True)
 
     # Store share pie
     chart_store_share = ""
@@ -4075,8 +4076,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             if other > 0:
                 top = pd.concat([top, pd.DataFrame([{store_col: "Other", sales_col: other}])], ignore_index=True)
             fig_store = go.Figure(data=[go.Pie(labels=top[store_col], values=top[sales_col], hole=0.55)])
-            fig_store.update_layout(showlegend=False)
-            chart_store_share = _fig_html(fig_store)
+            chart_store_share = _fig_html(fig_store, height=260, showlegend=False)
         else:
             store_share_note = "No store values found."
     else:
@@ -4089,13 +4089,13 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         fig_top = go.Figure(data=[go.Bar(x=top_sales[sales_col], y=top_sales[sku_col], orientation="h")])
         fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
         fig_top.update_yaxes(autorange="reversed")
-        chart_top_sales_skus = _fig_html(fig_top)
+        chart_top_sales_skus = _fig_html(fig_top, height=300, showlegend=False)
     else:
         # single series/no sku column
         top_sales = df.groupby(df.index // max(1, len(df)), as_index=False)[sales_col].sum().head(1)
         fig_top = go.Figure(data=[go.Bar(x=[total_sales], y=["ALL"], orientation="h")])
         fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
-        chart_top_sales_skus = _fig_html(fig_top)
+        chart_top_sales_skus = _fig_html(fig_top, height=220, showlegend=False)
 
     # Revenue SKUs (sales * price)
     chart_top_revenue_skus = None
@@ -4108,7 +4108,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             fig_rev = go.Figure(data=[go.Bar(x=top_rev["revenue"], y=top_rev[sku_col], orientation="h", marker_color="#0d6efd")])
             fig_rev.update_layout(xaxis_title="Revenue", yaxis_title="SKU")
             fig_rev.update_yaxes(autorange="reversed")
-            chart_top_revenue_skus = _fig_html(fig_rev)
+            chart_top_revenue_skus = _fig_html(fig_rev, height=300, showlegend=False)
         else:
             revenue_unavailable = "Revenue chart unavailable (price column is empty)."
 
@@ -4133,7 +4133,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 fig_dec = go.Figure(data=[go.Bar(x=joined["pct_change"], y=joined.index.astype(str), orientation="h", marker_color="#dc3545")])
                 fig_dec.update_layout(xaxis_title=f"% change ({prev_m} → {last_m})", yaxis_title="SKU")
                 fig_dec.update_yaxes(autorange="reversed")
-                chart_declining_skus = _fig_html(fig_dec)
+                chart_declining_skus = _fig_html(fig_dec, height=300, showlegend=False)
                 decline_note = "Computed from the last two months of actuals in raw data."
 
     # Stockout SKUs from supply plan
@@ -4150,7 +4150,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 fig_so = go.Figure(data=[go.Bar(x=by_so["stockout_qty"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
                 fig_so.update_yaxes(autorange="reversed")
-                chart_stockout_skus = _fig_html(fig_so)
+                chart_stockout_skus = _fig_html(fig_so, height=300, showlegend=False)
             else:
                 stockout_unavailable = "No stockouts found in the saved supply plan."
 
@@ -4171,7 +4171,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 fig_ov = go.Figure(data=[go.Bar(x=by_ov["overstock_units"], y=by_ov[sku_p].astype(str), orientation="h", marker_color="#0d6efd")])
                 fig_ov.update_layout(xaxis_title="Overstock units (sum)", yaxis_title="SKU")
                 fig_ov.update_yaxes(autorange="reversed")
-                chart_overstock_skus = _fig_html(fig_ov)
+                chart_overstock_skus = _fig_html(fig_ov, height=280, showlegend=False)
                 overstock_note = "Overstock = max(0, ending_on_hand − target_level), summed over horizon."
             else:
                 overstock_unavailable = "No overstock detected using ending_on_hand vs target_level."
