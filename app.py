@@ -5786,6 +5786,10 @@ async def supply_plan_submit(
             selected_location = parts[1]
 
         override_enabled = bool(payload.get("override_enabled", False))
+        override_table_rows = payload.get("override_table_rows") if isinstance(payload.get("override_table_rows"), list) else None
+        if isinstance(override_table_rows, list) and len(override_table_rows) > 0:
+            # Table edits imply overrides should be applied.
+            override_enabled = True
 
         def _num_field(name: str) -> float | None:
             v = payload.get(name)
@@ -6002,10 +6006,38 @@ async def supply_plan_submit(
                 constraints_df = pd.concat([constraints_df, pd.DataFrame([{"sku_id": str(selected_sku), "supplier": "SUP_OVERRIDE"}])], ignore_index=True)
                 mask_c = constraints_df["sku_id"].astype(str) == str(selected_sku)
 
-            lead_time_days = _num_field("override_lead_time_days")
-            moq = _num_field("override_moq")
-            order_multiple = _num_field("override_order_multiple")
-            max_cap_week = _num_field("override_max_capacity_per_week")
+            table_row0 = override_table_rows[0] if isinstance(override_table_rows, list) and override_table_rows else None
+
+            def _row_get_ci(row: dict, keys: list[str]) -> Any:
+                if not isinstance(row, dict):
+                    return None
+                lower_map = {str(k).strip().lower(): k for k in row.keys()}
+                for want in keys:
+                    k = lower_map.get(str(want).strip().lower())
+                    if k is not None:
+                        return row.get(k)
+                return None
+
+            def _row_num_ci(row: dict, keys: list[str]) -> float | None:
+                v = _row_get_ci(row, keys)
+                if v is None:
+                    return None
+                if isinstance(v, str) and not v.strip():
+                    return None
+                try:
+                    return float(v)
+                except Exception:
+                    return None
+
+            lead_time_days = _row_num_ci(table_row0, ["lead_time_days"]) if table_row0 else None
+            moq = _row_num_ci(table_row0, ["moq"]) if table_row0 else None
+            order_multiple = _row_num_ci(table_row0, ["order_multiple"]) if table_row0 else None
+            max_cap_week = _row_num_ci(table_row0, ["max_capacity_per_week"]) if table_row0 else None
+
+            lead_time_days = lead_time_days if lead_time_days is not None else _num_field("override_lead_time_days")
+            moq = moq if moq is not None else _num_field("override_moq")
+            order_multiple = order_multiple if order_multiple is not None else _num_field("override_order_multiple")
+            max_cap_week = max_cap_week if max_cap_week is not None else _num_field("override_max_capacity_per_week")
             if lead_time_days is not None:
                 constraints_df.loc[mask_c, "lead_time_days"] = lead_time_days
             if moq is not None:
@@ -6023,60 +6055,70 @@ async def supply_plan_submit(
             if not mask_p.any():
                 policy_df = pd.concat([policy_df, pd.DataFrame([{"sku_id": str(selected_sku)}])], ignore_index=True)
                 mask_p = policy_df["sku_id"].astype(str) == str(selected_sku)
-            service_level = _num_field("override_service_level")
+            service_level = _row_num_ci(table_row0, ["service_level"]) if table_row0 else None
+            service_level = service_level if service_level is not None else _num_field("override_service_level")
             if service_level is not None and 0 < service_level < 1:
                 policy_df.loc[mask_p, "service_level"] = service_level
 
-            # Upsert inventory snapshot (skip if user explicitly supplied an inventory column)
-            inv_col_override = payload.get("inventory_column") if isinstance(payload.get("inventory_column"), str) and payload.get("inventory_column") else None
-            # If the user selected a raw inventory column, prefer that and do not apply manual inventory overrides here.
-            if not inv_col_override:
-                # Upsert inventory snapshot
-                for col in ["sku_id", "location", "on_hand", "allocated", "backorders"]:
-                    if col not in inventory_df.columns:
-                        inventory_df[col] = 0.0
+            # Upsert inventory snapshot (table-driven overrides)
+            for col in ["sku_id", "location", "on_hand", "allocated", "backorders"]:
+                if col not in inventory_df.columns:
+                    inventory_df[col] = 0.0
+            mask_i = (inventory_df["sku_id"].astype(str) == str(selected_sku)) & (inventory_df["location"].astype(str) == str(selected_location))
+            if not mask_i.any():
+                inventory_df = pd.concat([inventory_df, pd.DataFrame([{"sku_id": str(selected_sku), "location": str(selected_location)}])], ignore_index=True)
                 mask_i = (inventory_df["sku_id"].astype(str) == str(selected_sku)) & (inventory_df["location"].astype(str) == str(selected_location))
-                if not mask_i.any():
-                    inventory_df = pd.concat([inventory_df, pd.DataFrame([{"sku_id": str(selected_sku), "location": str(selected_location)}])], ignore_index=True)
-                    mask_i = (inventory_df["sku_id"].astype(str) == str(selected_sku)) & (inventory_df["location"].astype(str) == str(selected_location))
 
-                on_hand = _num_field("override_on_hand")
-                allocated = _num_field("override_allocated")
-                backorders = _num_field("override_backorders")
-                any_override_applied = False
-                if on_hand is not None and on_hand >= 0:
-                    inventory_df.loc[mask_i, "on_hand"] = on_hand
-                    any_override_applied = True
-                if allocated is not None and allocated >= 0:
-                    inventory_df.loc[mask_i, "allocated"] = allocated
-                    any_override_applied = True
-                if backorders is not None and backorders >= 0:
-                    inventory_df.loc[mask_i, "backorders"] = backorders
-                    any_override_applied = True
-                if any_override_applied:
-                    inventory_source = "manual_override"
+            on_hand = _row_num_ci(table_row0, ["input_on_hand", "on_hand"]) if table_row0 else None
+            allocated = _row_num_ci(table_row0, ["input_allocated", "allocated"]) if table_row0 else None
+            backorders = _row_num_ci(table_row0, ["input_backorders", "backorders"]) if table_row0 else None
+
+            on_hand = on_hand if on_hand is not None else _num_field("override_on_hand")
+            allocated = allocated if allocated is not None else _num_field("override_allocated")
+            backorders = backorders if backorders is not None else _num_field("override_backorders")
+
+            any_override_applied = False
+            if on_hand is not None and on_hand >= 0:
+                inventory_df.loc[mask_i, "on_hand"] = on_hand
+                any_override_applied = True
+            if allocated is not None and allocated >= 0:
+                inventory_df.loc[mask_i, "allocated"] = allocated
+                any_override_applied = True
+            if backorders is not None and backorders >= 0:
+                inventory_df.loc[mask_i, "backorders"] = backorders
+                any_override_applied = True
+            if any_override_applied:
+                inventory_source = "manual_override"
 
             # Monthly forecast override for selected series
-            override_forecast_csv = payload.get("override_forecast_csv")
-            if isinstance(override_forecast_csv, str) and override_forecast_csv.strip():
-                f_override = pd.read_csv(StringIO(override_forecast_csv.strip()))
-                if "period_start" in f_override.columns and "forecast_demand" in f_override.columns:
-                    f_override["period_start"] = pd.to_datetime(f_override["period_start"], errors="coerce")
-                    f_override["forecast_demand"] = pd.to_numeric(f_override["forecast_demand"], errors="coerce").fillna(0.0)
-                    f_override = f_override.dropna(subset=["period_start"])
-                    f_override = f_override[(f_override["period_start"] >= start_ts) & (f_override["period_start"] < end_ts)]
-                    f_override["period_start"] = f_override["period_start"].dt.to_period("M").apply(lambda p: p.start_time)
-                    f_override = f_override.groupby(["period_start"], as_index=False)["forecast_demand"].sum()
+            f_override = None
+            if isinstance(override_table_rows, list) and override_table_rows:
+                try:
+                    f_override = pd.DataFrame(override_table_rows)
+                except Exception:
+                    f_override = None
+            if f_override is None:
+                override_forecast_csv = payload.get("override_forecast_csv")
+                if isinstance(override_forecast_csv, str) and override_forecast_csv.strip():
+                    f_override = pd.read_csv(StringIO(override_forecast_csv.strip()))
 
-                    # Replace series rows for the whole horizon (ensures all months exist)
-                    base_series = pd.DataFrame({"period_start": pd.date_range(start=start_ts, periods=horizon_months or 10, freq="MS")})
-                    base_series = base_series.merge(f_override, on="period_start", how="left")
-                    base_series["forecast_demand"] = base_series["forecast_demand"].fillna(0.0)
-                    base_series["sku_id"] = str(selected_sku)
-                    base_series["location"] = str(selected_location)
+            if isinstance(f_override, pd.DataFrame) and not f_override.empty and ("period_start" in f_override.columns) and ("forecast_demand" in f_override.columns):
+                f_override["period_start"] = pd.to_datetime(f_override["period_start"], errors="coerce")
+                f_override["forecast_demand"] = pd.to_numeric(f_override["forecast_demand"], errors="coerce").fillna(0.0)
+                f_override = f_override.dropna(subset=["period_start"])
+                f_override = f_override[(f_override["period_start"] >= start_ts) & (f_override["period_start"] < end_ts)]
+                f_override["period_start"] = f_override["period_start"].dt.to_period("M").apply(lambda p: p.start_time)
+                f_override = f_override.groupby(["period_start"], as_index=False)["forecast_demand"].sum()
 
-                    forecast_input_df = forecast_input_df[~((forecast_input_df["sku_id"].astype(str) == str(selected_sku)) & (forecast_input_df["location"].astype(str) == str(selected_location)))]
-                    forecast_input_df = pd.concat([forecast_input_df, base_series[["sku_id", "location", "period_start", "forecast_demand"]]], ignore_index=True)
+                # Replace series rows for the whole horizon (ensures all months exist)
+                base_series = pd.DataFrame({"period_start": pd.date_range(start=start_ts, periods=horizon_months or 10, freq="MS")})
+                base_series = base_series.merge(f_override, on="period_start", how="left")
+                base_series["forecast_demand"] = base_series["forecast_demand"].fillna(0.0)
+                base_series["sku_id"] = str(selected_sku)
+                base_series["location"] = str(selected_location)
+
+                forecast_input_df = forecast_input_df[~((forecast_input_df["sku_id"].astype(str) == str(selected_sku)) & (forecast_input_df["location"].astype(str) == str(selected_location)))]
+                forecast_input_df = pd.concat([forecast_input_df, base_series[["sku_id", "location", "period_start", "forecast_demand"]]], ignore_index=True)
 
         # Performance: only compute the supply plan for the selected combo.
         # The UI displays one series at a time; computing all combos can take

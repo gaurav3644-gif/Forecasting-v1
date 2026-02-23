@@ -71,106 +71,10 @@
 
             <div class="alert alert-light border mb-3" style="border-color: rgba(18,24,39,0.10) !important;">
                 <div class="small text-muted mb-0">
-                    Using the latest ForecastAI output with auto-generated inventory/constraints/policy where needed.
-                    Use <strong>Edit Inputs</strong> below to override the selected series.
+                    Generate a plan, then edit the input columns directly in the table (edited cells highlight in yellow).
+                    Click <strong>Generate</strong> again to apply your changes.
                 </div>
             </div>
-
-            {% if combos and combos|length > 0 %}
-            <div class="card p-3 mb-4" style="border-radius: 16px; border: 1px solid rgba(18,24,39,0.10); background: rgba(255,255,255,0.85);">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                    <div>
-                        <h5 class="mb-0" data-i18n="sp_edit_inputs">Edit Inputs (Selected Series)</h5>
-                        <div class="text-muted small">Defaults load from your forecast/session; change values and regenerate to update the plot.</div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="load-defaults-btn">
-                            <i class="fas fa-wand-magic-sparkles me-1"></i>Load defaults
-                        </button>
-                        <div class="form-check ms-2">
-                            <input class="form-check-input" type="checkbox" id="override_enabled" checked>
-                            <label class="form-check-label small" for="override_enabled">Apply overrides</label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row g-3">
-                    <div class="col-12">
-                        <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                            <div class="fw-bold mb-2">Supply Constraints</div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
-                                <label class="form-label small mb-0">Lead time (days)</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_lead_time_days" value="14" min="0">
-                            </div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
-                                <label class="form-label small mb-0">MOQ</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_moq" value="100" min="0">
-                            </div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
-                                <label class="form-label small mb-0">Order multiple</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_order_multiple" value="10" min="1">
-                            </div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3">
-                                <label class="form-label small mb-0">Max capacity / week</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_max_capacity_per_week" value="1200" min="0">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12">
-                        <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                            <div class="fw-bold mb-2">Policy + Inventory Snapshot</div>
-
-                            <div class="d-flex align-items-start justify-content-between gap-3 mb-1">
-                                <label class="form-label small mb-0 pt-2">Inventory column (optional)</label>
-                                <select class="form-select" style="max-width: 340px;" id="inventory_column_select">
-                                    <option value="">Auto (detect or generate)</option>
-                                    {% for c in raw_inventory_columns %}
-                                    <option value="{{ c }}" {% if detected_inventory_col and detected_inventory_col == c %}selected{% endif %}>{{ c }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="form-text small mb-2">Choose which column in your uploaded CSV represents on-hand inventory. Leave blank to auto-detect or generate.</div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
-                                <label class="form-label small mb-0">Service level</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_service_level" value="0.95" min="0.5" max="0.999" step="0.01">
-                            </div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
-                                <label class="form-label small mb-0">On hand</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_on_hand" value="500" min="0">
-                            </div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
-                                <label class="form-label small mb-0">Allocated</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_allocated" value="0" min="0">
-                            </div>
-
-                            <div class="d-flex align-items-center justify-content-between gap-3">
-                                <label class="form-label small mb-0">Backorders</label>
-                                <input type="number" class="form-control" style="max-width: 220px;" id="override_backorders" value="0" min="0">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12">
-                        <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div class="fw-bold">Forecast (Monthly Override)</div>
-                                <div class="text-muted small">CSV: period_start,forecast_demand</div>
-                            </div>
-                            <textarea class="form-control font-monospace" id="override_forecast_csv" rows="6">period_start,forecast_demand
-{{ forecast_start_month }}-01,0</textarea>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
 
             <div class="d-grid gap-2">
                 <button type="submit" class="btn btn-primary" id="generateSupplyBtn"><span data-i18n="sp_generate">Generate</span></button>
@@ -297,6 +201,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<style>
+    #supplyPlanTable td.sp-edited-cell { background: #fff9db; }
+    #supplyPlanTable input.sp-cell-input { min-width: 110px; }
+</style>
 <script>
 // runSessionId must be in module scope so the form submit handler can access it.
 const runSessionId = "{{ run_session_id or '' }}";
@@ -347,39 +255,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     })();
 
-    async function loadDefaults() {
-        const combo = document.getElementById('combo_key');
-        if (!combo) return;
-        try {
-            const qs = new URLSearchParams({ combo_key: combo.value });
-            if (runSessionId) qs.set('run_session_id', runSessionId);
-            const res = await fetch(`/supply_plan_defaults?${qs.toString()}`);
-            if (!res.ok) return;
-            const data = await res.json();
-            if (data.constraints) {
-                if (document.getElementById('override_lead_time_days')) document.getElementById('override_lead_time_days').value = data.constraints.lead_time_days ?? 14;
-                if (document.getElementById('override_moq')) document.getElementById('override_moq').value = data.constraints.moq ?? 100;
-                if (document.getElementById('override_order_multiple')) document.getElementById('override_order_multiple').value = data.constraints.order_multiple ?? 10;
-                if (document.getElementById('override_max_capacity_per_week')) document.getElementById('override_max_capacity_per_week').value = data.constraints.max_capacity_per_week ?? 1200;
-            }
-            if (data.policy) {
-                if (document.getElementById('override_service_level')) document.getElementById('override_service_level').value = data.policy.service_level ?? 0.95;
-            }
-            if (data.inventory) {
-                if (document.getElementById('override_on_hand')) document.getElementById('override_on_hand').value = data.inventory.on_hand ?? 0;
-                if (document.getElementById('override_allocated')) document.getElementById('override_allocated').value = data.inventory.allocated ?? 0;
-                if (document.getElementById('override_backorders')) document.getElementById('override_backorders').value = data.inventory.backorders ?? 0;
-            }
-            if (data.forecast_monthly_csv && document.getElementById('override_forecast_csv')) {
-                document.getElementById('override_forecast_csv').value = data.forecast_monthly_csv;
-            }
-        } catch (e) {
-            // ignore
-        }
-    }
-
-    const loadBtn = document.getElementById('load-defaults-btn');
-    if (loadBtn) loadBtn.addEventListener('click', loadDefaults);
     const combo = document.getElementById('combo_key');
     const comboSearch = document.getElementById('combo_search');
 
@@ -405,7 +280,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (combo.options.length) {
             combo.selectedIndex = 0;
         }
-        loadDefaults();
     }
 
     if (comboSearch && combo) {
@@ -416,10 +290,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    if (combo) combo.addEventListener('change', loadDefaults);
-
-    // Initial default load for first series
-    loadDefaults();
+    // Inputs are edited directly in the table after generation; no defaults loader needed.
 
     const plotEl = document.getElementById('supplyPlanPlot');
     const t = (window.PiTensorI18n && window.PiTensorI18n.t) ? window.PiTensorI18n.t : ((k) => k);
@@ -864,11 +735,55 @@ function renderSupplyTable(columns, rows) {
         el.innerHTML = `<div class="p-3 text-muted small">No table data returned.</div>`;
         return;
     }
+
+    const editableCols = new Set([
+        'forecast_demand',
+        'lead_time_days',
+        'moq',
+        'order_multiple',
+        'max_capacity_per_week',
+        'service_level',
+        'input_on_hand',
+        'input_allocated',
+        'input_backorders',
+    ]);
+
+    // These are series-level inputs in the model. When the user edits them in one row,
+    // we propagate the value to all rows for convenience.
+    const broadcastCols = new Set([
+        'lead_time_days',
+        'moq',
+        'order_multiple',
+        'max_capacity_per_week',
+        'service_level',
+        'input_on_hand',
+        'input_allocated',
+        'input_backorders',
+    ]);
+
+    const colNorm = (c) => String(c || '').trim().toLowerCase();
     const thead = columns.map(c => `<th class="small text-muted fw-semibold" style="position:sticky; top:0; background:#fff;">${esc(c)}</th>`).join('');
-    const body = rows.map(r => {
+    const body = rows.map((r, idx) => {
         const tds = columns.map(c => {
             const v = (r && typeof r === 'object') ? r[c] : null;
             const s = (v === null || v === undefined) ? '' : String(v);
+            const cN = colNorm(c);
+            if (editableCols.has(cN)) {
+                const step = (cN === 'service_level') ? '0.01' : 'any';
+                return `
+                    <td class="small" style="white-space:nowrap;">
+                        <input
+                            type="number"
+                            step="${step}"
+                            class="form-control form-control-sm sp-cell-input"
+                            data-row="${idx}"
+                            data-col="${esc(cN)}"
+                            data-original="${esc(s)}"
+                            value="${esc(s)}"
+                        />
+                    </td>
+                `;
+            }
             return `<td class="small" style="white-space:nowrap;">${esc(s)}</td>`;
         }).join('');
         return `<tr>${tds}</tr>`;
@@ -879,6 +794,80 @@ function renderSupplyTable(columns, rows) {
             <tbody>${body}</tbody>
         </table>
     `;
+
+    // Cache for form submit.
+    try {
+        window._piTensorSupplyTable = { columns: columns.slice(), rows: rows.map(r => ({ ...(r || {}) })) };
+    } catch (e) {
+        window._piTensorSupplyTable = null;
+    }
+
+    function setEditedState(inputEl) {
+        const td = inputEl.closest('td');
+        const orig = (inputEl.getAttribute('data-original') || '').trim();
+        const cur = (inputEl.value || '').trim();
+        const edited = cur !== orig;
+        if (td) td.classList.toggle('sp-edited-cell', edited);
+    }
+
+    function broadcastIfNeeded(inputEl) {
+        const col = (inputEl.getAttribute('data-col') || '').trim().toLowerCase();
+        if (!broadcastCols.has(col)) return;
+        const val = inputEl.value;
+        el.querySelectorAll(`input.sp-cell-input[data-col="${CSS.escape(col)}"]`).forEach(inp => {
+            if (inp === inputEl) return;
+            inp.value = val;
+            setEditedState(inp);
+        });
+    }
+
+    el.querySelectorAll('input.sp-cell-input').forEach(inp => {
+        setEditedState(inp);
+        inp.addEventListener('input', function() {
+            setEditedState(inp);
+            broadcastIfNeeded(inp);
+        });
+        inp.addEventListener('change', function() {
+            setEditedState(inp);
+            broadcastIfNeeded(inp);
+        });
+    });
+}
+
+function collectSupplyOverridesFromTable() {
+    const el = document.getElementById('supplyPlanTable');
+    const model = window._piTensorSupplyTable;
+    if (!el || !model || !Array.isArray(model.rows) || model.rows.length === 0) return null;
+
+    const cols = [
+        'period_start',
+        'forecast_demand',
+        'lead_time_days',
+        'moq',
+        'order_multiple',
+        'max_capacity_per_week',
+        'service_level',
+        'input_on_hand',
+        'input_allocated',
+        'input_backorders',
+    ];
+
+    const out = [];
+    for (let r = 0; r < model.rows.length; r++) {
+        const row = {};
+        for (const c of cols) {
+            const inp = el.querySelector(`input.sp-cell-input[data-row="${r}"][data-col="${CSS.escape(c)}"]`);
+            if (inp) {
+                row[c] = inp.value;
+                continue;
+            }
+            if (model.rows[r] && Object.prototype.hasOwnProperty.call(model.rows[r], c)) {
+                row[c] = model.rows[r][c];
+            }
+        }
+        out.push(row);
+    }
+    return out;
 }
 
 document.getElementById('supplyPlanForm').addEventListener('submit', async function(e) {
@@ -902,18 +891,12 @@ document.getElementById('supplyPlanForm').addEventListener('submit', async funct
         inventory_csv: "",
         constraints_csv: "",
         policy_csv: "",
-        override_enabled: document.getElementById('override_enabled') ? document.getElementById('override_enabled').checked : false,
-        override_lead_time_days: document.getElementById('override_lead_time_days') ? document.getElementById('override_lead_time_days').value : null,
-        override_moq: document.getElementById('override_moq') ? document.getElementById('override_moq').value : null,
-        override_order_multiple: document.getElementById('override_order_multiple') ? document.getElementById('override_order_multiple').value : null,
-        override_max_capacity_per_week: document.getElementById('override_max_capacity_per_week') ? document.getElementById('override_max_capacity_per_week').value : null,
-        override_service_level: document.getElementById('override_service_level') ? document.getElementById('override_service_level').value : null,
-        override_on_hand: document.getElementById('override_on_hand') ? document.getElementById('override_on_hand').value : null,
-        override_allocated: document.getElementById('override_allocated') ? document.getElementById('override_allocated').value : null,
-        override_backorders: document.getElementById('override_backorders') ? document.getElementById('override_backorders').value : null,
-        override_forecast_csv: document.getElementById('override_forecast_csv') ? document.getElementById('override_forecast_csv').value : null,
-        inventory_column: (document.getElementById('inventory_column_select') ? document.getElementById('inventory_column_select').value : null) || null,
     };
+
+    const tableOverrides = collectSupplyOverridesFromTable();
+    if (tableOverrides && Array.isArray(tableOverrides) && tableOverrides.length) {
+        payload.override_table_rows = tableOverrides;
+    }
 
     try {
         const controller = new AbortController();
