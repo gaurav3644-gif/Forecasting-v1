@@ -11,6 +11,9 @@
             {% if has_forecast and forecast_start_month and forecast_months %}
             <span class="badge text-bg-light border">Horizon: {{ forecast_start_month }}-01 x {{ forecast_months }} months</span>
             {% endif %}
+            {% if run_session_id %}
+            <a class="btn btn-outline-secondary btn-sm" href="/insights?run_session_id={{ run_session_id }}"><span data-i18n="nav_insights">Insights</span></a>
+            {% endif %}
             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#supplyTermsModal" data-i18n-title="sp_terms_title" title="Terms">
                 <span aria-hidden="true">i</span>
             </button>

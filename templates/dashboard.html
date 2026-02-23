@@ -307,6 +307,11 @@
                               </form>
                               <form method="post" action="/history/load" class="d-inline">
                                 <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                <input type="hidden" name="target" value="insights">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></button>
+                              </form>
+                              <form method="post" action="/history/load" class="d-inline">
+                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
                                 <input type="hidden" name="target" value="supply_plan">
                                 <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
                               </form>
@@ -460,16 +465,21 @@
                           {% endif %}
                         </td>
                         <td class="text-end pe-3">
-                          <form method="post" action="/history/load" class="d-inline">
-                            <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                            <input type="hidden" name="target" value="results">
-                            <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
-                          </form>
-                          <form method="post" action="/history/load" class="d-inline">
-                            <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                            <input type="hidden" name="target" value="supply_plan">
-                            <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
-                          </form>
+                            <form method="post" action="/history/load" class="d-inline">
+                              <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                              <input type="hidden" name="target" value="results">
+                              <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                            </form>
+                            <form method="post" action="/history/load" class="d-inline">
+                              <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                              <input type="hidden" name="target" value="insights">
+                              <button type="submit" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></button>
+                            </form>
+                            <form method="post" action="/history/load" class="d-inline">
+                              <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                              <input type="hidden" name="target" value="supply_plan">
+                              <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
+                            </form>
                           <form method="post" action="/history/delete" class="d-inline js-delete-run">
                             <input type="hidden" name="run_id" value="{{ r.run_id }}">
                             <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>

@@ -190,6 +190,7 @@
       {% endif %}
       <span class="badge text-bg-light border">Grain: {{ grain|join(" · ") }}</span>
       <a href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener"><span data-i18n="results_supply_plan">Supply Plan</span></a>
+      <a href="/insights{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></a>
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal"><span data-i18n="results_ai_assistant">AI Assistant</span></button>
     </div>
   </div>

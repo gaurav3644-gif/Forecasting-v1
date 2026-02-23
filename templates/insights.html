@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}PiTensor — Insights{% endblock %}
+
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<style>
+  .card-soft {
+    border-radius: 16px;
+    border: 1px solid rgba(18,24,39,0.10);
+    background: rgba(255,255,255,0.92);
+  }
+  .kpi {
+    border-radius: 16px;
+    border: 1px solid rgba(18,24,39,0.10);
+    background: rgba(255,255,255,0.92);
+    padding: 14px 16px;
+  }
+  .kpi .label { color: rgba(18,24,39,0.65); font-size: 0.85rem; }
+  .kpi .value { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
+  .chart-wrap { border-radius: 16px; overflow: hidden; }
+  .muted { color: rgba(18,24,39,0.60); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="py-3">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-1" style="letter-spacing:-0.02em;" data-i18n="insights_title">Insights Dashboard</h2>
+      <div class="muted small" data-i18n="insights_subtitle">Key forecast + supply planning metrics for this run.</div>
+      {% if header_text %}
+        <div class="small text-muted mt-1">{{ header_text }}</div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      {% if run_session_id %}
+        <a class="btn btn-outline-secondary btn-sm" href="/results?run_session_id={{ run_session_id }}">Results</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/supply_plan?run_session_id={{ run_session_id }}">Supply Plan</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="alert alert-warning">{{ error }}</div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-4">
+      <div class="kpi">
+        <div class="label" data-i18n="insights_kpi_total_sales">Total Actual Sales</div>
+        <div class="value">{{ kpi_total_sales or "—" }}</div>
+        <div class="small text-muted">{{ kpi_sales_range or "" }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="kpi">
+        <div class="label" data-i18n="insights_kpi_top_sku">Top SKU (Actual Sales)</div>
+        <div class="value">{{ kpi_top_sku or "—" }}</div>
+        <div class="small text-muted">{{ kpi_top_sku_value or "" }}</div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="kpi">
+        <div class="label" data-i18n="insights_kpi_stockout">Total Stockout Units</div>
+        <div class="value">{{ kpi_stockout_units or "—" }}</div>
+        <div class="small text-muted">{{ kpi_stockout_hint or "" }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="card-soft p-3">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div class="fw-semibold" data-i18n="insights_sales_vs_forecast">Monthly Sales vs Forecast</div>
+          <div class="small text-muted">{{ monthly_note or "" }}</div>
+        </div>
+        <div class="chart-wrap">{{ chart_sales_vs_forecast | safe }}</div>
+      </div>
+    </div>
+    <div class="col-xl-4">
+      <div class="card-soft p-3 h-100">
+        <div class="fw-semibold mb-2" data-i18n="insights_store_share">Sales Share by Store</div>
+        <div class="chart-wrap">{{ chart_store_share | safe }}</div>
+        {% if store_share_note %}
+          <div class="small text-muted mt-2">{{ store_share_note }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card-soft p-3">
+        <div class="fw-semibold mb-2" data-i18n="insights_top_skus_sales">Highest Selling SKUs</div>
+        <div class="chart-wrap">{{ chart_top_sales_skus | safe }}</div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card-soft p-3">
+        <div class="fw-semibold mb-2" data-i18n="insights_top_skus_revenue">Highest Revenue SKUs</div>
+        {% if chart_top_revenue_skus %}
+          <div class="chart-wrap">{{ chart_top_revenue_skus | safe }}</div>
+        {% else %}
+          <div class="small text-muted">{{ revenue_unavailable }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card-soft p-3">
+        <div class="fw-semibold mb-2" data-i18n="insights_declining_skus">Top Declining SKUs</div>
+        {% if chart_declining_skus %}
+          <div class="chart-wrap">{{ chart_declining_skus | safe }}</div>
+          <div class="small text-muted mt-2">{{ decline_note or "" }}</div>
+        {% else %}
+          <div class="small text-muted">{{ decline_unavailable }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card-soft p-3">
+        <div class="fw-semibold mb-2" data-i18n="insights_stockout_skus">Stockout SKUs (Supply Plan)</div>
+        {% if chart_stockout_skus %}
+          <div class="chart-wrap">{{ chart_stockout_skus | safe }}</div>
+        {% else %}
+          <div class="small text-muted">{{ stockout_unavailable }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-12">
+      <div class="card-soft p-3">
+        <div class="fw-semibold mb-2" data-i18n="insights_overstock_skus">Overstock SKUs (Supply Plan)</div>
+        {% if chart_overstock_skus %}
+          <div class="chart-wrap">{{ chart_overstock_skus | safe }}</div>
+          <div class="small text-muted mt-2">{{ overstock_note or "" }}</div>
+        {% else %}
+          <div class="small text-muted">{{ overstock_unavailable }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

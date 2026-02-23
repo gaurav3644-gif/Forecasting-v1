@@ -47,6 +47,43 @@ app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+def _pick_col_ci(df: pd.DataFrame, candidates: list[str]) -> Optional[str]:
+    try:
+        cols = [str(c) for c in df.columns]
+    except Exception:
+        return None
+    lower_map = {c.lower(): c for c in cols}
+    for c in candidates:
+        if c in cols:
+            return c
+        if c.lower() in lower_map:
+            return lower_map[c.lower()]
+    return None
+
+def _fmt_int(n: Any) -> str:
+    try:
+        v = float(n)
+        if not pd.notna(v):
+            return "—"
+        return f"{int(round(v)):,}"
+    except Exception:
+        return "—"
+
+def _fmt_money(n: Any) -> str:
+    try:
+        v = float(n)
+        if not pd.notna(v):
+            return "—"
+        return f"{v:,.0f}"
+    except Exception:
+        return "—"
+
+def _safe_dt(s: pd.Series) -> pd.Series:
+    try:
+        return pd.to_datetime(s, errors="coerce")
+    except Exception:
+        return pd.to_datetime(pd.Series([None] * len(s)), errors="coerce")
+
 _auth_cookie_secret = (os.getenv("AUTH_COOKIE_SECRET") or "").strip()
 if not _auth_cookie_secret:
     # For local/dev use only. In production, set AUTH_COOKIE_SECRET to a strong random value.
@@ -3850,6 +3887,326 @@ async def get_results(request: Request, run_session_id: Optional[str] = None):
         "filtered_df": filtered_df
     })
 
+
+@app.get("/insights", response_class=HTMLResponse)
+async def insights_dashboard(request: Request, run_session_id: Optional[str] = None):
+    """
+    Lightweight analytics dashboard for a specific run_session_id.
+
+    Shows key metrics/charts derived deterministically from:
+      - raw uploaded sales
+      - forecast output
+      - supply plan (if present)
+    """
+    session_id = _session_id_from_request(request)
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    run = run if isinstance(run, dict) else {}
+
+    raw_df = run.get("df") if isinstance(run.get("df"), pd.DataFrame) else run.get("raw_df")
+    forecast_df = run.get("forecast_df") if isinstance(run.get("forecast_df"), pd.DataFrame) else None
+    plan_df = run.get("supply_plan_full_df") if isinstance(run.get("supply_plan_full_df"), pd.DataFrame) else None
+    if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
+        plan_df = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
+
+    if not isinstance(raw_df, pd.DataFrame) or raw_df.empty:
+        return templates.TemplateResponse(
+            "insights.html",
+            {
+                "request": request,
+                "run_session_id": rid,
+                "error": "No raw data found for this run. Upload data and run a forecast first.",
+                "header_text": None,
+                "kpi_total_sales": None,
+                "kpi_sales_range": None,
+                "kpi_top_sku": None,
+                "kpi_top_sku_value": None,
+                "kpi_stockout_units": None,
+                "kpi_stockout_hint": None,
+                "monthly_note": None,
+                "chart_sales_vs_forecast": "",
+                "chart_store_share": "",
+                "store_share_note": None,
+                "chart_top_sales_skus": "",
+                "chart_top_revenue_skus": None,
+                "revenue_unavailable": "Revenue chart unavailable (no price column found in raw data).",
+                "chart_declining_skus": None,
+                "decline_unavailable": "Declining SKUs unavailable (need at least 2 months of actuals).",
+                "decline_note": None,
+                "chart_stockout_skus": None,
+                "stockout_unavailable": "Stockout SKUs unavailable (no saved supply plan for this run).",
+                "chart_overstock_skus": None,
+                "overstock_unavailable": "Overstock SKUs unavailable (need supply plan columns ending_on_hand + target_level).",
+                "overstock_note": None,
+            },
+        )
+
+    df = raw_df.copy()
+    sku_col = _pick_col_ci(df, ["item", "sku_id", "sku", "product"])
+    store_col = _pick_col_ci(df, ["store", "location", "site"])
+    date_col = _pick_col_ci(df, ["date", "ds", "timestamp"])
+    sales_col = _pick_col_ci(df, ["sales", "actual", "qty", "quantity", "units", "demand"])
+    price_col = _pick_col_ci(df, ["price", "unit_price"])
+
+    if not date_col or not sales_col:
+        return templates.TemplateResponse(
+            "insights.html",
+            {
+                "request": request,
+                "run_session_id": rid,
+                "error": "Raw data must include a date column and a sales column.",
+                "header_text": None,
+                "kpi_total_sales": None,
+                "kpi_sales_range": None,
+                "kpi_top_sku": None,
+                "kpi_top_sku_value": None,
+                "kpi_stockout_units": None,
+                "kpi_stockout_hint": None,
+                "monthly_note": None,
+                "chart_sales_vs_forecast": "",
+                "chart_store_share": "",
+                "store_share_note": None,
+                "chart_top_sales_skus": "",
+                "chart_top_revenue_skus": None,
+                "revenue_unavailable": "Revenue chart unavailable (missing required columns).",
+                "chart_declining_skus": None,
+                "decline_unavailable": "Declining SKUs unavailable (missing required columns).",
+                "decline_note": None,
+                "chart_stockout_skus": None,
+                "stockout_unavailable": "Stockout SKUs unavailable (no saved supply plan for this run).",
+                "chart_overstock_skus": None,
+                "overstock_unavailable": "Overstock SKUs unavailable (need supply plan columns ending_on_hand + target_level).",
+                "overstock_note": None,
+            },
+        )
+
+    df[date_col] = _safe_dt(df[date_col])
+    df[sales_col] = pd.to_numeric(df[sales_col], errors="coerce").fillna(0.0)
+    if sku_col:
+        df[sku_col] = df[sku_col].astype(str)
+    if store_col:
+        df[store_col] = df[store_col].astype(str)
+    if price_col:
+        df[price_col] = pd.to_numeric(df[price_col], errors="coerce")
+
+    # KPIs
+    d_nonnull = df[date_col].dropna()
+    date_range = None
+    if not d_nonnull.empty:
+        date_range = f"{d_nonnull.min().date().isoformat()} to {d_nonnull.max().date().isoformat()}"
+    total_sales = float(df[sales_col].sum())
+
+    top_sku_label = None
+    top_sku_val = None
+    if sku_col:
+        by_sku = df.groupby(sku_col, as_index=True)[sales_col].sum().sort_values(ascending=False)
+        if not by_sku.empty:
+            top_sku_label = str(by_sku.index[0])
+            top_sku_val = float(by_sku.iloc[0])
+
+    # Supply plan KPIs (stockout)
+    stockout_units = None
+    stockout_hint = None
+    if isinstance(plan_df, pd.DataFrame) and not plan_df.empty and "stockout_qty" in plan_df.columns:
+        s = pd.to_numeric(plan_df["stockout_qty"], errors="coerce").fillna(0.0)
+        stockout_units = float(s.sum())
+        stockout_hint = "From saved supply plan."
+
+    header_bits = []
+    if run.get("uploaded_filename"):
+        header_bits.append(f"File: {run.get('uploaded_filename')}")
+    if run.get("start_month") and run.get("months"):
+        header_bits.append(f"Forecast: start {run.get('start_month')} · {run.get('months')} months")
+    header_text = " | ".join(header_bits) if header_bits else None
+
+    def _fig_html(fig: go.Figure) -> str:
+        try:
+            fig.update_layout(
+                margin=dict(l=30, r=20, t=10, b=30),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", size=13),
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            )
+        except Exception:
+            pass
+        return fig.to_html(full_html=False, include_plotlyjs=False, config={"displayModeBar": False})
+
+    # Monthly sales vs forecast
+    monthly_note = None
+    df_m = df.dropna(subset=[date_col]).copy()
+    df_m["month"] = df_m[date_col].dt.to_period("M").dt.to_timestamp()
+    m_actual = df_m.groupby("month", as_index=False)[sales_col].sum().rename(columns={sales_col: "actual"})
+    m = m_actual
+
+    if isinstance(forecast_df, pd.DataFrame) and not forecast_df.empty:
+        fc = forecast_df.copy()
+        fc_date = _pick_col_ci(fc, ["date", "ds", "timestamp"])
+        fc_val = _pick_col_ci(fc, ["forecast", "forecast_p60", "forecast_p50"])
+        if fc_date and fc_val:
+            fc[fc_date] = _safe_dt(fc[fc_date])
+            fc[fc_val] = pd.to_numeric(fc[fc_val], errors="coerce").fillna(0.0)
+            fc = fc.dropna(subset=[fc_date])
+            fc["month"] = fc[fc_date].dt.to_period("M").dt.to_timestamp()
+            m_fc = fc.groupby("month", as_index=False)[fc_val].sum().rename(columns={fc_val: "forecast"})
+            m = m.merge(m_fc, on="month", how="outer").sort_values("month")
+        else:
+            monthly_note = "Forecast columns not detected; showing actuals only."
+    else:
+        monthly_note = "No forecast loaded for this run; showing actuals only."
+
+    fig_main = go.Figure()
+    if "actual" in m.columns:
+        fig_main.add_trace(go.Scatter(x=m["month"], y=m["actual"], name="Actual", mode="lines+markers"))
+    if "forecast" in m.columns:
+        fig_main.add_trace(go.Scatter(x=m["month"], y=m["forecast"], name="Forecast", mode="lines+markers", line=dict(color="#198754")))
+    fig_main.update_layout(xaxis_title="Month", yaxis_title="Units")
+    chart_sales_vs_forecast = _fig_html(fig_main)
+
+    # Store share pie
+    chart_store_share = ""
+    store_share_note = None
+    if store_col:
+        by_store = df.groupby(store_col, as_index=False)[sales_col].sum().sort_values(sales_col, ascending=False)
+        if not by_store.empty:
+            top_n = 6
+            top = by_store.head(top_n).copy()
+            other = float(by_store[sales_col].iloc[top_n:].sum()) if by_store.shape[0] > top_n else 0.0
+            if other > 0:
+                top = pd.concat([top, pd.DataFrame([{store_col: "Other", sales_col: other}])], ignore_index=True)
+            fig_store = go.Figure(data=[go.Pie(labels=top[store_col], values=top[sales_col], hole=0.55)])
+            fig_store.update_layout(showlegend=False)
+            chart_store_share = _fig_html(fig_store)
+        else:
+            store_share_note = "No store values found."
+    else:
+        store_share_note = "No store/location column found in raw data."
+
+    # Top SKUs by sales
+    chart_top_sales_skus = ""
+    if sku_col:
+        top_sales = df.groupby(sku_col, as_index=False)[sales_col].sum().sort_values(sales_col, ascending=False).head(10)
+        fig_top = go.Figure(data=[go.Bar(x=top_sales[sales_col], y=top_sales[sku_col], orientation="h")])
+        fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
+        fig_top.update_yaxes(autorange="reversed")
+        chart_top_sales_skus = _fig_html(fig_top)
+    else:
+        # single series/no sku column
+        top_sales = df.groupby(df.index // max(1, len(df)), as_index=False)[sales_col].sum().head(1)
+        fig_top = go.Figure(data=[go.Bar(x=[total_sales], y=["ALL"], orientation="h")])
+        fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
+        chart_top_sales_skus = _fig_html(fig_top)
+
+    # Revenue SKUs (sales * price)
+    chart_top_revenue_skus = None
+    revenue_unavailable = "Revenue chart unavailable (no price column found in raw data)."
+    if sku_col and price_col and price_col in df.columns:
+        rev = df.dropna(subset=[price_col]).copy()
+        if not rev.empty:
+            rev["revenue"] = rev[sales_col] * rev[price_col]
+            top_rev = rev.groupby(sku_col, as_index=False)["revenue"].sum().sort_values("revenue", ascending=False).head(10)
+            fig_rev = go.Figure(data=[go.Bar(x=top_rev["revenue"], y=top_rev[sku_col], orientation="h", marker_color="#0d6efd")])
+            fig_rev.update_layout(xaxis_title="Revenue", yaxis_title="SKU")
+            fig_rev.update_yaxes(autorange="reversed")
+            chart_top_revenue_skus = _fig_html(fig_rev)
+        else:
+            revenue_unavailable = "Revenue chart unavailable (price column is empty)."
+
+    # Declining SKUs (last month vs previous month)
+    chart_declining_skus = None
+    decline_unavailable = "Declining SKUs unavailable (need at least 2 months of actuals)."
+    decline_note = None
+    if sku_col:
+        mm = df.dropna(subset=[date_col]).copy()
+        mm["month"] = mm[date_col].dt.to_period("M").astype(str)
+        agg = mm.groupby([sku_col, "month"], as_index=False)[sales_col].sum()
+        months = sorted(agg["month"].unique().tolist())
+        if len(months) >= 2:
+            last_m, prev_m = months[-1], months[-2]
+            last = agg[agg["month"] == last_m].set_index(sku_col)[sales_col]
+            prev = agg[agg["month"] == prev_m].set_index(sku_col)[sales_col]
+            joined = pd.DataFrame({"prev": prev, "last": last}).fillna(0.0)
+            joined["pct_change"] = joined.apply(lambda r: ((r["last"] - r["prev"]) / r["prev"] * 100.0) if r["prev"] > 0 else None, axis=1)
+            joined = joined.dropna(subset=["pct_change"])
+            joined = joined.sort_values("pct_change", ascending=True).head(10)
+            if not joined.empty:
+                fig_dec = go.Figure(data=[go.Bar(x=joined["pct_change"], y=joined.index.astype(str), orientation="h", marker_color="#dc3545")])
+                fig_dec.update_layout(xaxis_title=f"% change ({prev_m} → {last_m})", yaxis_title="SKU")
+                fig_dec.update_yaxes(autorange="reversed")
+                chart_declining_skus = _fig_html(fig_dec)
+                decline_note = "Computed from the last two months of actuals in raw data."
+
+    # Stockout SKUs from supply plan
+    chart_stockout_skus = None
+    stockout_unavailable = "Stockout SKUs unavailable (no saved supply plan for this run)."
+    if isinstance(plan_df, pd.DataFrame) and not plan_df.empty and "stockout_qty" in plan_df.columns:
+        p = plan_df.copy()
+        p["stockout_qty"] = pd.to_numeric(p["stockout_qty"], errors="coerce").fillna(0.0)
+        sku_p = _pick_col_ci(p, ["sku_id", "item", "sku"])
+        if sku_p and not p.empty:
+            by_so = p.groupby(sku_p, as_index=False)["stockout_qty"].sum().sort_values("stockout_qty", ascending=False)
+            by_so = by_so[by_so["stockout_qty"] > 0].head(10)
+            if not by_so.empty:
+                fig_so = go.Figure(data=[go.Bar(x=by_so["stockout_qty"], y=by_so[sku_p].astype(str), orientation="h", marker_color="#dc3545")])
+                fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
+                fig_so.update_yaxes(autorange="reversed")
+                chart_stockout_skus = _fig_html(fig_so)
+            else:
+                stockout_unavailable = "No stockouts found in the saved supply plan."
+
+    # Overstock SKUs from supply plan (ending_on_hand - target_level)
+    chart_overstock_skus = None
+    overstock_unavailable = "Overstock SKUs unavailable (need supply plan columns ending_on_hand + target_level)."
+    overstock_note = None
+    if isinstance(plan_df, pd.DataFrame) and not plan_df.empty and ("ending_on_hand" in plan_df.columns) and ("target_level" in plan_df.columns):
+        p = plan_df.copy()
+        p["ending_on_hand"] = pd.to_numeric(p["ending_on_hand"], errors="coerce").fillna(0.0)
+        p["target_level"] = pd.to_numeric(p["target_level"], errors="coerce").fillna(0.0)
+        p["overstock_units"] = (p["ending_on_hand"] - p["target_level"]).clip(lower=0.0)
+        sku_p = _pick_col_ci(p, ["sku_id", "item", "sku"])
+        if sku_p:
+            by_ov = p.groupby(sku_p, as_index=False)["overstock_units"].sum().sort_values("overstock_units", ascending=False).head(10)
+            by_ov = by_ov[by_ov["overstock_units"] > 0]
+            if not by_ov.empty:
+                fig_ov = go.Figure(data=[go.Bar(x=by_ov["overstock_units"], y=by_ov[sku_p].astype(str), orientation="h", marker_color="#0d6efd")])
+                fig_ov.update_layout(xaxis_title="Overstock units (sum)", yaxis_title="SKU")
+                fig_ov.update_yaxes(autorange="reversed")
+                chart_overstock_skus = _fig_html(fig_ov)
+                overstock_note = "Overstock = max(0, ending_on_hand − target_level), summed over horizon."
+            else:
+                overstock_unavailable = "No overstock detected using ending_on_hand vs target_level."
+
+    return templates.TemplateResponse(
+        "insights.html",
+        {
+            "request": request,
+            "run_session_id": rid,
+            "error": None,
+            "header_text": header_text,
+            "kpi_total_sales": _fmt_int(total_sales),
+            "kpi_sales_range": f"Date range: {date_range}" if date_range else "",
+            "kpi_top_sku": top_sku_label,
+            "kpi_top_sku_value": f"{_fmt_int(top_sku_val)} units" if top_sku_val is not None else "",
+            "kpi_stockout_units": _fmt_int(stockout_units) if stockout_units is not None else "—",
+            "kpi_stockout_hint": stockout_hint or ("No saved supply plan for this run." if not isinstance(plan_df, pd.DataFrame) or plan_df.empty else ""),
+            "monthly_note": monthly_note,
+            "chart_sales_vs_forecast": chart_sales_vs_forecast,
+            "chart_store_share": chart_store_share,
+            "store_share_note": store_share_note,
+            "chart_top_sales_skus": chart_top_sales_skus,
+            "chart_top_revenue_skus": chart_top_revenue_skus,
+            "revenue_unavailable": revenue_unavailable,
+            "chart_declining_skus": chart_declining_skus,
+            "decline_unavailable": decline_unavailable,
+            "decline_note": decline_note,
+            "chart_stockout_skus": chart_stockout_skus,
+            "stockout_unavailable": stockout_unavailable,
+            "chart_overstock_skus": chart_overstock_skus,
+            "overstock_unavailable": overstock_unavailable,
+            "overstock_note": overstock_note,
+        },
+    )
+
 @app.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request):
     # Backward compatibility: dashboard now owns history browsing.
@@ -4030,6 +4387,9 @@ async def history_load(request: Request, run_id: int = Form(...), target: str = 
         except KeyError:
             raise HTTPException(status_code=404, detail="No saved supply plan for this run.")
         return RedirectResponse(f"/supply_plan?run_session_id={quote(rid)}", status_code=303)
+
+    if str(target or "").lower() == "insights":
+        return RedirectResponse(f"/insights?run_session_id={quote(rid)}", status_code=303)
 
     return RedirectResponse(f"/results?run_session_id={quote(rid)}", status_code=303)
 
