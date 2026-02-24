@@ -70,87 +70,7 @@
   {% endif %}
 
   <div class="row g-3">
-    <div class="col-lg-5 col-xl-4">
-      <div class="card shadow-sm mb-3">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <button
-              type="button"
-              class="btn btn-outline-primary btn-sm px-3"
-              data-bs-toggle="collapse"
-              data-bs-target="#new-forecast-content"
-              aria-expanded="false"
-              aria-controls="new-forecast-content"
-            >
-              <i class="fa-solid fa-plus me-1"></i>New Forecast
-            </button>
-            <span class="text-muted small">Choose a source</span>
-          </div>
-
-          <div class="collapse" id="new-forecast-content">
-            <div class="row g-2 mb-3">
-              <div class="col-6">
-                <div class="connector-card" data-connector="database" data-label="Databases">
-                  <div class="connector-icon"><i class="fas fa-database"></i></div>
-                  <h6 class="mb-0">Databases</h6>
-                  <p>PostgreSQL, MySQL, SQL Server</p>
-                </div>
-              </div>
-              <div class="col-6">
-                <div class="connector-card" data-connector="warehouse" data-label="Cloud Warehouses">
-                  <div class="connector-icon"><i class="fas fa-cloud"></i></div>
-                  <h6 class="mb-0">Cloud Warehouses</h6>
-                  <p>Snowflake, BigQuery, Redshift</p>
-                </div>
-              </div>
-              <div class="col-6">
-                <div class="connector-card" data-connector="ecommerce" data-label="E-commerce">
-                  <div class="connector-icon"><i class="fas fa-shopping-cart"></i></div>
-                  <h6 class="mb-0">E-commerce</h6>
-                  <p>Shopify, WooCommerce, Magento</p>
-                </div>
-              </div>
-              <div class="col-6">
-                <div class="connector-card" data-connector="pos" data-label="POS Systems">
-                  <div class="connector-icon"><i class="fas fa-cash-register"></i></div>
-                  <h6 class="mb-0">POS Systems</h6>
-                  <p>Square, Toast, Clover</p>
-                </div>
-              </div>
-              <div class="col-6">
-                <div class="connector-card" data-connector="erp" data-label="ERP Systems">
-                  <div class="connector-icon"><i class="fas fa-building"></i></div>
-                  <h6 class="mb-0">ERP Systems</h6>
-                  <p>SAP, Oracle ERP, Dynamics</p>
-                </div>
-              </div>
-              <div class="col-6">
-                <div class="connector-card" id="dashboard-file-upload">
-                  <div class="connector-icon"><i class="fas fa-file-csv"></i></div>
-                  <h6 class="mb-0">File Upload</h6>
-                  <p>CSV file</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="border rounded-3 p-3 bg-light" id="dashboard-upload-box">
-              <div class="fw-semibold mb-2">Upload CSV</div>
-              <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
-                <input type="file" class="form-control" name="file" accept=".csv" required>
-                <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
-                <button type="submit" class="btn btn-primary w-100 mt-2">Continue to Forecast</button>
-              </form>
-            </div>
-
-            <div class="text-muted small mt-2">
-              Tip: connectors save credentials/config to your session today. Automated data pull can be added per connector next.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-lg-7 col-xl-8">
+    <div class="col-12">
       {% if running_forecasts and (running_forecasts|length) %}
         {% for rf in running_forecasts %}
           {% set running_meta = rf.meta %}
@@ -195,6 +115,11 @@
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="tab-runs-btn" data-bs-toggle="tab" data-bs-target="#tab-runs" type="button" role="tab" aria-controls="tab-runs" aria-selected="true">
                   All Runs
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-new-forecast-btn" data-bs-toggle="tab" data-bs-target="#tab-new-forecast" type="button" role="tab" aria-controls="tab-new-forecast" aria-selected="false">
+                  <i class="fa-solid fa-plus me-1"></i>New Forecast
                 </button>
               </li>
               <li class="nav-item" role="presentation">
@@ -288,6 +213,72 @@
                     </table>
                   </div>
                 {% endif %}
+              </div>
+
+              <div class="tab-pane fade" id="tab-new-forecast" role="tabpanel" aria-labelledby="tab-new-forecast-btn" tabindex="0">
+                <div class="p-3 d-flex align-items-center justify-content-between">
+                  <div class="fw-semibold">New Forecast</div>
+                  <div class="text-muted small">Choose a source</div>
+                </div>
+                <div class="px-3 pb-3">
+                  <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="database" data-label="Databases">
+                        <div class="connector-icon"><i class="fas fa-database"></i></div>
+                        <h6 class="mb-0">Databases</h6>
+                        <p>PostgreSQL, MySQL, SQL Server</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="warehouse" data-label="Cloud Warehouses">
+                        <div class="connector-icon"><i class="fas fa-cloud"></i></div>
+                        <h6 class="mb-0">Cloud Warehouses</h6>
+                        <p>Snowflake, BigQuery, Redshift</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="ecommerce" data-label="E-commerce">
+                        <div class="connector-icon"><i class="fas fa-shopping-cart"></i></div>
+                        <h6 class="mb-0">E-commerce</h6>
+                        <p>Shopify, WooCommerce, Magento</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="pos" data-label="POS Systems">
+                        <div class="connector-icon"><i class="fas fa-cash-register"></i></div>
+                        <h6 class="mb-0">POS Systems</h6>
+                        <p>Square, Toast, Clover</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="erp" data-label="ERP Systems">
+                        <div class="connector-icon"><i class="fas fa-building"></i></div>
+                        <h6 class="mb-0">ERP Systems</h6>
+                        <p>SAP, Oracle ERP, Dynamics</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" id="dashboard-file-upload">
+                        <div class="connector-icon"><i class="fas fa-file-csv"></i></div>
+                        <h6 class="mb-0">File Upload</h6>
+                        <p>CSV file</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="border rounded-3 p-3 bg-light" id="dashboard-upload-box">
+                    <div class="fw-semibold mb-2">Upload CSV</div>
+                    <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
+                      <input type="file" class="form-control" name="file" accept=".csv" required>
+                      <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
+                      <button type="submit" class="btn btn-primary w-100 mt-2">Continue to Forecast</button>
+                    </form>
+                  </div>
+
+                  <div class="text-muted small mt-2">
+                    Tip: connectors save credentials/config to your session today. Automated data pull can be added per connector next.
+                  </div>
+                </div>
               </div>
 
               <div class="tab-pane fade" id="tab-current" role="tabpanel" aria-labelledby="tab-current-btn">
@@ -435,73 +426,156 @@
       {% else %}
         <div class="card shadow-sm">
           <div class="card-body p-0">
-            <div class="p-3 d-flex align-items-center justify-content-between">
-              <div class="fw-semibold">Your Runs</div>
-              <div class="text-muted small">{{ runs|length }} shown</div>
-            </div>
-            {% if not runs %}
-              <div class="px-3 pb-3">
-                <div class="alert alert-light border mb-0">
-                  No saved runs yet for this account.
-                  <span class="text-muted">Runs are saved only when you are signed in and the forecast completes successfully.</span>
+            <ul class="nav nav-tabs px-3 pt-3" id="user-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="user-runs-tab" data-bs-toggle="tab" data-bs-target="#user-runs" type="button" role="tab" aria-controls="user-runs" aria-selected="true">
+                  Your Runs
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="user-new-forecast-tab" data-bs-toggle="tab" data-bs-target="#user-new-forecast" type="button" role="tab" aria-controls="user-new-forecast" aria-selected="false">
+                  <i class="fa-solid fa-plus me-1"></i>New Forecast
+                </button>
+              </li>
+            </ul>
+
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="user-runs" role="tabpanel" aria-labelledby="user-runs-tab" tabindex="0">
+                <div class="p-3 d-flex align-items-center justify-content-between">
+                  <div class="fw-semibold">Your Runs</div>
+                  <div class="text-muted small">{{ runs|length }} shown</div>
+                </div>
+                {% if not runs %}
+                  <div class="px-3 pb-3">
+                    <div class="alert alert-light border mb-0">
+                      No saved runs yet for this account.
+                      <span class="text-muted">Runs are saved only when you are signed in and the forecast completes successfully.</span>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="table-responsive">
+                    <table class="table mb-0 align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th class="ps-3">Run ID</th>
+                          <th>Created</th>
+                          <th>File</th>
+                          <th>Start</th>
+                          <th>Months</th>
+                          <th>Grain</th>
+                          <th class="text-end pe-3">Open</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for r in runs %}
+                          <tr>
+                            <td class="ps-3">{{ r.run_id }}</td>
+                            <td class="text-muted small">{{ r.created_at }}</td>
+                            <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
+                            <td class="small">{{ r.start_month or "&mdash;" | safe }}</td>
+                            <td class="small">{{ r.months or "&mdash;" | safe }}</td>
+                            <td class="small">
+                              {% if r.grain %}
+                                {{ r.grain | join(', ') if r.grain is iterable else r.grain }}
+                              {% else %}
+                                &mdash;
+                              {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                                <form method="post" action="/history/load" class="d-inline">
+                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                  <input type="hidden" name="target" value="results">
+                                  <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                                </form>
+                                <form method="post" action="/history/load" class="d-inline">
+                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                  <input type="hidden" name="target" value="insights">
+                                  <button type="submit" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></button>
+                                </form>
+                                <form method="post" action="/history/load" class="d-inline">
+                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                  <input type="hidden" name="target" value="supply_plan">
+                                  <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
+                                </form>
+                              <form method="post" action="/history/delete" class="d-inline js-delete-run">
+                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                              </form>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="tab-pane fade" id="user-new-forecast" role="tabpanel" aria-labelledby="user-new-forecast-tab" tabindex="0">
+                <div class="p-3 d-flex align-items-center justify-content-between">
+                  <div class="fw-semibold">New Forecast</div>
+                  <div class="text-muted small">Choose a source</div>
+                </div>
+                <div class="px-3 pb-3">
+                  <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="database" data-label="Databases">
+                        <div class="connector-icon"><i class="fas fa-database"></i></div>
+                        <h6 class="mb-0">Databases</h6>
+                        <p>PostgreSQL, MySQL, SQL Server</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="warehouse" data-label="Cloud Warehouses">
+                        <div class="connector-icon"><i class="fas fa-cloud"></i></div>
+                        <h6 class="mb-0">Cloud Warehouses</h6>
+                        <p>Snowflake, BigQuery, Redshift</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="ecommerce" data-label="E-commerce">
+                        <div class="connector-icon"><i class="fas fa-shopping-cart"></i></div>
+                        <h6 class="mb-0">E-commerce</h6>
+                        <p>Shopify, WooCommerce, Magento</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="pos" data-label="POS Systems">
+                        <div class="connector-icon"><i class="fas fa-cash-register"></i></div>
+                        <h6 class="mb-0">POS Systems</h6>
+                        <p>Square, Toast, Clover</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" data-connector="erp" data-label="ERP Systems">
+                        <div class="connector-icon"><i class="fas fa-building"></i></div>
+                        <h6 class="mb-0">ERP Systems</h6>
+                        <p>SAP, Oracle ERP, Dynamics</p>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-xl-3">
+                      <div class="connector-card" id="dashboard-file-upload">
+                        <div class="connector-icon"><i class="fas fa-file-csv"></i></div>
+                        <h6 class="mb-0">File Upload</h6>
+                        <p>CSV file</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="border rounded-3 p-3 bg-light" id="dashboard-upload-box">
+                    <div class="fw-semibold mb-2">Upload CSV</div>
+                    <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
+                      <input type="file" class="form-control" name="file" accept=".csv" required>
+                      <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
+                      <button type="submit" class="btn btn-primary w-100 mt-2">Continue to Forecast</button>
+                    </form>
+                  </div>
+
+                  <div class="text-muted small mt-2">
+                    Tip: connectors save credentials/config to your session today. Automated data pull can be added per connector next.
+                  </div>
                 </div>
               </div>
-            {% else %}
-              <div class="table-responsive">
-                <table class="table mb-0 align-middle">
-                  <thead class="table-light">
-                    <tr>
-                      <th class="ps-3">Run ID</th>
-                      <th>Created</th>
-                      <th>File</th>
-                      <th>Start</th>
-                      <th>Months</th>
-                      <th>Grain</th>
-                      <th class="text-end pe-3">Open</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for r in runs %}
-                      <tr>
-                        <td class="ps-3">{{ r.run_id }}</td>
-                        <td class="text-muted small">{{ r.created_at }}</td>
-                        <td class="small">{{ r.filename or "&mdash;" | safe }}</td>
-                        <td class="small">{{ r.start_month or "&mdash;" | safe }}</td>
-                        <td class="small">{{ r.months or "&mdash;" | safe }}</td>
-                        <td class="small">
-                          {% if r.grain %}
-                            {{ r.grain | join(', ') if r.grain is iterable else r.grain }}
-                          {% else %}
-                            &mdash;
-                          {% endif %}
-                        </td>
-                        <td class="text-end pe-3">
-                            <form method="post" action="/history/load" class="d-inline">
-                              <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                              <input type="hidden" name="target" value="results">
-                              <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
-                            </form>
-                            <form method="post" action="/history/load" class="d-inline">
-                              <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                              <input type="hidden" name="target" value="insights">
-                              <button type="submit" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></button>
-                            </form>
-                            <form method="post" action="/history/load" class="d-inline">
-                              <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                              <input type="hidden" name="target" value="supply_plan">
-                              <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
-                            </form>
-                          <form method="post" action="/history/delete" class="d-inline js-delete-run">
-                            <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                            <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                          </form>
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% endif %}
+            </div>
           </div>
         </div>
       {% endif %}
