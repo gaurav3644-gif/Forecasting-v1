@@ -5,6 +5,129 @@
 {% block head %}
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <style>
+  .dashboard-shell {
+    position: relative;
+    margin-top: 6px;
+    max-width: 1480px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .dashboard-hero {
+    border-radius: 22px;
+    border: 1px solid rgba(18,24,39,0.08);
+    background:
+      radial-gradient(1200px 400px at 10% 0%, rgba(67,233,123,0.22), transparent 60%),
+      radial-gradient(900px 300px at 90% 0%, rgba(56,249,215,0.18), transparent 55%),
+      linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.88));
+    box-shadow: 0 16px 50px rgba(18,24,39,0.08);
+    overflow: hidden;
+  }
+  .dashboard-hero .hero-title {
+    letter-spacing: -0.03em;
+  }
+  .dashboard-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .dashboard-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(18,24,39,0.10);
+    background: rgba(255,255,255,0.70);
+    color: rgba(18,24,39,0.75);
+    font-size: 0.82rem;
+    line-height: 1;
+    box-shadow: 0 8px 26px rgba(18,24,39,0.06);
+  }
+  .dashboard-chip .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 99px;
+    background: rgba(18,24,39,0.30);
+  }
+  .dashboard-chip.is-admin {
+    border-color: rgba(245,158,11,0.35);
+    color: rgba(120,53,15,0.95);
+    background: rgba(245,158,11,0.12);
+  }
+  .dashboard-chip.is-admin .dot {
+    background: rgba(245,158,11,0.9);
+  }
+  .dashboard-card {
+    border-radius: 18px;
+    border: 1px solid rgba(18,24,39,0.08);
+    box-shadow: 0 14px 40px rgba(18,24,39,0.07);
+    overflow: hidden;
+  }
+  .dashboard-tabs {
+    gap: 6px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(18,24,39,0.08);
+  }
+  .dashboard-tabs .nav-link {
+    border-radius: 999px !important;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid transparent;
+    color: rgba(18,24,39,0.65);
+    font-weight: 700;
+    font-size: 0.88rem;
+  }
+  .dashboard-tabs .nav-link:hover {
+    background: rgba(18,24,39,0.04);
+    border-color: rgba(18,24,39,0.08);
+    color: rgba(18,24,39,0.82);
+  }
+  .dashboard-tabs .nav-link.active {
+    background: linear-gradient(90deg, rgba(67,233,123,0.18) 0%, rgba(56,249,215,0.14) 100%);
+    border-color: rgba(67,233,123,0.30);
+    color: rgba(18,24,39,0.90);
+  }
+  .dashboard-tabs .badge {
+    border-color: rgba(18,24,39,0.12) !important;
+    background: rgba(255,255,255,0.75) !important;
+    color: rgba(18,24,39,0.75) !important;
+  }
+  .dashboard-card table.table thead th {
+    font-size: 0.82rem;
+    letter-spacing: 0.01em;
+    color: rgba(18,24,39,0.72);
+  }
+  .dashboard-card table.table tbody td {
+    font-size: 0.9rem;
+    color: rgba(18,24,39,0.80);
+  }
+  .dashboard-card table.table tbody tr:hover {
+    background: rgba(56,249,215,0.06);
+  }
+  .dashboard-card table.table tbody tr:nth-child(odd) {
+    background: rgba(18,24,39,0.015);
+  }
+  .dashboard-section-title {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .dashboard-subtle {
+    color: rgba(18,24,39,0.62);
+  }
+  .dashboard-upload {
+    border: 1px solid rgba(18,24,39,0.08);
+    border-radius: 16px;
+    background: rgba(255,255,255,0.8);
+  }
+  .dashboard-shell .progress {
+    background: rgba(18,24,39,0.10);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .dashboard-shell .progress-bar {
+    background: linear-gradient(90deg, var(--pitensor-brand-1, #43e97b) 0%, var(--pitensor-brand-2, #38f9d7) 100%);
+  }
+
   .connector-backdrop {
     position: fixed;
     inset: 0;
@@ -39,21 +162,24 @@
 {% endblock %}
 
 {% block content %}
-<div class="py-4">
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
-    <div>
-      <h2 class="mb-1" style="letter-spacing:-0.02em;" data-i18n="nav_dashboard">Dashboard</h2>
-      <div class="text-muted small">Run new forecasts and review your saved history.</div>
-    </div>
-    <div class="d-flex gap-2 align-items-center">
-      {% if is_admin %}
-        <span class="badge text-bg-warning border">Admin</span>
-      {% endif %}
-      <span class="badge text-bg-light border">History: {{ history_backend or "unknown" }}</span>
-      {% if history_info and history_info.backend == "postgres" and history_info.host %}
-        <span class="badge text-bg-light border">DB: {{ history_info.host }}</span>
-      {% endif %}
-      <a href="/" class="btn btn-outline-secondary btn-sm">Landing</a>
+<div class="py-4 dashboard-shell">
+  <div class="dashboard-hero p-4 mb-3">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+      <div>
+        <div class="small dashboard-subtle mb-1">PiTensor</div>
+        <h2 class="mb-1 hero-title" data-i18n="nav_dashboard">Dashboard</h2>
+        <div class="dashboard-subtle small">Run new forecasts and review your saved history.</div>
+      </div>
+      <div class="dashboard-meta">
+        {% if is_admin %}
+          <span class="dashboard-chip is-admin"><span class="dot" aria-hidden="true"></span>Admin</span>
+        {% endif %}
+        <span class="dashboard-chip"><span class="dot" aria-hidden="true"></span>History: {{ history_backend or "unknown" }}</span>
+        {% if history_info and history_info.backend == "postgres" and history_info.host %}
+          <span class="dashboard-chip"><span class="dot" aria-hidden="true"></span>DB: {{ history_info.host }}</span>
+        {% endif %}
+        <a href="/" class="btn btn-outline-secondary btn-sm">Landing</a>
+      </div>
     </div>
   </div>
 
@@ -75,14 +201,14 @@
         {% for rf in running_forecasts %}
           {% set running_meta = rf.meta %}
           {% set running_forecast = rf.progress %}
-        <div class="card shadow-sm border mb-3 js-running-card" data-run="{{ rf.run_session_id }}">
+        <div class="card dashboard-card mb-3 js-running-card" data-run="{{ rf.run_session_id }}">
           <div class="card-body">
             <div class="d-flex align-items-start justify-content-between gap-2">
               <div>
                 <div class="fw-semibold">Forecast running</div>
                 <div class="text-muted small">
-                  {{ (running_meta.uploaded_filename or "uploaded.csv") }} ·
-                  Start: {{ running_meta.start_month or "&mdash;" | safe }} ·
+                  {{ (running_meta.uploaded_filename or "uploaded.csv") }} &middot;
+                  Start: {{ running_meta.start_month or "&mdash;" | safe }} &middot;
                   Months: {{ running_meta.months or "&mdash;" | safe }}
                 </div>
               </div>
@@ -108,10 +234,10 @@
       {% endif %}
 
       {% if is_admin %}
-        <div class="card shadow-sm mb-3">
+        <div class="card dashboard-card mb-3">
           <div class="card-body p-0">
             {% set pending_count = (pending_users|length) if pending_users is defined and pending_users else 0 %}
-            <ul class="nav nav-tabs px-3 pt-3" id="admin-tabs" role="tablist">
+            <ul class="nav nav-pills px-3 pt-3 dashboard-tabs" id="admin-tabs" role="tablist">
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="tab-runs-btn" data-bs-toggle="tab" data-bs-target="#tab-runs" type="button" role="tab" aria-controls="tab-runs" aria-selected="true">
                   All Runs
@@ -145,7 +271,7 @@
             <div class="tab-content">
               <div class="tab-pane fade show active" id="tab-runs" role="tabpanel" aria-labelledby="tab-runs-btn">
                 <div class="p-3 d-flex align-items-center justify-content-between">
-                  <div class="fw-semibold">All Runs</div>
+                  <div class="dashboard-section-title">All Runs</div>
                   <div class="text-muted small">{{ runs|length }} shown</div>
                 </div>
                 {% if not runs %}
@@ -217,7 +343,7 @@
 
               <div class="tab-pane fade" id="tab-new-forecast" role="tabpanel" aria-labelledby="tab-new-forecast-btn" tabindex="0">
                 <div class="p-3 d-flex align-items-center justify-content-between">
-                  <div class="fw-semibold">New Forecast</div>
+                  <div class="dashboard-section-title">New Forecast</div>
                   <div class="text-muted small">Choose a source</div>
                 </div>
                 <div class="px-3 pb-3">
@@ -266,8 +392,8 @@
                     </div>
                   </div>
 
-                  <div class="border rounded-3 p-3 bg-light" id="dashboard-upload-box">
-                    <div class="fw-semibold mb-2">Upload CSV</div>
+                  <div class="p-3 dashboard-upload" id="dashboard-upload-box">
+                    <div class="dashboard-section-title mb-2">Upload CSV</div>
                     <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
                       <input type="file" class="form-control" name="file" accept=".csv" required>
                       <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
@@ -283,7 +409,7 @@
 
               <div class="tab-pane fade" id="tab-current" role="tabpanel" aria-labelledby="tab-current-btn">
                 <div class="p-3 d-flex align-items-center justify-content-between">
-                  <div class="fw-semibold">Current Users</div>
+                  <div class="dashboard-section-title">Current Users</div>
                   <div class="text-muted small">{{ (current_users|length) if current_users is defined else 0 }} users</div>
                 </div>
                 {% if not current_users %}
@@ -332,7 +458,7 @@
 
               <div class="tab-pane fade" id="tab-revoked" role="tabpanel" aria-labelledby="tab-revoked-btn">
                 <div class="p-3 d-flex align-items-center justify-content-between">
-                  <div class="fw-semibold">Revoked Users</div>
+                  <div class="dashboard-section-title">Revoked Users</div>
                   <div class="text-muted small">{{ revoked_users|length }} revoked</div>
                 </div>
                 {% if not revoked_users %}
@@ -374,7 +500,7 @@
 
               <div class="tab-pane fade" id="tab-pending" role="tabpanel" aria-labelledby="tab-pending-btn">
                 <div class="p-3 d-flex align-items-center justify-content-between">
-                  <div class="fw-semibold">Pending Users</div>
+                  <div class="dashboard-section-title">Pending Users</div>
                   <div class="text-muted small">{{ pending_count }} pending</div>
                 </div>
                 {% if not pending_users %}
@@ -424,9 +550,9 @@
           </div>
         </div>
       {% else %}
-        <div class="card shadow-sm">
+        <div class="card dashboard-card">
           <div class="card-body p-0">
-            <ul class="nav nav-tabs px-3 pt-3" id="user-tabs" role="tablist">
+            <ul class="nav nav-pills px-3 pt-3 dashboard-tabs" id="user-tabs" role="tablist">
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="user-runs-tab" data-bs-toggle="tab" data-bs-target="#user-runs" type="button" role="tab" aria-controls="user-runs" aria-selected="true">
                   Your Runs
@@ -442,7 +568,7 @@
             <div class="tab-content">
               <div class="tab-pane fade show active" id="user-runs" role="tabpanel" aria-labelledby="user-runs-tab" tabindex="0">
                 <div class="p-3 d-flex align-items-center justify-content-between">
-                  <div class="fw-semibold">Your Runs</div>
+                  <div class="dashboard-section-title">Your Runs</div>
                   <div class="text-muted small">{{ runs|length }} shown</div>
                 </div>
                 {% if not runs %}
@@ -512,7 +638,7 @@
 
               <div class="tab-pane fade" id="user-new-forecast" role="tabpanel" aria-labelledby="user-new-forecast-tab" tabindex="0">
                 <div class="p-3 d-flex align-items-center justify-content-between">
-                  <div class="fw-semibold">New Forecast</div>
+                  <div class="dashboard-section-title">New Forecast</div>
                   <div class="text-muted small">Choose a source</div>
                 </div>
                 <div class="px-3 pb-3">
@@ -561,8 +687,8 @@
                     </div>
                   </div>
 
-                  <div class="border rounded-3 p-3 bg-light" id="dashboard-upload-box">
-                    <div class="fw-semibold mb-2">Upload CSV</div>
+                  <div class="p-3 dashboard-upload" id="dashboard-upload-box">
+                    <div class="dashboard-section-title mb-2">Upload CSV</div>
                     <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
                       <input type="file" class="form-control" name="file" accept=".csv" required>
                       <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
