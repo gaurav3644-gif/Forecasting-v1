@@ -977,6 +977,7 @@ async function requestSupplyPlan({ includeTableOverrides, source } = { includeTa
         combo_key: comboKey,
         use_latest_forecast: true,
         auto_fill: true,
+        prefer_saved: isApply ? true : false,
         forecast_csv: "",
         inventory_csv: "",
         constraints_csv: "",
@@ -1197,9 +1198,25 @@ document.addEventListener('DOMContentLoaded', function() {
             setSaveEnabled(false);
         }
 
-        saveBtn.addEventListener('click', function() {
+        saveBtn.addEventListener('click', async function() {
             if (saveBtn.classList.contains('disabled') || saveBtn.getAttribute('aria-disabled') === 'true') return;
-            saveSupplyPlan({ overwrite: false });
+            if (saveBtn.dataset.busy === '1') return;
+            saveBtn.dataset.busy = '1';
+            try {
+                // If the user edited table inputs but didn't re-generate yet, regenerate once
+                // so the saved plan matches the visible inputs.
+                const comboKey = document.getElementById('combo_key') ? document.getElementById('combo_key').value : null;
+                const sameSeries = (window._piTensorSupplyLoadedComboKey !== null && window._piTensorSupplyLoadedComboKey !== undefined)
+                    ? (String(window._piTensorSupplyLoadedComboKey) === String(comboKey || ''))
+                    : false;
+                const tableOverrides = collectSupplyOverridesFromTable();
+                if (sameSeries && tableOverrides && Array.isArray(tableOverrides) && tableOverrides.length) {
+                    await requestSupplyPlan({ includeTableOverrides: true, source: 'generate' });
+                }
+                await saveSupplyPlan({ overwrite: false });
+            } finally {
+                saveBtn.dataset.busy = '0';
+            }
         });
     }
 });

@@ -5022,6 +5022,192 @@ async def api_update_plot(request: Request):
 # --- Supply Planning Endpoints ---
 from fastapi import Form
 
+def _build_supply_plan_ui(
+    plan_df: pd.DataFrame,
+    *,
+    horizon_months: int,
+    selected_combo_key: Optional[str] = None,
+    inventory_source: str = "saved",
+) -> Optional[dict[str, Any]]:
+    """
+    Build the frontend payload for the Supply Plan page:
+    - Plotly JSON (sawtooth)
+    - Table columns/rows (JSON-safe)
+    """
+    try:
+        import plotly.graph_objects as go
+        from plotly.utils import PlotlyJSONEncoder
+        import json as _json
+        import math as _math
+
+        df = plan_df.copy()
+        try:
+            if selected_combo_key and "|||" in str(selected_combo_key) and "sku_id" in df.columns and "location" in df.columns:
+                sku, loc = str(selected_combo_key).split("|||", 1)
+                df = df[(df["sku_id"].astype(str) == str(sku)) & (df["location"].astype(str) == str(loc))].copy()
+        except Exception:
+            pass
+        if "period_start" in df.columns:
+            df["period_start"] = pd.to_datetime(df["period_start"], errors="coerce")
+            df = df.dropna(subset=["period_start"])
+            df = df.sort_values("period_start")
+        df = df.head(min(int(horizon_months or 10), 36))
+        if df.empty:
+            return None
+
+        points_x: list[pd.Timestamp] = []
+        points_y: list[float] = []
+        hover: list[str] = []
+        prev_end: Optional[float] = None
+        for _, row in df.iterrows():
+            m_start = pd.to_datetime(row.get("period_start"))
+            m_end = (m_start + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
+            begin_inv = float(row.get("beginning_on_hand", 0.0) or 0.0)
+            end_inv = float(row.get("ending_on_hand", 0.0) or 0.0)
+
+            if prev_end is None:
+                points_x.append(m_start)
+                points_y.append(begin_inv)
+                hover.append(f"Month start<br>Begin inv: {begin_inv:.0f}")
+            else:
+                points_x.append(m_start)
+                points_y.append(prev_end)
+                hover.append(f"Month start<br>Prev end inv: {prev_end:.0f}")
+                points_x.append(m_start)
+                points_y.append(begin_inv)
+                hover.append(f"Month start<br>Begin inv: {begin_inv:.0f}")
+
+            points_x.append(m_end)
+            points_y.append(end_inv)
+            hover.append(
+                f"{m_start.strftime('%b %Y')}<br>"
+                f"Demand: {float(row.get('forecast_demand', 0.0) or 0.0):.0f}<br>"
+                f"Receipts: {float(row.get('receipts', 0.0) or 0.0):.0f}<br>"
+                f"Order: {float(row.get('order_qty', 0.0) or 0.0):.0f}<br>"
+                f"End inv: {end_inv:.0f}"
+            )
+            prev_end = end_inv
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=points_x,
+            y=points_y,
+            mode="lines+markers",
+            name="Projected On-hand",
+            line=dict(color="#2b6ef2", width=3),
+            marker=dict(size=7),
+            hovertext=hover,
+            hoverinfo="text",
+        ))
+
+        def _month_end(ts: pd.Timestamp) -> pd.Timestamp:
+            ts = pd.to_datetime(ts)
+            return (ts + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
+
+        def _step_xy(_df: pd.DataFrame, col: str) -> tuple[list[pd.Timestamp], list[float]]:
+            xs: list[pd.Timestamp] = []
+            ys: list[float] = []
+            for _, r in _df.iterrows():
+                m_start = pd.to_datetime(r.get("period_start"))
+                if pd.isna(m_start):
+                    continue
+                m_end = _month_end(m_start)
+                v = pd.to_numeric(r.get(col), errors="coerce")
+                v = float(v) if pd.notna(v) else float("nan")
+                xs.extend([m_start, m_end])
+                ys.extend([v, v])
+            return xs, ys
+
+        rp_x, rp_y = _step_xy(df, "reorder_point") if "reorder_point" in df.columns else ([], [])
+        ss_x, ss_y = _step_xy(df, "safety_stock") if "safety_stock" in df.columns else ([], [])
+        tl_x, tl_y = _step_xy(df, "target_level") if "target_level" in df.columns else ([], [])
+
+        if rp_x:
+            fig.add_trace(go.Scatter(x=rp_x, y=rp_y, mode="lines", name="Reorder Point", line=dict(color="#e63946", width=2, dash="dash")))
+        if ss_x:
+            fig.add_trace(go.Scatter(x=ss_x, y=ss_y, mode="lines", name="Safety Stock", line=dict(color="#6c757d", width=2, dash="dot")))
+        if tl_x:
+            fig.add_trace(go.Scatter(x=tl_x, y=tl_y, mode="lines", name="Order-up-to Target", line=dict(color="#7b2cbf", width=2, dash="dash")))
+
+        fig.update_layout(
+            title="Projected Inventory (Sawtooth)",
+            xaxis_title="Month",
+            yaxis_title="Units",
+            template="plotly_white",
+            height=420,
+            margin=dict(l=40, r=30, t=60, b=40),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        )
+
+        def _clean_plot_json(obj: object) -> object:
+            if obj is None:
+                return None
+            if isinstance(obj, (pd.Timestamp, datetime)):
+                return obj.isoformat()
+            if isinstance(obj, float):
+                return float(obj) if _math.isfinite(obj) else None
+            if isinstance(obj, int):
+                return int(obj)
+            if "numpy" in type(obj).__module__:
+                try:
+                    v = obj.item()
+                    if isinstance(v, float):
+                        return float(v) if _math.isfinite(v) else None
+                    return v
+                except Exception:
+                    return str(obj)
+            if isinstance(obj, dict):
+                return {str(k): _clean_plot_json(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_clean_plot_json(v) for v in obj]
+            return obj
+
+        plot_json = _json.dumps(_clean_plot_json(fig.to_plotly_json()), cls=PlotlyJSONEncoder)
+
+        table_df = df.copy()
+        table_df = table_df[[c for c in table_df.columns if c != "explanation"]].copy()
+        table_columns = [str(c) for c in table_df.columns]
+
+        def _json_safe(v: object) -> object:
+            try:
+                if v is None:
+                    return None
+                if isinstance(v, pd.Timestamp):
+                    return v.strftime("%Y-%m-%d")
+                if isinstance(v, datetime):
+                    return v.strftime("%Y-%m-%d")
+                if isinstance(v, float):
+                    if not pd.notna(v):
+                        return None
+                    return float(v)
+                if isinstance(v, int):
+                    return int(v)
+                if "numpy" in type(v).__module__:
+                    if pd.isna(v):
+                        return None
+                    try:
+                        return v.item()
+                    except Exception:
+                        return str(v)
+                if pd.isna(v):  # type: ignore[arg-type]
+                    return None
+                return v
+            except Exception:
+                return str(v)
+
+        table_rows = [{str(k): _json_safe(v) for k, v in r.to_dict().items()} for _, r in table_df.iterrows()]
+        head = table_df.head(min(int(horizon_months or 10), 36)).to_string(index=False)
+
+        return {
+            "head": head,
+            "plot_json": plot_json,
+            "table_columns": table_columns,
+            "table_rows": table_rows,
+            "inventory_source": str(inventory_source or "saved"),
+        }
+    except Exception:
+        return None
+
 @app.get("/supply_plan", response_class=HTMLResponse)
 async def supply_plan_page(request: Request, run_session_id: Optional[str] = None):
     logging.debug("[LOG] /supply_plan GET endpoint called")
@@ -5172,188 +5358,7 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
         }
 
     def _supply_plan_ui_from_df(plan_df: pd.DataFrame, *, horizon_months: int, selected_combo_key: Optional[str] = None) -> Optional[dict[str, Any]]:
-        try:
-            import plotly.graph_objects as go
-            from plotly.utils import PlotlyJSONEncoder
-            import json as _json
-            import math as _math
-
-            df = plan_df.copy()
-            try:
-                if selected_combo_key and "|||" in str(selected_combo_key) and "sku_id" in df.columns and "location" in df.columns:
-                    sku, loc = str(selected_combo_key).split("|||", 1)
-                    df = df[(df["sku_id"].astype(str) == str(sku)) & (df["location"].astype(str) == str(loc))].copy()
-            except Exception:
-                pass
-            if "period_start" in df.columns:
-                df["period_start"] = pd.to_datetime(df["period_start"], errors="coerce")
-                df = df.dropna(subset=["period_start"])
-                df = df.sort_values("period_start")
-            df = df.head(min(int(horizon_months or 10), 36))
-            if df.empty:
-                return None
-
-            # Sawtooth chart: inventory over time with reorder point + safety stock
-            points_x = []
-            points_y = []
-            hover = []
-            prev_end = None
-            for _, row in df.iterrows():
-                m_start = pd.to_datetime(row.get("period_start"))
-                m_end = (m_start + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
-                begin_inv = float(row.get("beginning_on_hand", 0.0) or 0.0)
-                end_inv = float(row.get("ending_on_hand", 0.0) or 0.0)
-
-                if prev_end is None:
-                    points_x.append(m_start)
-                    points_y.append(begin_inv)
-                    hover.append(f"Month start<br>Begin inv: {begin_inv:.0f}")
-                else:
-                    points_x.append(m_start)
-                    points_y.append(prev_end)
-                    hover.append(f"Month start<br>Prev end inv: {prev_end:.0f}")
-                    points_x.append(m_start)
-                    points_y.append(begin_inv)
-                    hover.append(f"Month start<br>Begin inv: {begin_inv:.0f}")
-
-                points_x.append(m_end)
-                points_y.append(end_inv)
-                hover.append(
-                    f"{m_start.strftime('%b %Y')}<br>"
-                    f"Demand: {float(row.get('forecast_demand', 0.0) or 0.0):.0f}<br>"
-                    f"Receipts: {float(row.get('receipts', 0.0) or 0.0):.0f}<br>"
-                    f"Order: {float(row.get('order_qty', 0.0) or 0.0):.0f}<br>"
-                    f"End inv: {end_inv:.0f}"
-                )
-                prev_end = end_inv
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=points_x,
-                y=points_y,
-                mode="lines+markers",
-                name="Projected On-hand",
-                line=dict(color="#2b6ef2", width=3),
-                marker=dict(size=7),
-                hovertext=hover,
-                hoverinfo="text",
-            ))
-
-            def _month_end(ts: pd.Timestamp) -> pd.Timestamp:
-                ts = pd.to_datetime(ts)
-                return (ts + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
-
-            def _step_xy(_df: pd.DataFrame, col: str) -> tuple[list[pd.Timestamp], list[float]]:
-                xs: list[pd.Timestamp] = []
-                ys: list[float] = []
-                for _, r in _df.iterrows():
-                    m_start = pd.to_datetime(r.get("period_start"))
-                    if pd.isna(m_start):
-                        continue
-                    m_end = _month_end(m_start)
-                    v = pd.to_numeric(r.get(col), errors="coerce")
-                    v = float(v) if pd.notna(v) else float("nan")
-                    xs.extend([m_start, m_end])
-                    ys.extend([v, v])
-                return xs, ys
-
-            rp_x, rp_y = _step_xy(df, "reorder_point") if "reorder_point" in df.columns else ([], [])
-            ss_x, ss_y = _step_xy(df, "safety_stock") if "safety_stock" in df.columns else ([], [])
-            tl_x, tl_y = _step_xy(df, "target_level") if "target_level" in df.columns else ([], [])
-
-            if rp_x:
-                fig.add_trace(go.Scatter(x=rp_x, y=rp_y, mode="lines", name="Reorder Point", line=dict(color="#e63946", width=2, dash="dash")))
-            if ss_x:
-                fig.add_trace(go.Scatter(x=ss_x, y=ss_y, mode="lines", name="Safety Stock", line=dict(color="#6c757d", width=2, dash="dot")))
-            if tl_x:
-                fig.add_trace(go.Scatter(x=tl_x, y=tl_y, mode="lines", name="Order-up-to Target", line=dict(color="#7b2cbf", width=2, dash="dash")))
-
-            fig.update_layout(
-                title="Projected Inventory (Sawtooth)",
-                xaxis_title="Month",
-                yaxis_title="Units",
-                template="plotly_white",
-                height=420,
-                margin=dict(l=40, r=30, t=60, b=40),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            )
-
-            def _clean_plot_json(obj: object) -> object:
-                if obj is None:
-                    return None
-                if isinstance(obj, (pd.Timestamp, datetime)):
-                    return obj.isoformat()
-                if isinstance(obj, float):
-                    return float(obj) if _math.isfinite(obj) else None
-                if isinstance(obj, int):
-                    return int(obj)
-                if "numpy" in type(obj).__module__:
-                    try:
-                        v = obj.item()
-                        if isinstance(v, float):
-                            return float(v) if _math.isfinite(v) else None
-                        return v
-                    except Exception:
-                        return str(obj)
-                if isinstance(obj, dict):
-                    return {str(k): _clean_plot_json(v) for k, v in obj.items()}
-                if isinstance(obj, (list, tuple)):
-                    return [_clean_plot_json(v) for v in obj]
-                return obj
-
-            plot_json = _json.dumps(_clean_plot_json(fig.to_plotly_json()), cls=PlotlyJSONEncoder)
-
-            table_df = df.copy()
-            # Drop internal identifiers if human-readable grain columns exist.
-            sku_col = "item" if "item" in table_df.columns else None
-            loc_col = "store" if "store" in table_df.columns else None
-            if "sku_id" in table_df.columns and sku_col and sku_col in table_df.columns:
-                table_df = table_df.drop(columns=["sku_id"])
-            if "location" in table_df.columns and loc_col and loc_col in table_df.columns:
-                table_df = table_df.drop(columns=["location"])
-
-            table_df = table_df[[c for c in table_df.columns if c != "explanation"]].copy()
-            table_columns = [str(c) for c in table_df.columns]
-
-            def _json_safe(v: object) -> object:
-                try:
-                    if v is None:
-                        return None
-                    if isinstance(v, pd.Timestamp):
-                        return v.strftime("%Y-%m-%d")
-                    if isinstance(v, datetime):
-                        return v.strftime("%Y-%m-%d")
-                    if isinstance(v, float):
-                        if not pd.notna(v):
-                            return None
-                        return float(v)
-                    if isinstance(v, int):
-                        return int(v)
-                    if "numpy" in type(v).__module__:
-                        if pd.isna(v):
-                            return None
-                        try:
-                            return v.item()
-                        except Exception:
-                            return str(v)
-                    if pd.isna(v):  # type: ignore[arg-type]
-                        return None
-                    return v
-                except Exception:
-                    return str(v)
-
-            table_rows = []
-            for _, r in table_df.iterrows():
-                table_rows.append({str(k): _json_safe(v) for k, v in r.to_dict().items()})
-
-            return {
-                "plot_json": plot_json,
-                "table_columns": table_columns,
-                "table_rows": table_rows,
-                "inventory_source": "saved",
-            }
-        except Exception:
-            return None
+        return _build_supply_plan_ui(plan_df, horizon_months=horizon_months, selected_combo_key=selected_combo_key, inventory_source="saved")
 
     initial_supply_plan_ui: Optional[dict[str, Any]] = None
     initial_planning_ui: Optional[dict[str, Any]] = None
@@ -5808,6 +5813,52 @@ async def supply_plan_submit(
             parts = combo_key.split("|||", 1)
             selected_sku = parts[0]
             selected_location = parts[1]
+
+        # Fast path: if the UI is just switching series (Apply) and a saved plan exists
+        # for this run + combo_key, return it instead of recomputing.
+        prefer_saved = bool(payload.get("prefer_saved") or False)
+        if prefer_saved and user_email and isinstance(run, dict):
+            try:
+                run_id = run.get("forecast_run_id")
+                months_val = run.get("months")
+                if run_id and months_val and isinstance(combo_key, str) and combo_key.strip():
+                    import history_store
+                    effective_email = user_email
+                    try:
+                        if _is_admin_email(user_email) and run.get("run_owner_email"):
+                            effective_email = str(run.get("run_owner_email"))
+                    except Exception:
+                        pass
+                    try:
+                        sp = history_store.load_supply_plan(str(effective_email), int(run_id), combo_key=str(combo_key))
+                    except Exception:
+                        sp = None
+                    if isinstance(sp, dict):
+                        sp_df = sp.get("supply_plan_full_df") or sp.get("supply_plan_df")
+                        if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
+                            try:
+                                horizon_m = int(months_val)
+                            except Exception:
+                                horizon_m = 12
+                            ui = _build_supply_plan_ui(
+                                sp_df,
+                                horizon_months=max(1, min(int(horizon_m or 12), 120)),
+                                selected_combo_key=str(combo_key),
+                                inventory_source="saved",
+                            )
+                            if isinstance(ui, dict) and ui.get("plot_json") and ui.get("table_columns") and ui.get("table_rows"):
+                                try:
+                                    run["supply_plan_df"] = sp.get("supply_plan_df") if isinstance(sp.get("supply_plan_df"), pd.DataFrame) else run.get("supply_plan_df")
+                                    run["supply_plan_full_df"] = sp.get("supply_plan_full_df") if isinstance(sp.get("supply_plan_full_df"), pd.DataFrame) else run.get("supply_plan_full_df")
+                                    if isinstance(sp.get("params"), dict):
+                                        run["supply_plan_params"] = sp.get("params")
+                                    run["supply_plan_ui"] = ui
+                                    run["supply_plan_last_combo_key"] = str(combo_key)
+                                except Exception:
+                                    pass
+                                return ui
+            except Exception:
+                pass
 
         override_enabled = bool(payload.get("override_enabled", False))
         override_table_rows = payload.get("override_table_rows") if isinstance(payload.get("override_table_rows"), list) else None
@@ -6493,11 +6544,12 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
                 effective_email = str(run.get("run_owner_email"))
         except Exception:
             pass
-        exists = bool(history_store.has_supply_plan_admin(forecast_run_id=int(run_id))) if is_admin else bool(history_store.has_supply_plan(str(effective_email), int(run_id)))
+        params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
+        combo_key = params.get("combo_key") if isinstance(params, dict) else None
+        exists = bool(history_store.has_supply_plan_admin(forecast_run_id=int(run_id), combo_key=str(combo_key) if combo_key is not None else None)) if is_admin else bool(history_store.has_supply_plan(str(effective_email), int(run_id), combo_key=str(combo_key) if combo_key is not None else None))
         if exists and not overwrite:
             return JSONResponse({"detail": "Supply plan already saved.", "exists": True}, status_code=409)
 
-        params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
         saved_id = history_store.save_supply_plan(
             str(effective_email),
             int(run_id),

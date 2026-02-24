@@ -472,7 +472,8 @@ def init_db() -> None:
                     CREATE TABLE IF NOT EXISTS supply_plans (
                         id SERIAL PRIMARY KEY,
                         user_id INTEGER NOT NULL REFERENCES users(id),
-                        forecast_run_id INTEGER NOT NULL UNIQUE REFERENCES forecast_runs(id),
+                        forecast_run_id INTEGER NOT NULL REFERENCES forecast_runs(id),
+                        combo_key TEXT NOT NULL DEFAULT '',
                         created_at TEXT NOT NULL,
                         params_json TEXT NOT NULL,
                         supply_export_csv_gz BYTEA NOT NULL,
@@ -480,6 +481,75 @@ def init_db() -> None:
                     )
                     """
                 )
+                # Migrate supply_plans to support multiple saved plans per forecast run (one per series/combo_key).
+                try:
+                    cur.execute("ALTER TABLE supply_plans ADD COLUMN IF NOT EXISTS combo_key TEXT NOT NULL DEFAULT ''")
+                except Exception:
+                    pass
+                try:
+                    # Best-effort backfill from params_json (older deployments had only one saved plan per run).
+                    cur.execute(
+                        """
+                        UPDATE supply_plans
+                        SET combo_key = COALESCE((NULLIF(params_json, '')::json ->> 'combo_key'), '')
+                        WHERE combo_key = ''
+                        """
+                    )
+                except Exception:
+                    pass
+                try:
+                    # Drop the old unique constraint on forecast_run_id if it exists (default name from CREATE TABLE).
+                    cur.execute("ALTER TABLE supply_plans DROP CONSTRAINT IF EXISTS supply_plans_forecast_run_id_key")
+                except Exception:
+                    pass
+                try:
+                    # Also drop any other unique constraint that is only on forecast_run_id.
+                    cur.execute(
+                        """
+                        SELECT c.conname AS conname
+                        FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        JOIN pg_namespace n ON n.oid = t.relnamespace
+                        JOIN unnest(c.conkey) WITH ORDINALITY AS ck(attnum, ord) ON TRUE
+                        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ck.attnum
+                        WHERE c.contype = 'u'
+                          AND t.relname = 'supply_plans'
+                          AND a.attname = 'forecast_run_id'
+                        """
+                    )
+                    rows = cur.fetchall() or []
+                    for r in rows:
+                        name = None
+                        try:
+                            name = r[0] if isinstance(r, (list, tuple)) else r.get("conname")
+                        except Exception:
+                            name = None
+                        if name and str(name) != "supply_plans_user_run_combo_key":
+                            try:
+                                cur.execute(f'ALTER TABLE supply_plans DROP CONSTRAINT IF EXISTS "{name}"')
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                try:
+                    # New unique constraint: (user_id, forecast_run_id, combo_key)
+                    cur.execute(
+                        """
+                        DO $$
+                        BEGIN
+                          IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint
+                            WHERE conname = 'supply_plans_user_run_combo_key'
+                          ) THEN
+                            ALTER TABLE supply_plans
+                              ADD CONSTRAINT supply_plans_user_run_combo_key
+                              UNIQUE (user_id, forecast_run_id, combo_key);
+                          END IF;
+                        END $$;
+                        """
+                    )
+                except Exception:
+                    pass
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS demo_requests (
@@ -583,16 +653,82 @@ def init_db() -> None:
                 CREATE TABLE IF NOT EXISTS supply_plans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
-                    forecast_run_id INTEGER NOT NULL UNIQUE,
+                    forecast_run_id INTEGER NOT NULL,
+                    combo_key TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
                     params_json TEXT NOT NULL,
                     supply_export_csv_gz BLOB NOT NULL,
                     supply_full_csv_gz BLOB,
+                    UNIQUE(user_id, forecast_run_id, combo_key),
                     FOREIGN KEY(user_id) REFERENCES users(id),
                     FOREIGN KEY(forecast_run_id) REFERENCES forecast_runs(id)
                 )
                 """
             )
+            # Migrate older SQLite schema (single supply plan per forecast_run_id) to v2 (per combo_key).
+            try:
+                cols = {r["name"] for r in conn.execute("PRAGMA table_info(supply_plans)").fetchall()}
+            except Exception:
+                cols = set()
+            if "combo_key" not in cols:
+                try:
+                    rows = conn.execute(
+                        "SELECT id, user_id, forecast_run_id, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz FROM supply_plans"
+                    ).fetchall()
+                except Exception:
+                    rows = []
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS supply_plans_v2 (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        forecast_run_id INTEGER NOT NULL,
+                        combo_key TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        params_json TEXT NOT NULL,
+                        supply_export_csv_gz BLOB NOT NULL,
+                        supply_full_csv_gz BLOB,
+                        UNIQUE(user_id, forecast_run_id, combo_key),
+                        FOREIGN KEY(user_id) REFERENCES users(id),
+                        FOREIGN KEY(forecast_run_id) REFERENCES forecast_runs(id)
+                    )
+                    """
+                )
+                for r in rows or []:
+                    try:
+                        params_raw = r["params_json"] if isinstance(r, dict) else r[4]
+                        params_obj = {}
+                        try:
+                            params_obj = json.loads(params_raw or "{}")
+                        except Exception:
+                            params_obj = {}
+                        combo_key = str(params_obj.get("combo_key") or "")
+                        conn.execute(
+                            """
+                            INSERT INTO supply_plans_v2(
+                                user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                            ) VALUES(?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                int(r["user_id"]) if isinstance(r, dict) else int(r[1]),
+                                int(r["forecast_run_id"]) if isinstance(r, dict) else int(r[2]),
+                                combo_key,
+                                (r["created_at"] if isinstance(r, dict) else r[3]),
+                                (r["params_json"] if isinstance(r, dict) else r[4]),
+                                (r["supply_export_csv_gz"] if isinstance(r, dict) else r[5]),
+                                (r["supply_full_csv_gz"] if isinstance(r, dict) else r[6]),
+                            ),
+                        )
+                    except Exception:
+                        continue
+                try:
+                    conn.execute("DROP TABLE supply_plans")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE supply_plans_v2 RENAME TO supply_plans")
+                except Exception:
+                    pass
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS demo_requests (
@@ -837,17 +973,17 @@ def save_supply_plan(
                 user_id = _get_or_create_user_id_pg(conn, email)
                 created_at = _utc_now_iso()
                 params_json = _json_dumps(params or {})
+                combo_key = str((params or {}).get("combo_key") or "")
                 export_blob = _df_to_csv_gz(supply_export_df)
                 full_blob = _df_to_csv_gz(supply_full_df) if isinstance(supply_full_df, pd.DataFrame) else None
                 cur = conn.cursor()
                 cur.execute(
                     """
                     INSERT INTO supply_plans(
-                        user_id, forecast_run_id, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                        user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
                     )
-                    VALUES(%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT(forecast_run_id) DO UPDATE SET
-                        user_id=excluded.user_id,
+                    VALUES(%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT(user_id, forecast_run_id, combo_key) DO UPDATE SET
                         created_at=excluded.created_at,
                         params_json=excluded.params_json,
                         supply_export_csv_gz=excluded.supply_export_csv_gz,
@@ -857,6 +993,7 @@ def save_supply_plan(
                     (
                         user_id,
                         int(forecast_run_id),
+                        combo_key,
                         created_at,
                         params_json,
                         _pg_binary(export_blob),
@@ -877,32 +1014,34 @@ def save_supply_plan(
             user_id = _get_or_create_user_id(conn, email)
             created_at = _utc_now_iso()
             params_json = _json_dumps(params or {})
+            combo_key = str((params or {}).get("combo_key") or "")
             export_blob = _df_to_csv_gz(supply_export_df)
             full_blob = _df_to_csv_gz(supply_full_df) if isinstance(supply_full_df, pd.DataFrame) else None
-            # One supply plan per forecast_run_id (latest wins).
             conn.execute(
                 """
                 INSERT INTO supply_plans(
-                    user_id, forecast_run_id, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                    user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
                 )
-                VALUES(?, ?, ?, ?, ?, ?)
-                ON CONFLICT(forecast_run_id) DO UPDATE SET
-                    user_id=excluded.user_id,
+                VALUES(?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, forecast_run_id, combo_key) DO UPDATE SET
                     created_at=excluded.created_at,
                     params_json=excluded.params_json,
                     supply_export_csv_gz=excluded.supply_export_csv_gz,
                     supply_full_csv_gz=excluded.supply_full_csv_gz
                 """,
-                (user_id, int(forecast_run_id), created_at, params_json, export_blob, full_blob),
+                (user_id, int(forecast_run_id), combo_key, created_at, params_json, export_blob, full_blob),
             )
             conn.commit()
-            row = conn.execute("SELECT id FROM supply_plans WHERE forecast_run_id = ?", (int(forecast_run_id),)).fetchone()
+            row = conn.execute(
+                "SELECT id FROM supply_plans WHERE user_id = ? AND forecast_run_id = ? AND combo_key = ?",
+                (int(user_id), int(forecast_run_id), combo_key),
+            ).fetchone()
             return int(row["id"])
         finally:
             conn.close()
 
 
-def has_supply_plan(email: str, forecast_run_id: int) -> bool:
+def has_supply_plan(email: str, forecast_run_id: int, *, combo_key: Optional[str] = None) -> bool:
     """
     True if a supply plan exists for this (user, forecast_run_id).
     This is a lightweight existence check (does not load the CSV blobs).
@@ -914,10 +1053,16 @@ def has_supply_plan(email: str, forecast_run_id: int) -> bool:
             try:
                 user_id = _get_or_create_user_id_pg(conn, email)
                 cur = conn.cursor()
-                cur.execute(
-                    "SELECT 1 FROM supply_plans WHERE user_id = %s AND forecast_run_id = %s LIMIT 1",
-                    (user_id, int(forecast_run_id)),
-                )
+                if combo_key is not None:
+                    cur.execute(
+                        "SELECT 1 FROM supply_plans WHERE user_id = %s AND forecast_run_id = %s AND combo_key = %s LIMIT 1",
+                        (user_id, int(forecast_run_id), str(combo_key)),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT 1 FROM supply_plans WHERE user_id = %s AND forecast_run_id = %s LIMIT 1",
+                        (user_id, int(forecast_run_id)),
+                    )
                 return cur.fetchone() is not None
             finally:
                 try:
@@ -928,16 +1073,22 @@ def has_supply_plan(email: str, forecast_run_id: int) -> bool:
         conn = _connect()
         try:
             user_id = _get_or_create_user_id(conn, email)
-            row = conn.execute(
-                "SELECT 1 FROM supply_plans WHERE user_id = ? AND forecast_run_id = ? LIMIT 1",
-                (user_id, int(forecast_run_id)),
-            ).fetchone()
+            if combo_key is not None:
+                row = conn.execute(
+                    "SELECT 1 FROM supply_plans WHERE user_id = ? AND forecast_run_id = ? AND combo_key = ? LIMIT 1",
+                    (user_id, int(forecast_run_id), str(combo_key)),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT 1 FROM supply_plans WHERE user_id = ? AND forecast_run_id = ? LIMIT 1",
+                    (user_id, int(forecast_run_id)),
+                ).fetchone()
             return row is not None
         finally:
             conn.close()
 
 
-def has_supply_plan_admin(*, forecast_run_id: int) -> bool:
+def has_supply_plan_admin(*, forecast_run_id: int, combo_key: Optional[str] = None) -> bool:
     """
     Admin-only: existence check by forecast_run_id regardless of owner.
     Callers must enforce authorization.
@@ -948,10 +1099,16 @@ def has_supply_plan_admin(*, forecast_run_id: int) -> bool:
             conn = _pg_connect()
             try:
                 cur = conn.cursor()
-                cur.execute(
-                    "SELECT 1 FROM supply_plans WHERE forecast_run_id = %s LIMIT 1",
-                    (int(forecast_run_id),),
-                )
+                if combo_key is not None:
+                    cur.execute(
+                        "SELECT 1 FROM supply_plans WHERE forecast_run_id = %s AND combo_key = %s LIMIT 1",
+                        (int(forecast_run_id), str(combo_key)),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT 1 FROM supply_plans WHERE forecast_run_id = %s LIMIT 1",
+                        (int(forecast_run_id),),
+                    )
                 return cur.fetchone() is not None
             finally:
                 try:
@@ -961,10 +1118,16 @@ def has_supply_plan_admin(*, forecast_run_id: int) -> bool:
 
         conn = _connect()
         try:
-            row = conn.execute(
-                "SELECT 1 FROM supply_plans WHERE forecast_run_id = ? LIMIT 1",
-                (int(forecast_run_id),),
-            ).fetchone()
+            if combo_key is not None:
+                row = conn.execute(
+                    "SELECT 1 FROM supply_plans WHERE forecast_run_id = ? AND combo_key = ? LIMIT 1",
+                    (int(forecast_run_id), str(combo_key)),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT 1 FROM supply_plans WHERE forecast_run_id = ? LIMIT 1",
+                    (int(forecast_run_id),),
+                ).fetchone()
             return row is not None
         finally:
             conn.close()
@@ -985,15 +1148,17 @@ def list_forecast_runs(email: str, limit: int = 50) -> list[dict[str, Any]]:
                         fr.created_at AS created_at,
                         fr.params_json AS params_json,
                         d.filename AS filename,
-                        CASE WHEN sp.id IS NULL THEN 0 ELSE 1 END AS has_supply_plan
+                        CASE WHEN EXISTS(
+                            SELECT 1 FROM supply_plans sp
+                            WHERE sp.user_id = %s AND sp.forecast_run_id = fr.id
+                        ) THEN 1 ELSE 0 END AS has_supply_plan
                     FROM forecast_runs fr
                     LEFT JOIN datasets d ON d.id = fr.dataset_id
-                    LEFT JOIN supply_plans sp ON sp.forecast_run_id = fr.id
                     WHERE fr.user_id = %s
                     ORDER BY fr.id DESC
                     LIMIT %s
                     """,
-                    (user_id, int(limit)),
+                    (user_id, user_id, int(limit)),
                 )
                 rows = cur.fetchall() or []
                 out: list[dict[str, Any]] = []
@@ -1032,10 +1197,12 @@ def list_forecast_runs(email: str, limit: int = 50) -> list[dict[str, Any]]:
                     fr.created_at AS created_at,
                     fr.params_json AS params_json,
                     d.filename AS filename,
-                    CASE WHEN sp.id IS NULL THEN 0 ELSE 1 END AS has_supply_plan
+                    CASE WHEN EXISTS(
+                        SELECT 1 FROM supply_plans sp
+                        WHERE sp.user_id = ? AND sp.forecast_run_id = fr.id
+                    ) THEN 1 ELSE 0 END AS has_supply_plan
                 FROM forecast_runs fr
                 LEFT JOIN datasets d ON d.id = fr.dataset_id
-                LEFT JOIN supply_plans sp ON sp.forecast_run_id = fr.id
                 WHERE fr.user_id = ?
                 ORDER BY fr.id DESC
                 LIMIT ?
@@ -1085,11 +1252,13 @@ def list_forecast_runs_admin(*, limit: int = 50) -> list[dict[str, Any]]:
                         fr.params_json AS params_json,
                         d.filename AS filename,
                         u.email AS user_email,
-                        CASE WHEN sp.id IS NULL THEN 0 ELSE 1 END AS has_supply_plan
+                        CASE WHEN EXISTS(
+                            SELECT 1 FROM supply_plans sp
+                            WHERE sp.forecast_run_id = fr.id
+                        ) THEN 1 ELSE 0 END AS has_supply_plan
                     FROM forecast_runs fr
                     INNER JOIN users u ON u.id = fr.user_id
                     LEFT JOIN datasets d ON d.id = fr.dataset_id
-                    LEFT JOIN supply_plans sp ON sp.forecast_run_id = fr.id
                     ORDER BY fr.id DESC
                     LIMIT %s
                     """,
@@ -1133,11 +1302,13 @@ def list_forecast_runs_admin(*, limit: int = 50) -> list[dict[str, Any]]:
                     fr.params_json AS params_json,
                     d.filename AS filename,
                     u.email AS user_email,
-                    CASE WHEN sp.id IS NULL THEN 0 ELSE 1 END AS has_supply_plan
+                    CASE WHEN EXISTS(
+                        SELECT 1 FROM supply_plans sp
+                        WHERE sp.forecast_run_id = fr.id
+                    ) THEN 1 ELSE 0 END AS has_supply_plan
                 FROM forecast_runs fr
                 INNER JOIN users u ON u.id = fr.user_id
                 LEFT JOIN datasets d ON d.id = fr.dataset_id
-                LEFT JOIN supply_plans sp ON sp.forecast_run_id = fr.id
                 ORDER BY fr.id DESC
                 LIMIT ?
                 """,
@@ -1343,7 +1514,7 @@ def load_forecast_run_admin(*, run_id: int) -> dict[str, Any]:
             conn.close()
 
 
-def load_supply_plan(email: str, run_id: int) -> dict[str, Any]:
+def load_supply_plan(email: str, run_id: int, *, combo_key: Optional[str] = None) -> dict[str, Any]:
     init_db()
     with _LOCK:
         if _use_postgres():
@@ -1351,20 +1522,40 @@ def load_supply_plan(email: str, run_id: int) -> dict[str, Any]:
             try:
                 user_id = _get_or_create_user_id_pg(conn, email)
                 cur = _pg_dict_cursor(conn)
-                cur.execute(
-                    """
-                    SELECT
-                        sp.forecast_run_id AS forecast_run_id,
-                        sp.created_at AS created_at,
-                        sp.params_json AS params_json,
-                        sp.supply_export_csv_gz AS supply_export_csv_gz,
-                        sp.supply_full_csv_gz AS supply_full_csv_gz
-                    FROM supply_plans sp
-                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
-                    WHERE sp.user_id = %s AND fr.id = %s
-                    """,
-                    (user_id, int(run_id)),
-                )
+                if combo_key is not None:
+                    cur.execute(
+                        """
+                        SELECT
+                            sp.forecast_run_id AS forecast_run_id,
+                            sp.created_at AS created_at,
+                            sp.params_json AS params_json,
+                            sp.supply_export_csv_gz AS supply_export_csv_gz,
+                            sp.supply_full_csv_gz AS supply_full_csv_gz
+                        FROM supply_plans sp
+                        INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                        WHERE sp.user_id = %s AND fr.id = %s AND sp.combo_key = %s
+                        ORDER BY sp.created_at DESC
+                        LIMIT 1
+                        """,
+                        (user_id, int(run_id), str(combo_key)),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT
+                            sp.forecast_run_id AS forecast_run_id,
+                            sp.created_at AS created_at,
+                            sp.params_json AS params_json,
+                            sp.supply_export_csv_gz AS supply_export_csv_gz,
+                            sp.supply_full_csv_gz AS supply_full_csv_gz
+                        FROM supply_plans sp
+                        INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                        WHERE sp.user_id = %s AND fr.id = %s
+                        ORDER BY sp.created_at DESC
+                        LIMIT 1
+                        """,
+                        (user_id, int(run_id)),
+                    )
                 row = cur.fetchone()
                 if not row:
                     raise KeyError("supply plan not found")
@@ -1389,15 +1580,30 @@ def load_supply_plan(email: str, run_id: int) -> dict[str, Any]:
         conn = _connect()
         try:
             user_id = _get_or_create_user_id(conn, email)
-            row = conn.execute(
-                """
-                SELECT sp.*
-                FROM supply_plans sp
-                INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
-                WHERE sp.user_id = ? AND fr.id = ?
-                """,
-                (user_id, int(run_id)),
-            ).fetchone()
+            if combo_key is not None:
+                row = conn.execute(
+                    """
+                    SELECT sp.*
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    WHERE sp.user_id = ? AND fr.id = ? AND sp.combo_key = ?
+                    ORDER BY sp.created_at DESC
+                    LIMIT 1
+                    """,
+                    (user_id, int(run_id), str(combo_key)),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT sp.*
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    WHERE sp.user_id = ? AND fr.id = ?
+                    ORDER BY sp.created_at DESC
+                    LIMIT 1
+                    """,
+                    (user_id, int(run_id)),
+                ).fetchone()
             if not row:
                 raise KeyError("supply plan not found")
             params = json.loads(row["params_json"] or "{}")
@@ -1414,7 +1620,7 @@ def load_supply_plan(email: str, run_id: int) -> dict[str, Any]:
             conn.close()
 
 
-def load_supply_plan_admin(*, run_id: int) -> dict[str, Any]:
+def load_supply_plan_admin(*, run_id: int, combo_key: Optional[str] = None) -> dict[str, Any]:
     """
     Admin-only: load a supply plan by forecast_run_id regardless of owner.
 
@@ -1426,22 +1632,44 @@ def load_supply_plan_admin(*, run_id: int) -> dict[str, Any]:
             conn = _pg_connect()
             try:
                 cur = _pg_dict_cursor(conn)
-                cur.execute(
-                    """
-                    SELECT
-                        sp.forecast_run_id AS forecast_run_id,
-                        sp.created_at AS created_at,
-                        sp.params_json AS params_json,
-                        sp.supply_export_csv_gz AS supply_export_csv_gz,
-                        sp.supply_full_csv_gz AS supply_full_csv_gz,
-                        u.email AS user_email
-                    FROM supply_plans sp
-                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
-                    INNER JOIN users u ON u.id = fr.user_id
-                    WHERE fr.id = %s
-                    """,
-                    (int(run_id),),
-                )
+                if combo_key is not None:
+                    cur.execute(
+                        """
+                        SELECT
+                            sp.forecast_run_id AS forecast_run_id,
+                            sp.created_at AS created_at,
+                            sp.params_json AS params_json,
+                            sp.supply_export_csv_gz AS supply_export_csv_gz,
+                            sp.supply_full_csv_gz AS supply_full_csv_gz,
+                            u.email AS user_email
+                        FROM supply_plans sp
+                        INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                        INNER JOIN users u ON u.id = fr.user_id
+                        WHERE fr.id = %s AND sp.combo_key = %s
+                        ORDER BY sp.created_at DESC
+                        LIMIT 1
+                        """,
+                        (int(run_id), str(combo_key)),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT
+                            sp.forecast_run_id AS forecast_run_id,
+                            sp.created_at AS created_at,
+                            sp.params_json AS params_json,
+                            sp.supply_export_csv_gz AS supply_export_csv_gz,
+                            sp.supply_full_csv_gz AS supply_full_csv_gz,
+                            u.email AS user_email
+                        FROM supply_plans sp
+                        INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                        INNER JOIN users u ON u.id = fr.user_id
+                        WHERE fr.id = %s
+                        ORDER BY sp.created_at DESC
+                        LIMIT 1
+                        """,
+                        (int(run_id),),
+                    )
                 row = cur.fetchone()
                 if not row:
                     raise KeyError("supply plan not found")
@@ -1466,16 +1694,32 @@ def load_supply_plan_admin(*, run_id: int) -> dict[str, Any]:
 
         conn = _connect()
         try:
-            row = conn.execute(
-                """
-                SELECT sp.*, u.email AS user_email
-                FROM supply_plans sp
-                INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
-                INNER JOIN users u ON u.id = fr.user_id
-                WHERE fr.id = ?
-                """,
-                (int(run_id),),
-            ).fetchone()
+            if combo_key is not None:
+                row = conn.execute(
+                    """
+                    SELECT sp.*, u.email AS user_email
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    INNER JOIN users u ON u.id = fr.user_id
+                    WHERE fr.id = ? AND sp.combo_key = ?
+                    ORDER BY sp.created_at DESC
+                    LIMIT 1
+                    """,
+                    (int(run_id), str(combo_key)),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT sp.*, u.email AS user_email
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    INNER JOIN users u ON u.id = fr.user_id
+                    WHERE fr.id = ?
+                    ORDER BY sp.created_at DESC
+                    LIMIT 1
+                    """,
+                    (int(run_id),),
+                ).fetchone()
             if not row:
                 raise KeyError("supply plan not found")
             params = json.loads(row["params_json"] or "{}")
