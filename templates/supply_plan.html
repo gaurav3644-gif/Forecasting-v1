@@ -434,9 +434,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (plotEl) {
                     plotEl.innerHTML = '';
                     plotEl.style.position = 'relative';
+                    plotEl.style.width = '100%';
                 }
 
-                const p = Plotly.react(plotEl, plotObj.data || [], plotObj.layout || {}, { responsive: true });
+                const dataArr = Array.isArray(plotObj && plotObj.data) ? plotObj.data : [];
+                const layoutObj = (plotObj && plotObj.layout && typeof plotObj.layout === 'object') ? plotObj.layout : {};
+                const configObj = { responsive: true, displaylogo: false };
+
+                const p = Plotly.react(plotEl, dataArr, layoutObj, configObj);
                 Promise.resolve(p).then(() => {
                     try {
                         requestAnimationFrame(() => {
@@ -444,14 +449,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     } catch (e) {}
 
-                    // If Plotly failed silently, surface a message.
+                    // If Plotly failed silently, retry with newPlot once, then surface a message.
                     try {
-                        setTimeout(() => {
-                            const hasSvg = !!(plotEl && plotEl.querySelector && plotEl.querySelector('.svg-container'));
-                            if (!hasSvg && plotEl) {
+                        setTimeout(async () => {
+                            const hasPlot = !!(plotEl && plotEl.querySelector && plotEl.querySelector('.plot-container, .svg-container, .gl-container'));
+                            if (hasPlot || !plotEl) return;
+                            try {
+                                await Plotly.newPlot(plotEl, dataArr, layoutObj, configObj);
+                                try { Plotly.Plots.resize(plotEl); } catch (e) {}
+                            } catch (e) {
+                                // ignore; we'll show final error below
+                            }
+                            const mounted = !!(plotEl.querySelector && plotEl.querySelector('.plot-container, .svg-container, .gl-container'));
+                            if (!mounted) {
                                 plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: chart did not mount (empty container).</div>`;
                             }
-                        }, 150);
+                        }, 600);
                     } catch (e) {}
                 }).catch((e) => {
                     if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${esc(e)}</div>`;

@@ -7,9 +7,17 @@
     {% block head %}{% endblock %}
     <style>
         .zoom-wrapper {
-            transform: scale(0.8);
-            transform-origin: top left;
-            width: 125%;
+            /* Prefer CSS zoom (works best with Plotly). Fallback to transform-scale for browsers without zoom support. */
+            zoom: 0.8;
+            width: 100%;
+        }
+        @supports not (zoom: 1) {
+            .zoom-wrapper {
+                transform: scale(0.8);
+                transform-origin: top left;
+                width: 125%;
+                zoom: 1;
+            }
         }
         .lang-toggle {
             display: inline-flex;
