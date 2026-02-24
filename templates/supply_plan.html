@@ -55,19 +55,22 @@
             </div>
             {% endif %}
 
-            {% if combos and combos|length > 0 %}
-            <div class="mb-3">
-                <label for="combo_search" class="form-label">Search</label>
-                <input type="text" class="form-control mb-2" id="combo_search" placeholder="Type to filter series...">
-                <label for="combo_key" class="form-label">Item / Store (series)</label>
-                <select class="form-select" id="combo_key">
-                    {% for c in combos %}
-                    <option value="{{ c.key }}" {% if selected_combo_key and c.key == selected_combo_key %}selected{% endif %}>{{ c.label }}</option>
-                    {% endfor %}
-                </select>
-                <div class="form-text">Select which item/store to simulate (sawtooth chart).</div>
-            </div>
-            {% endif %}
+             {% if combos and combos|length > 0 %}
+             <div class="mb-3">
+                 <label for="combo_search" class="form-label">Search</label>
+                 <input type="text" class="form-control mb-2" id="combo_search" placeholder="Type to filter series...">
+                 <label for="combo_key" class="form-label">Item / Store (series)</label>
+                <div class="d-flex gap-2 align-items-center">
+                    <select class="form-select" id="combo_key">
+                        {% for c in combos %}
+                        <option value="{{ c.key }}" {% if selected_combo_key and c.key == selected_combo_key %}selected{% endif %}>{{ c.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" class="btn btn-outline-primary" id="applySeriesBtn"><span data-i18n="sp_apply">Apply</span></button>
+                </div>
+                <div class="form-text">Select which item/store to simulate, then click Apply.</div>
+             </div>
+             {% endif %}
 
             <div class="alert alert-light border mb-3" style="border-color: rgba(18,24,39,0.10) !important;">
                 <div class="small text-muted mb-0">
@@ -210,6 +213,7 @@
 const runSessionId = "{{ run_session_id or '' }}";
 const initialSupplyPlanUI = {{ initial_supply_plan_ui_json }};
 const initialPlanningUI = {{ initial_planning_ui_json }};
+window._piTensorSupplyLoadedComboKey = null;
 
 document.addEventListener('DOMContentLoaded', function() {
 
@@ -297,6 +301,40 @@ document.addEventListener('DOMContentLoaded', function() {
     if (plotEl) plotEl.innerHTML = `<div class="p-3 text-muted small">${t('sp_generate_chart')}</div>`;
     const tableEl = document.getElementById('supplyPlanTable');
     if (tableEl) tableEl.innerHTML = `<div class="p-3 text-muted small">${t('sp_generate_table')}</div>`;
+
+    const applyBtn = document.getElementById('applySeriesBtn');
+
+    function resetSeriesView() {
+        window._piTensorSupplyLoadedComboKey = null;
+        window._piTensorSupplyTable = null;
+        if (plotEl) plotEl.innerHTML = `<div class="p-3 text-muted small">${t('sp_apply_chart')}</div>`;
+        if (tableEl) tableEl.innerHTML = `<div class="p-3 text-muted small">${t('sp_apply_table')}</div>`;
+        const alertEl = document.getElementById('supplyPlanAlert');
+        if (alertEl) alertEl.innerHTML = '';
+        setDownloadEnabled(false);
+        setSaveEnabled(false);
+        // Planning insights are tied to the selected series; clear on change.
+        try {
+            const out = document.getElementById('planningInsightsOutput');
+            if (out) out.style.display = 'none';
+            if (out) out.innerHTML = '';
+            if (followupChat) {
+                followupChat.innerHTML = '';
+                followupChat.style.display = 'none';
+            }
+            planningChatHistory = [];
+            setFollowupEnabled(false);
+        } catch (e) {}
+    }
+
+    if (combo) {
+        combo.addEventListener('change', resetSeriesView);
+    }
+    if (applyBtn) {
+        applyBtn.addEventListener('click', async function() {
+            await requestSupplyPlan({ includeTableOverrides: false, source: 'apply' });
+        });
+    }
 
     const esc = (s) => String(s)
         .replace(/&/g, '&amp;')
@@ -685,6 +723,9 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
         if (initialSupplyPlanUI && typeof initialSupplyPlanUI === 'object') {
             renderSupplyPlan(initialSupplyPlanUI, { message: 'Loaded saved supply plan.' });
+            if (document.getElementById('combo_key')) {
+                window._piTensorSupplyLoadedComboKey = document.getElementById('combo_key').value;
+            }
         }
     } catch (e) {}
 
@@ -870,8 +911,112 @@ function collectSupplyOverridesFromTable() {
     return out;
 }
 
+async function requestSupplyPlan({ includeTableOverrides, source } = { includeTableOverrides: false, source: 'apply' }) {
+    const isApply = String(source || '') === 'apply';
+    const btn = document.getElementById(isApply ? 'applySeriesBtn' : 'generateSupplyBtn');
+    const otherBtn = document.getElementById(isApply ? 'generateSupplyBtn' : 'applySeriesBtn');
+    const alertEl = document.getElementById('supplyPlanAlert');
+    const plotEl = document.getElementById('supplyPlanPlot');
+    const tableEl = document.getElementById('supplyPlanTable');
+
+    if (btn) btn.disabled = true;
+    if (otherBtn) otherBtn.disabled = true;
+    setDownloadEnabled(false);
+    setSaveEnabled(false);
+    if (alertEl) {
+        const action = isApply ? 'Loading…' : 'Generating…';
+        alertEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${action}`;
+    }
+
+    const comboKey = document.getElementById('combo_key') ? document.getElementById('combo_key').value : null;
+    const payload = {
+        run_session_id: runSessionId || undefined,
+        combo_key: comboKey,
+        use_latest_forecast: true,
+        auto_fill: true,
+        forecast_csv: "",
+        inventory_csv: "",
+        constraints_csv: "",
+        policy_csv: "",
+    };
+
+    if (includeTableOverrides) {
+        const tableOverrides = collectSupplyOverridesFromTable();
+        const sameSeries = (window._piTensorSupplyLoadedComboKey !== null && window._piTensorSupplyLoadedComboKey !== undefined)
+            ? (String(window._piTensorSupplyLoadedComboKey) === String(comboKey || ''))
+            : false;
+        if (sameSeries && tableOverrides && Array.isArray(tableOverrides) && tableOverrides.length) {
+            payload.override_table_rows = tableOverrides;
+        }
+    }
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+        let res;
+        try {
+            res = await fetch('/supply_plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+        } catch (fetchErr) {
+            clearTimeout(timeoutId);
+            if (fetchErr && fetchErr.name === 'AbortError') {
+                throw new Error('Request timed out. The server may be busy — please try again.');
+            }
+            throw fetchErr;
+        }
+        clearTimeout(timeoutId);
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (alertEl) alertEl.innerHTML = `<span class="text-danger">Server error: ${res.status}</span>`;
+            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Server error: ${res.status}</div>`;
+            if (tableEl) tableEl.innerHTML = ``;
+            return;
+        }
+        if (data.error) {
+            if (alertEl) alertEl.innerHTML = `<span class="text-danger">${String(data.error)}</span>`;
+            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">${String(data.error)}</div>`;
+            if (tableEl) tableEl.innerHTML = ``;
+            return;
+        }
+
+        if (alertEl) {
+            const src = data && data.inventory_source ? String(data.inventory_source) : null;
+            const srcLabel = src === 'file_upload' ? 'Uploaded CSV' : src === 'file_column' ? 'Uploaded CSV (selected column)' : src === 'derived' ? 'Derived from session context' : src === 'manual_override' ? 'Manual overrides (textbox)' : src === 'generated' ? 'Generated defaults' : src === 'saved' ? 'Saved plan' : 'Unknown';
+            alertEl.innerHTML = `Updated. <span class="badge text-bg-light border ms-2">Inventory: ${srcLabel}</span>`;
+        }
+
+        if (data.plot_json) {
+            const plotObj = JSON.parse(data.plot_json);
+            Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+        } else if (plotEl) {
+            plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
+        }
+
+        renderSupplyTable(data.table_columns, data.table_rows);
+        window._piTensorSupplyLoadedComboKey = comboKey;
+        setDownloadEnabled(true);
+        setSaveEnabled(true);
+    } catch (err) {
+        if (alertEl) alertEl.innerHTML = `<span class="text-danger">Unexpected error: ${err}</span>`;
+        if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Unexpected error: ${err}</div>`;
+        if (tableEl) tableEl.innerHTML = ``;
+        console.error('Supply plan error:', err);
+    } finally {
+        if (btn) btn.disabled = false;
+        if (otherBtn) otherBtn.disabled = false;
+    }
+}
+
 document.getElementById('supplyPlanForm').addEventListener('submit', async function(e) {
     e.preventDefault();
+    await requestSupplyPlan({ includeTableOverrides: true, source: 'generate' });
+    return;
 
     const btn = document.getElementById('generateSupplyBtn');
     const alertEl = document.getElementById('supplyPlanAlert');
