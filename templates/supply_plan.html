@@ -778,6 +778,32 @@ document.addEventListener('DOMContentLoaded', function() {
             renderPlanningInsights(initialPlanningUI, comboKey);
         }
     } catch (e) {}
+
+    // Auto-apply the currently selected series on first load so the user
+    // immediately sees the table + chart without clicking Apply.
+    try {
+        const comboEl = document.getElementById('combo_key');
+        const selected = comboEl ? String(comboEl.value || '') : '';
+        if (selected) {
+            const loaded = (window._piTensorSupplyLoadedComboKey !== null && window._piTensorSupplyLoadedComboKey !== undefined)
+                ? String(window._piTensorSupplyLoadedComboKey)
+                : '';
+            if (!loaded || loaded !== selected) {
+                setTimeout(() => {
+                    try {
+                        const curComboEl = document.getElementById('combo_key');
+                        const curSelected = curComboEl ? String(curComboEl.value || '') : '';
+                        const curLoaded = (window._piTensorSupplyLoadedComboKey !== null && window._piTensorSupplyLoadedComboKey !== undefined)
+                            ? String(window._piTensorSupplyLoadedComboKey)
+                            : '';
+                        if (curSelected && (!curLoaded || curLoaded !== curSelected)) {
+                            requestSupplyPlan({ includeTableOverrides: false, source: 'apply' });
+                        }
+                    } catch (e) {}
+                }, 120);
+            }
+        }
+    } catch (e) {}
 });
 
 function setDownloadEnabled(enabled) {
