@@ -177,28 +177,34 @@
   </div>
 </div>
 
-<div class="page-content py-4">
+<div class="page-content py-4 pt-shell">
+  <div class="pt-hero p-4 mb-3">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
     <div>
-      <h2 class="mb-1" style="letter-spacing:-0.02em;">Results</h2>
-      <div class="text-muted small">Forecast visualization, drivers, and exports.</div>
+      <div class="small pt-subtle mb-1">PiTensor</div>
+      <h2 class="mb-1 pt-hero-title" style="letter-spacing:-0.02em;">Results</h2>
+      <div class="pt-subtle small">Forecast visualization, drivers, and exports.</div>
     </div>
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-      <span class="badge text-bg-light border">{{ current_date }}</span>
+    <div class="pt-meta">
+      <span class="pt-chip"><span class="pt-dot" aria-hidden="true"></span>{{ current_date }}</span>
       {% if forecast_start_month and forecast_months %}
-      <span class="badge text-bg-light border">Horizon: {{ forecast_start_month }} ({{ forecast_months }} months)</span>
+      <span class="pt-chip"><span class="pt-dot" aria-hidden="true"></span>Horizon: {{ forecast_start_month }} ({{ forecast_months }} months)</span>
       {% endif %}
-      <span class="badge text-bg-light border">Grain: {{ grain|join(" · ") }}</span>
+      <span class="pt-chip">
+        <span class="pt-dot" aria-hidden="true"></span>
+        Grain: {% for g in grain %}{{ g }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </span>
       <a href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener"><span data-i18n="results_supply_plan">Supply Plan</span></a>
       <a href="/insights{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></a>
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal"><span data-i18n="results_ai_assistant">AI Assistant</span></button>
     </div>
   </div>
+  </div>
 
   <div class="row g-3">
     <div class="col-lg-4 col-xl-3">
       <div class="position-sticky" style="top: 1rem;">
-        <div class="card card-soft shadow-sm">
+        <div class="card card-soft pt-card">
           <div class="card-body">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <div class="fw-semibold" data-i18n="results_filters">Filters</div>
@@ -223,7 +229,7 @@
                     <div class="dropdown w-100">
                       <button class="btn filter-dropdown-btn w-100 d-flex justify-content-between align-items-center" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                         <span class="filter-dropdown-text text-truncate">Select</span>
-                        <span class="text-muted small">▼</span>
+                        <i class="fa-solid fa-chevron-down small text-muted" aria-hidden="true"></i>
                       </button>
                       <div class="dropdown-menu p-2 filter-dropdown-menu">
                         <input type="search" class="form-control form-control-sm mb-2 filter-search" placeholder="Search {{ col }}..." autocomplete="off">
@@ -300,7 +306,7 @@
     <div class="col-lg-8 col-xl-9">
       <div class="row g-3 mb-3">
         <div class="col-md-4">
-          <div class="card card-soft shadow-sm">
+          <div class="card card-soft pt-card">
             <div class="card-body">
               <div class="text-muted small">Actual Sales{% if latest_sales_month %} ({{ latest_sales_month }}){% endif %}</div>
               <div class="h5 mb-0">{{ "{:,.0f}".format(latest_sales_value) if latest_sales_value is not none else "0" }}</div>
@@ -308,7 +314,7 @@
           </div>
         </div>
         <div class="col-md-4">
-          <div class="card card-soft shadow-sm">
+          <div class="card card-soft pt-card">
             <div class="card-body">
               <div class="text-muted small">Forecast ({{ forecast_month_label or "same month" }})</div>
               <div class="h5 mb-0">{{ "{:,.0f}".format(latest_forecast_value) if latest_forecast_value is not none else "0" }}</div>
@@ -316,7 +322,7 @@
           </div>
         </div>
         <div class="col-md-4">
-          <div class="card card-soft shadow-sm">
+          <div class="card card-soft pt-card">
             <div class="card-body">
               <div class="text-muted small">Forecast accuracy</div>
               <div class="h5 mb-0">
@@ -331,7 +337,7 @@
         </div>
       </div>
 
-      <div class="card card-soft shadow-sm mb-3">
+      <div class="card card-soft pt-card mb-3">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fw-semibold">Forecast Chart</div>
@@ -380,7 +386,7 @@
         </div>
       </div>
 
-      <div class="card card-soft shadow-sm mb-3">
+      <div class="card card-soft pt-card mb-3">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-1">
             <div class="fw-semibold">Local drivers</div>
@@ -442,7 +448,7 @@
         </div>
       </div>
 
-      <div class="card card-soft shadow-sm mb-3">
+      <div class="card card-soft pt-card mb-3">
         <div class="card-body">
           <div class="fw-semibold mb-1">Directional impact</div>
           <div class="text-muted small mb-2">High/Medium/Low strength + whether a feature tends to push forecasts up or down.</div>
@@ -492,7 +498,7 @@
         </div>
       </div>
 
-      <div class="card card-soft shadow-sm">
+      <div class="card card-soft pt-card">
         <div class="card-body">
           <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>

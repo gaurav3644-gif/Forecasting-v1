@@ -109,6 +109,72 @@
             --pitensor-brand-2: #38f9d7;
         }
 
+        /* Shared "modern" UI primitives (opt-in via classes). */
+        .pt-shell {
+            max-width: 1480px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .pt-hero {
+            border-radius: 22px;
+            border: 1px solid rgba(18,24,39,0.08);
+            background:
+              radial-gradient(1200px 400px at 10% 0%, rgba(67,233,123,0.22), transparent 60%),
+              radial-gradient(900px 300px at 90% 0%, rgba(56,249,215,0.18), transparent 55%),
+              linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.88));
+            box-shadow: 0 16px 50px rgba(18,24,39,0.08);
+            overflow: hidden;
+        }
+        .pt-hero-title {
+            letter-spacing: -0.03em;
+        }
+        .pt-subtle {
+            color: rgba(18,24,39,0.62);
+        }
+        .pt-meta {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pt-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(18,24,39,0.10);
+            background: rgba(255,255,255,0.70);
+            color: rgba(18,24,39,0.75);
+            font-size: 0.82rem;
+            line-height: 1;
+            box-shadow: 0 8px 26px rgba(18,24,39,0.06);
+        }
+        .pt-chip .pt-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 99px;
+            background: rgba(18,24,39,0.30);
+        }
+        .pt-chip.pt-admin {
+            border-color: rgba(245,158,11,0.35);
+            color: rgba(120,53,15,0.95);
+            background: rgba(245,158,11,0.12);
+        }
+        .pt-chip.pt-admin .pt-dot {
+            background: rgba(245,158,11,0.9);
+        }
+        .pt-card {
+            border-radius: 18px;
+            border: 1px solid rgba(18,24,39,0.08);
+            box-shadow: 0 14px 40px rgba(18,24,39,0.07);
+            overflow: hidden;
+        }
+        .pt-section-title {
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
         /* Replace Bootstrap "primary" (blue) buttons with PiTensor gradient. */
         .btn-primary {
             background: linear-gradient(90deg, var(--pitensor-brand-1) 0%, var(--pitensor-brand-2) 100%);

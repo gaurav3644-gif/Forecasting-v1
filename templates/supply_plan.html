@@ -1,23 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="py-4">
-    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
-        <div>
-            <h2 class="mb-1" style="letter-spacing:-0.02em;" data-i18n="sp_title">Supply Plan</h2>
-            <div class="text-muted small" data-i18n="sp_subtitle">Filters + inputs on the left. Graph and table on the right.</div>
-        </div>
-        <div class="d-flex gap-2 align-items-center">
-            <span class="badge text-bg-light border">Grain: {{ grain_label }}</span>
-            {% if has_forecast and forecast_start_month and forecast_months %}
-            <span class="badge text-bg-light border">Horizon: {{ forecast_start_month }}-01 x {{ forecast_months }} months</span>
-            {% endif %}
-            {% if run_session_id %}
-            <a class="btn btn-outline-secondary btn-sm" href="/insights?run_session_id={{ run_session_id }}"><span data-i18n="nav_insights">Insights</span></a>
-            {% endif %}
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#supplyTermsModal" data-i18n-title="sp_terms_title" title="Terms">
-                <span aria-hidden="true">i</span>
-            </button>
-            
+<div class="py-4 pt-shell">
+    <div class="pt-hero p-4 mb-3">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+            <div>
+                <div class="small pt-subtle mb-1">PiTensor</div>
+                <h2 class="mb-1 pt-hero-title" style="letter-spacing:-0.02em;" data-i18n="sp_title">Supply Plan</h2>
+                <div class="pt-subtle small" data-i18n="sp_subtitle">Filters + inputs on the left. Graph and table on the right.</div>
+            </div>
+            <div class="pt-meta">
+                <span class="pt-chip"><span class="pt-dot" aria-hidden="true"></span>Grain: {{ grain_label }}</span>
+                {% if has_forecast and forecast_start_month and forecast_months %}
+                <span class="pt-chip"><span class="pt-dot" aria-hidden="true"></span>Horizon: {{ forecast_start_month }}-01 x {{ forecast_months }} months</span>
+                {% endif %}
+                {% if run_session_id %}
+                <a class="btn btn-outline-secondary btn-sm" href="/insights?run_session_id={{ run_session_id }}"><span data-i18n="nav_insights">Insights</span></a>
+                {% endif %}
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#supplyTermsModal" data-i18n-title="sp_terms_title" title="Terms">
+                    <span aria-hidden="true">i</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -91,31 +93,31 @@
         </div>
 
         <div class="col-lg-8 col-xl-9">
-            <div class="card border-0 shadow-sm mb-3" style="border-radius: 16px;">
+            <div class="card pt-card mb-3">
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                        <div class="fw-semibold">Graph</div>
+                        <div class="pt-section-title">Graph</div>
                         <div class="text-muted small">Projected on-hand + reorder lines</div>
                     </div>
                     <div id="supplyPlanPlot" style="min-height: 420px;" class="border rounded-3"></div>
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm" style="border-radius: 16px;">
+            <div class="card pt-card">
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                        <div class="fw-semibold">Table</div>
+                        <div class="pt-section-title">Table</div>
                         <div class="text-muted small">Selected series (monthly)</div>
                     </div>
                     <div id="supplyPlanTable" class="table-responsive border rounded-3" style="border-color: rgba(18,24,39,0.10) !important;"></div>
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm mt-3" id="planningInsightsCard" style="border-radius: 16px;">
+            <div class="card pt-card mt-3" id="planningInsightsCard">
                 <div class="card-body">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                         <div>
-                            <div class="fw-semibold">Planning Insights</div>
+                            <div class="pt-section-title">Planning Insights</div>
                             <div class="text-muted small">Top risks, suggested actions, and recommendations.</div>
                         </div>
                         <button type="button" class="btn btn-outline-primary btn-sm" id="run-planning-btn"><span data-i18n="sp_generate">Generate</span></button>
