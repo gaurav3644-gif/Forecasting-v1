@@ -5176,6 +5176,7 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
             import plotly.graph_objects as go
             from plotly.utils import PlotlyJSONEncoder
             import json as _json
+            import math as _math
 
             df = plan_df.copy()
             try:
@@ -5277,7 +5278,30 @@ async def supply_plan_page(request: Request, run_session_id: Optional[str] = Non
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
             )
 
-            plot_json = _json.dumps(fig.to_plotly_json(), cls=PlotlyJSONEncoder)
+            def _clean_plot_json(obj: object) -> object:
+                if obj is None:
+                    return None
+                if isinstance(obj, (pd.Timestamp, datetime)):
+                    return obj.isoformat()
+                if isinstance(obj, float):
+                    return float(obj) if _math.isfinite(obj) else None
+                if isinstance(obj, int):
+                    return int(obj)
+                if "numpy" in type(obj).__module__:
+                    try:
+                        v = obj.item()
+                        if isinstance(v, float):
+                            return float(v) if _math.isfinite(v) else None
+                        return v
+                    except Exception:
+                        return str(obj)
+                if isinstance(obj, dict):
+                    return {str(k): _clean_plot_json(v) for k, v in obj.items()}
+                if isinstance(obj, (list, tuple)):
+                    return [_clean_plot_json(v) for v in obj]
+                return obj
+
+            plot_json = _json.dumps(_clean_plot_json(fig.to_plotly_json()), cls=PlotlyJSONEncoder)
 
             table_df = df.copy()
             # Drop internal identifiers if human-readable grain columns exist.
@@ -6352,7 +6376,32 @@ async def supply_plan_submit(
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         )
 
-        fig_json = json.dumps(fig.to_plotly_json(), cls=PlotlyJSONEncoder)
+        import math as _math
+
+        def _clean_plot_json(obj: object) -> object:
+            if obj is None:
+                return None
+            if isinstance(obj, (pd.Timestamp, datetime)):
+                return obj.isoformat()
+            if isinstance(obj, float):
+                return float(obj) if _math.isfinite(obj) else None
+            if isinstance(obj, int):
+                return int(obj)
+            if "numpy" in type(obj).__module__:
+                try:
+                    v = obj.item()
+                    if isinstance(v, float):
+                        return float(v) if _math.isfinite(v) else None
+                    return v
+                except Exception:
+                    return str(obj)
+            if isinstance(obj, dict):
+                return {str(k): _clean_plot_json(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_clean_plot_json(v) for v in obj]
+            return obj
+
+        fig_json = json.dumps(_clean_plot_json(fig.to_plotly_json()), cls=PlotlyJSONEncoder)
 
         # Build a JSON-serializable table for the UI.
         table_df = plot_df_display[[c for c in plot_df_display.columns if c != "explanation"]].head(min(int(horizon_months or 10), 36)).copy()

@@ -428,7 +428,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             if (payload && payload.plot_json) {
                 const plotObj = JSON.parse(payload.plot_json);
-                Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+                if (plotEl) plotEl.innerHTML = '';
+                const p = Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+                if (p && typeof p.then === 'function') {
+                    p.catch((e) => {
+                        if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${esc(e)}</div>`;
+                    });
+                }
             } else if (plotEl) {
                 plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
             }
@@ -991,11 +997,19 @@ async function requestSupplyPlan({ includeTableOverrides, source } = { includeTa
             alertEl.innerHTML = `Updated. <span class="badge text-bg-light border ms-2">Inventory: ${srcLabel}</span>`;
         }
 
-        if (data.plot_json) {
-            const plotObj = JSON.parse(data.plot_json);
-            Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
-        } else if (plotEl) {
-            plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
+        try {
+            if (data.plot_json) {
+                const plotObj = JSON.parse(data.plot_json);
+                if (plotEl) plotEl.innerHTML = '';
+                const p = Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+                if (p && typeof p.then === 'function') {
+                    await p;
+                }
+            } else if (plotEl) {
+                plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
+            }
+        } catch (e) {
+            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${esc(e)}</div>`;
         }
 
         renderSupplyTable(data.table_columns, data.table_rows);
