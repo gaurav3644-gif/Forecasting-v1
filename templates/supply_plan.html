@@ -427,14 +427,35 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             if (payload && payload.plot_json) {
-                const plotObj = JSON.parse(payload.plot_json);
-                if (plotEl) plotEl.innerHTML = '';
-                const p = Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
-                if (p && typeof p.then === 'function') {
-                    p.catch((e) => {
-                        if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${esc(e)}</div>`;
-                    });
+                if (!window.Plotly || typeof Plotly.react !== 'function') {
+                    throw new Error('Plotly is not available on this page.');
                 }
+                const plotObj = JSON.parse(payload.plot_json);
+                if (plotEl) {
+                    plotEl.innerHTML = '';
+                    plotEl.style.position = 'relative';
+                }
+
+                const p = Plotly.react(plotEl, plotObj.data || [], plotObj.layout || {}, { responsive: true });
+                Promise.resolve(p).then(() => {
+                    try {
+                        requestAnimationFrame(() => {
+                            try { Plotly.Plots.resize(plotEl); } catch (e) {}
+                        });
+                    } catch (e) {}
+
+                    // If Plotly failed silently, surface a message.
+                    try {
+                        setTimeout(() => {
+                            const hasSvg = !!(plotEl && plotEl.querySelector && plotEl.querySelector('.svg-container'));
+                            if (!hasSvg && plotEl) {
+                                plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: chart did not mount (empty container).</div>`;
+                            }
+                        }, 150);
+                    } catch (e) {}
+                }).catch((e) => {
+                    if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${esc(e)}</div>`;
+                });
             } else if (plotEl) {
                 plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
             }
