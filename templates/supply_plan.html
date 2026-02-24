@@ -444,6 +444,9 @@ document.addEventListener('DOMContentLoaded', function() {
         renderSupplyTable(payload ? payload.table_columns : null, payload ? payload.table_rows : null);
     }
 
+    // Expose for other handlers (Apply/Generate) that run outside this closure.
+    window._piTensorRenderSupplyPlan = renderSupplyPlan;
+
     
 
     function addPlanningChat(text, who) {
@@ -991,28 +994,20 @@ async function requestSupplyPlan({ includeTableOverrides, source } = { includeTa
             return;
         }
 
-        if (alertEl) {
-            const src = data && data.inventory_source ? String(data.inventory_source) : null;
-            const srcLabel = src === 'file_upload' ? 'Uploaded CSV' : src === 'file_column' ? 'Uploaded CSV (selected column)' : src === 'derived' ? 'Derived from session context' : src === 'manual_override' ? 'Manual overrides (textbox)' : src === 'generated' ? 'Generated defaults' : src === 'saved' ? 'Saved plan' : 'Unknown';
-            alertEl.innerHTML = `Updated. <span class="badge text-bg-light border ms-2">Inventory: ${srcLabel}</span>`;
-        }
-
+        // Use the same renderer used on page load to avoid Plotly edge cases.
         try {
-            if (data.plot_json) {
-                const plotObj = JSON.parse(data.plot_json);
-                if (plotEl) plotEl.innerHTML = '';
-                const p = Plotly.react('supplyPlanPlot', plotObj.data || [], plotObj.layout || {}, { responsive: true });
-                if (p && typeof p.then === 'function') {
-                    await p;
-                }
-            } else if (plotEl) {
-                plotEl.innerHTML = `<div class="p-3 text-muted small">No plot returned.</div>`;
+            if (typeof window._piTensorRenderSupplyPlan === 'function') {
+                window._piTensorRenderSupplyPlan(data, { message: 'Updated.' });
+            } else {
+                // Fallback: still try to render table.
+                renderSupplyTable(data.table_columns, data.table_rows);
+                if (plotEl) plotEl.innerHTML = `<div class="p-3 text-muted small">Chart renderer not initialized yet. Please refresh the page.</div>`;
             }
         } catch (e) {
-            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${esc(e)}</div>`;
+            renderSupplyTable(data.table_columns, data.table_rows);
+            if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Plot render error: ${String(e)}</div>`;
         }
 
-        renderSupplyTable(data.table_columns, data.table_rows);
         window._piTensorSupplyLoadedComboKey = comboKey;
         setDownloadEnabled(true);
         setSaveEnabled(true);
