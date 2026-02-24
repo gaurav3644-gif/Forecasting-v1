@@ -1158,6 +1158,7 @@ async function saveSupplyPlan({ overwrite } = { overwrite: false }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 run_session_id: runSessionId || undefined,
+                combo_key: document.getElementById('combo_key') ? document.getElementById('combo_key').value : null,
                 overwrite: !!overwrite,
             }),
         });

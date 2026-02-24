@@ -1694,31 +1694,28 @@ def load_supply_plan_admin(*, run_id: int, combo_key: Optional[str] = None) -> d
 
         conn = _connect()
         try:
+            user_id = _get_or_create_user_id(conn, email)
             if combo_key is not None:
                 row = conn.execute(
                     """
-                    SELECT sp.*, u.email AS user_email
+                    SELECT sp.*
                     FROM supply_plans sp
-                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
-                    INNER JOIN users u ON u.id = fr.user_id
-                    WHERE fr.id = ? AND sp.combo_key = ?
+                    WHERE sp.user_id = ? AND sp.forecast_run_id = ? AND sp.combo_key = ?
                     ORDER BY sp.created_at DESC
                     LIMIT 1
                     """,
-                    (int(run_id), str(combo_key)),
+                    (int(user_id), int(run_id), str(combo_key)),
                 ).fetchone()
             else:
                 row = conn.execute(
                     """
-                    SELECT sp.*, u.email AS user_email
+                    SELECT sp.*
                     FROM supply_plans sp
-                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
-                    INNER JOIN users u ON u.id = fr.user_id
-                    WHERE fr.id = ?
+                    WHERE sp.user_id = ? AND sp.forecast_run_id = ?
                     ORDER BY sp.created_at DESC
                     LIMIT 1
                     """,
-                    (int(run_id),),
+                    (int(user_id), int(run_id)),
                 ).fetchone()
             if not row:
                 raise KeyError("supply plan not found")
@@ -1728,7 +1725,7 @@ def load_supply_plan_admin(*, run_id: int, combo_key: Optional[str] = None) -> d
             return {
                 "forecast_run_id": int(row["forecast_run_id"]),
                 "created_at": row["created_at"],
-                "user_email": row["user_email"],
+                "user_email": str(email),
                 "params": params,
                 "supply_plan_df": export_df,
                 "supply_plan_full_df": full_df,

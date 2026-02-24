@@ -5834,7 +5834,13 @@ async def supply_plan_submit(
                     except Exception:
                         sp = None
                     if isinstance(sp, dict):
-                        sp_df = sp.get("supply_plan_full_df") or sp.get("supply_plan_df")
+                        sp_full_df = sp.get("supply_plan_full_df")
+                        sp_export_df = sp.get("supply_plan_df")
+                        sp_df = None
+                        if isinstance(sp_full_df, pd.DataFrame) and not sp_full_df.empty:
+                            sp_df = sp_full_df
+                        elif isinstance(sp_export_df, pd.DataFrame) and not sp_export_df.empty:
+                            sp_df = sp_export_df
                         if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
                             try:
                                 horizon_m = int(months_val)
@@ -6239,6 +6245,18 @@ async def supply_plan_submit(
             run["supply_plan_df"] = supply_plan_export
             # Keep a full copy for downstream analysis (risks/actions/assistant context).
             run["supply_plan_full_df"] = supply_plan.copy()
+            # Always store params so /supply_plan/save can persist the correct series even if
+            # background_tasks is not available (or fails).
+            try:
+                run["supply_plan_params"] = {
+                    "combo_key": payload.get("combo_key"),
+                    "start_date": start_date_str,
+                    "months": int(horizon_months or 0) or None,
+                    "override_enabled": bool(override_enabled),
+                    "inventory_column": payload.get("inventory_column"),
+                }
+            except Exception:
+                pass
 
         # Persist supply plan history in background (best-effort, non-blocking).
         if user_email and background_tasks:
@@ -6254,9 +6272,9 @@ async def supply_plan_submit(
                         pass
                     plan_params = {
                         "combo_key": payload.get("combo_key"),
-                        "start_date": payload.get("start_date"),
-                        "months": payload.get("months"),
-                        "override_enabled": bool(payload.get("override_enabled") or False),
+                        "start_date": start_date_str,
+                        "months": int(horizon_months or 0) or None,
+                        "override_enabled": bool(override_enabled),
                         "inventory_column": payload.get("inventory_column"),
                     }
                     try:
@@ -6545,8 +6563,33 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
         except Exception:
             pass
         params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
-        combo_key = params.get("combo_key") if isinstance(params, dict) else None
-        exists = bool(history_store.has_supply_plan_admin(forecast_run_id=int(run_id), combo_key=str(combo_key) if combo_key is not None else None)) if is_admin else bool(history_store.has_supply_plan(str(effective_email), int(run_id), combo_key=str(combo_key) if combo_key is not None else None))
+        payload_combo_key = payload.get("combo_key") if isinstance(payload, dict) else None
+        if isinstance(payload_combo_key, str):
+            payload_combo_key = payload_combo_key.strip()
+        combo_key = (
+            str(payload_combo_key)
+            if isinstance(payload_combo_key, str) and payload_combo_key
+            else (params.get("combo_key") if isinstance(params, dict) else None)
+            or run.get("supply_plan_last_combo_key")
+        )
+        if not combo_key or not str(combo_key).strip():
+            raise HTTPException(status_code=400, detail="Missing combo_key. Click Apply/Generate for a series, then Save.")
+
+        last_combo = run.get("supply_plan_last_combo_key")
+        if last_combo and str(last_combo) != str(combo_key):
+            raise HTTPException(
+                status_code=400,
+                detail="The loaded supply plan does not match the selected series. Click Apply/Generate for this series, then Save.",
+            )
+
+        params = dict(params or {})
+        params["combo_key"] = str(combo_key)
+
+        exists = (
+            bool(history_store.has_supply_plan_admin(forecast_run_id=int(run_id), combo_key=str(combo_key)))
+            if is_admin
+            else bool(history_store.has_supply_plan(str(effective_email), int(run_id), combo_key=str(combo_key)))
+        )
         if exists and not overwrite:
             return JSONResponse({"detail": "Supply plan already saved.", "exists": True}, status_code=409)
 
@@ -6560,6 +6603,7 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
         try:
             run["supply_plan_saved_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             run["supply_plan_saved_id"] = int(saved_id)
+            run["supply_plan_saved_combo_key"] = str(combo_key)
         except Exception:
             pass
         return {"ok": True, "saved_id": int(saved_id), "overwrote": bool(exists)}
