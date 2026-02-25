@@ -6633,11 +6633,42 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
 # Download endpoint for supply plan
 @app.get("/download_supply_plan")
 async def download_supply_plan(request: Request, run_session_id: Optional[str] = None):
+    import history_store
+
     session_id = _session_id_from_request(request)
     run, _ = _get_run_state(session_id, run_session_id, create=False)
     supply_plan: Optional[pd.DataFrame] = None
     user_email = _get_user_email(request)
     is_admin = _is_admin_email(user_email)
+    effective_email = user_email
+    try:
+        if is_admin and isinstance(run, dict) and run.get("run_owner_email"):
+            effective_email = str(run.get("run_owner_email"))
+    except Exception:
+        effective_email = user_email
+
+    saved_all_df: Optional[pd.DataFrame] = None
+    saved_all_series_n: Optional[int] = None
+    try:
+        frid_any = run.get("forecast_run_id") if isinstance(run, dict) else None
+        if frid_any is None and isinstance(run, dict):
+            frid_any = run.get("run_id")
+        if effective_email and frid_any is not None:
+            saved_rows = history_store.list_supply_plans(str(effective_email), int(frid_any), include_full=False)
+            dfs = [r.get("supply_plan_df") for r in saved_rows if isinstance(r, dict)]
+            dfs = [d for d in dfs if isinstance(d, pd.DataFrame) and not d.empty]
+            if dfs:
+                saved_all_df = pd.concat(dfs, ignore_index=True)
+                try:
+                    series_cols = [c for c in ["sku_id", "location"] if c in saved_all_df.columns]
+                    if len(series_cols) < 2:
+                        series_cols = [c for c in ["item", "store"] if c in saved_all_df.columns]
+                    saved_all_series_n = saved_all_df[series_cols].drop_duplicates().shape[0] if len(series_cols) >= 2 else None
+                except Exception:
+                    saved_all_series_n = None
+    except Exception:
+        saved_all_df = None
+        saved_all_series_n = None
 
     def _stable_seed(value: str) -> int:
         import hashlib as _hashlib
@@ -6877,9 +6908,61 @@ async def download_supply_plan(request: Request, run_session_id: Optional[str] =
                 export_df = export_df.drop(columns=["location"])
 
         supply_plan = export_df
+
+        # Overlay any per-series saved supply plans (user may have saved multiple combos with edits).
+        if isinstance(saved_all_df, pd.DataFrame) and not saved_all_df.empty and isinstance(supply_plan, pd.DataFrame) and not supply_plan.empty:
+            try:
+                key_cols: list[str] = []
+                if isinstance(sku_col, str) and sku_col and sku_col in supply_plan.columns:
+                    key_cols.append(sku_col)
+                if isinstance(loc_col, str) and loc_col and loc_col in supply_plan.columns:
+                    key_cols.append(loc_col)
+                if isinstance(extra_cols, list):
+                    for c in extra_cols:
+                        if isinstance(c, str) and c and c in supply_plan.columns and c not in key_cols:
+                            key_cols.append(c)
+                if not key_cols:
+                    for c in ["item", "store"]:
+                        if c in supply_plan.columns and c not in key_cols:
+                            key_cols.append(c)
+                if "period_start" in supply_plan.columns:
+                    key_cols.append("period_start")
+
+                if key_cols and all(c in saved_all_df.columns for c in key_cols):
+                    base = supply_plan.copy()
+                    saved = saved_all_df.copy()
+                    if "period_start" in key_cols:
+                        base["period_start"] = pd.to_datetime(base["period_start"], errors="coerce").dt.strftime("%Y-%m-%d")
+                        saved["period_start"] = pd.to_datetime(saved["period_start"], errors="coerce").dt.strftime("%Y-%m-%d")
+                    for c in [x for x in key_cols if x != "period_start"]:
+                        base[c] = base[c].astype(str)
+                        saved[c] = saved[c].astype(str)
+
+                    saved_keys = saved[key_cols].drop_duplicates()
+                    base_no_saved = base.merge(saved_keys, on=key_cols, how="left", indicator=True)
+                    base_no_saved = base_no_saved[base_no_saved["_merge"] == "left_only"].drop(columns=["_merge"])
+
+                    all_cols = list(dict.fromkeys(list(base_no_saved.columns) + list(saved.columns)))
+                    for c in all_cols:
+                        if c not in base_no_saved.columns:
+                            base_no_saved[c] = pd.NA
+                        if c not in saved.columns:
+                            saved[c] = pd.NA
+                    combined = pd.concat([base_no_saved[all_cols], saved[all_cols]], ignore_index=True)
+
+                    if "period_start" in combined.columns:
+                        combined["__ps"] = pd.to_datetime(combined["period_start"], errors="coerce")
+                        sort_cols = [c for c in key_cols if c != "period_start" and c in combined.columns] + ["__ps"]
+                        combined = combined.sort_values(sort_cols).drop(columns=["__ps"])
+
+                    supply_plan = combined
+            except Exception as e:
+                logging.warning(f"[SUPPLY_PLAN] Failed to overlay saved series into CSV export: {e}")
     except Exception as e:
         logging.warning(f"[SUPPLY_PLAN] Full export failed; falling back to selected series export: {e}")
-        if isinstance(run, dict):
+        if isinstance(saved_all_df, pd.DataFrame) and not saved_all_df.empty:
+            supply_plan = saved_all_df
+        elif isinstance(run, dict):
             supply_plan = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
 
     if supply_plan is None or supply_plan.empty:
@@ -6889,7 +6972,7 @@ async def download_supply_plan(request: Request, run_session_id: Optional[str] =
         if len(series_cols) < 2:
             series_cols = [c for c in ["item", "store"] if c in supply_plan.columns]
         series_n = supply_plan[series_cols].drop_duplicates().shape[0] if len(series_cols) >= 2 else None
-        logging.info(f"[SUPPLY_PLAN] Exporting CSV rows={len(supply_plan)} series={series_n}")
+        logging.info(f"[SUPPLY_PLAN] Exporting CSV rows={len(supply_plan)} series={series_n} saved_series={saved_all_series_n}")
     except Exception:
         pass
     stream = io.StringIO()

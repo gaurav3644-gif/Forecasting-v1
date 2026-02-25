@@ -1133,6 +1133,136 @@ def has_supply_plan_admin(*, forecast_run_id: int, combo_key: Optional[str] = No
             conn.close()
 
 
+def list_supply_plans(email: str, forecast_run_id: int, *, include_full: bool = False) -> list[dict[str, Any]]:
+    """
+    List all saved supply plans for a forecast run for a given user.
+
+    Returns one entry per combo_key (the table enforces uniqueness on (user_id, forecast_run_id, combo_key)).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                user_id = _get_or_create_user_id_pg(conn, email)
+                cur = _pg_dict_cursor(conn)
+                if include_full:
+                    cur.execute(
+                        """
+                        SELECT
+                            sp.combo_key AS combo_key,
+                            sp.created_at AS created_at,
+                            sp.params_json AS params_json,
+                            sp.supply_export_csv_gz AS supply_export_csv_gz,
+                            sp.supply_full_csv_gz AS supply_full_csv_gz
+                        FROM supply_plans sp
+                        INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                        WHERE sp.user_id = %s AND fr.id = %s
+                        ORDER BY sp.combo_key ASC
+                        """,
+                        (user_id, int(forecast_run_id)),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT
+                            sp.combo_key AS combo_key,
+                            sp.created_at AS created_at,
+                            sp.params_json AS params_json,
+                            sp.supply_export_csv_gz AS supply_export_csv_gz
+                        FROM supply_plans sp
+                        INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                        WHERE sp.user_id = %s AND fr.id = %s
+                        ORDER BY sp.combo_key ASC
+                        """,
+                        (user_id, int(forecast_run_id)),
+                    )
+                rows = cur.fetchall() or []
+                out: list[dict[str, Any]] = []
+                for r in rows:
+                    params = {}
+                    try:
+                        params = json.loads(r.get("params_json") or "{}")
+                    except Exception:
+                        params = {}
+                    export_blob = _bytea_to_bytes(r.get("supply_export_csv_gz"))
+                    export_df = _csv_gz_to_df(export_blob or b"")
+                    full_df: pd.DataFrame = pd.DataFrame()
+                    if include_full:
+                        full_blob = _bytea_to_bytes(r.get("supply_full_csv_gz"))
+                        full_df = _csv_gz_to_df(full_blob) if full_blob is not None else pd.DataFrame()
+                    out.append(
+                        {
+                            "forecast_run_id": int(forecast_run_id),
+                            "combo_key": str(r.get("combo_key") or ""),
+                            "created_at": r.get("created_at"),
+                            "params": params,
+                            "supply_plan_df": export_df,
+                            "supply_plan_full_df": full_df,
+                        }
+                    )
+                return out
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            user_id = _get_or_create_user_id(conn, email)
+            if include_full:
+                rows = conn.execute(
+                    """
+                    SELECT sp.*
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    WHERE sp.user_id = ? AND fr.id = ?
+                    ORDER BY sp.combo_key ASC
+                    """,
+                    (int(user_id), int(forecast_run_id)),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT sp.id, sp.forecast_run_id, sp.combo_key, sp.created_at, sp.params_json, sp.supply_export_csv_gz
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    WHERE sp.user_id = ? AND fr.id = ?
+                    ORDER BY sp.combo_key ASC
+                    """,
+                    (int(user_id), int(forecast_run_id)),
+                ).fetchall()
+            out: list[dict[str, Any]] = []
+            for r in rows:
+                params = {}
+                try:
+                    params = json.loads(r["params_json"] or "{}")
+                except Exception:
+                    params = {}
+                export_df = _csv_gz_to_df(r["supply_export_csv_gz"])
+                full_df = pd.DataFrame()
+                if include_full:
+                    try:
+                        if ("supply_full_csv_gz" in r.keys()) and (r["supply_full_csv_gz"] is not None):
+                            full_df = _csv_gz_to_df(r["supply_full_csv_gz"])
+                    except Exception:
+                        full_df = pd.DataFrame()
+                out.append(
+                    {
+                        "forecast_run_id": int(r["forecast_run_id"]),
+                        "combo_key": str(r["combo_key"] or ""),
+                        "created_at": r["created_at"],
+                        "params": params,
+                        "supply_plan_df": export_df,
+                        "supply_plan_full_df": full_df,
+                    }
+                )
+            return out
+        finally:
+            conn.close()
+
+
 def list_forecast_runs(email: str, limit: int = 50) -> list[dict[str, Any]]:
     init_db()
     with _LOCK:
