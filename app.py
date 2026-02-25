@@ -3734,7 +3734,7 @@ async def get_results(request: Request, run_session_id: Optional[str] = None):
                 showspikes=False
             )
         )
-        plot_html = fig.to_html(full_html=False)
+        plot_html = fig.to_html(full_html=False, config={"responsive": True})
     except Exception as e:
         # Fallback simple plot if there's any issue
         print(f"Warning: Error creating main plot: {e}")
@@ -3752,7 +3752,7 @@ async def get_results(request: Request, run_session_id: Optional[str] = None):
             mode="lines+markers",
             line=dict(color="green", width=2)
         ))
-        plot_html = fig.to_html(full_html=False)
+        plot_html = fig.to_html(full_html=False, config={"responsive": True})
     
     # Drivers (SHAP-based summaries) from forecast artifacts (per run slot).
     driver_artifacts = (run or {}).get("driver_artifacts") if isinstance(run, dict) else {}
