@@ -710,6 +710,100 @@
             -webkit-backdrop-filter: blur(1px);
             z-index: 1050; /* just under Bootstrap modal (1055) */
         }
+        /* ── Custom provider select with logos ───────────────────────────── */
+        .pt-custom-select {
+            position: relative;
+            user-select: none;
+        }
+        .pt-custom-select-trigger {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.375rem 0.75rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            background: #fff;
+            cursor: pointer;
+            font-size: 1rem;
+            line-height: 1.5;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .pt-custom-select-trigger:hover {
+            border-color: #86b7fe;
+        }
+        .pt-custom-select.open .pt-custom-select-trigger {
+            border-color: #86b7fe;
+            box-shadow: 0 0 0 0.25rem rgba(13,110,253,0.25);
+            border-radius: 0.375rem 0.375rem 0 0;
+        }
+        .pt-select-arrow {
+            font-size: 0.75rem;
+            color: #6c757d;
+            transition: transform 0.18s ease;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+        .pt-custom-select.open .pt-select-arrow {
+            transform: rotate(180deg);
+        }
+        .pt-custom-select-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border: 1px solid #86b7fe;
+            border-top: none;
+            border-radius: 0 0 0.375rem 0.375rem;
+            box-shadow: 0 6px 20px rgba(18,24,39,0.12);
+            z-index: 9999;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .pt-custom-select.open .pt-custom-select-dropdown {
+            display: block;
+        }
+        .pt-custom-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: background 0.12s ease;
+        }
+        .pt-custom-option:hover {
+            background: #f0f4ff;
+        }
+        .pt-custom-option.selected {
+            background: #e8f0fe;
+            font-weight: 600;
+        }
+        .pt-option-content {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .pt-provider-icon {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
+            flex-shrink: 0;
+            display: block;
+        }
+        .pt-provider-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 5px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            flex-shrink: 0;
+            line-height: 1;
+        }
         .animate-on-scroll {
             opacity: 0;
             transform: translateY(30px);
@@ -2283,6 +2377,83 @@
             modalInstance.show();
         }
 
+        // ── Provider logo map (Simple Icons CDN + badge fallbacks) ────────────
+        const PROVIDER_LOGOS = {
+            // E-commerce
+            'Shopify':            { icon: 'shopify',            color: '96BF48' },
+            'WooCommerce':        { icon: 'woocommerce',        color: '7F54B3' },
+            'Magento':            { icon: 'magento',            color: 'EE672F' },
+            'BigCommerce':        { icon: 'bigcommerce',        color: '34313F' },
+            // POS
+            'Square':             { icon: 'square',             color: '3E4348' },
+            'Toast':              { badge: 'T', bg: '#FF6B35', fg: '#fff' },
+            'Clover':             { badge: 'C', bg: '#32A234', fg: '#fff' },
+            'Lightspeed':         { icon: 'lightspeed',         color: 'E01A2B' },
+            // ERP
+            'SAP':                { icon: 'sap',                color: '0FAAFF' },
+            'Oracle ERP':         { icon: 'oracle',             color: 'F80000' },
+            'Microsoft Dynamics': { icon: 'microsoftdynamics365', color: '002050' },
+            // Cloud Warehouse
+            'Snowflake':          { icon: 'snowflake',          color: '29B5E8' },
+            'BigQuery':           { icon: 'googlebigquery',     color: '4285F4' },
+            'Redshift':           { icon: 'amazonredshift',     color: '8C4FFF' },
+            'Azure Synapse':      { icon: 'microsoftazure',     color: '0078D4' },
+            // Database
+            'MySQL':              { icon: 'mysql',              color: '4479A1' },
+            'PostgreSQL':         { icon: 'postgresql',         color: '4169E1' },
+            'SQL Server':         { icon: 'microsoftsqlserver', color: 'CC2927' },
+            'Oracle':             { icon: 'oracle',             color: 'F80000' },
+            'Other':              { badge: '?', bg: '#e2e8f0', fg: '#475569' },
+        };
+
+        function renderProviderLogo(name) {
+            const cfg = PROVIDER_LOGOS[name];
+            if (!cfg) return `<span class="pt-provider-badge" style="background:#e2e8f0;color:#475569">${(name||'?')[0]}</span>`;
+            if (cfg.badge) return `<span class="pt-provider-badge" style="background:${cfg.bg};color:${cfg.fg}">${cfg.badge}</span>`;
+            // Use Simple Icons CDN with an onerror fallback badge
+            const letter = (name||'?')[0];
+            const fbBg = '#' + cfg.color;
+            return `<img class="pt-provider-icon" src="https://cdn.simpleicons.org/${cfg.icon}/${cfg.color}" alt="${name}" onerror="this.outerHTML='<span class=\\'pt-provider-badge\\' style=\\'background:${fbBg};color:#fff\\'>${letter}</span>'">`;
+        }
+
+        // Global delegated handler for custom provider selects (works across modals)
+        document.addEventListener('click', function(e) {
+            const trigger = e.target.closest('.pt-custom-select-trigger');
+            const option  = e.target.closest('.pt-custom-option');
+
+            if (option) {
+                const select = option.closest('.pt-custom-select');
+                const val    = option.dataset.value;
+                // Update hidden input
+                const hidden = select.querySelector('input[type="hidden"]');
+                if (hidden) hidden.value = val;
+                // Refresh trigger display
+                const tContent = select.querySelector('.pt-custom-select-trigger .pt-option-content');
+                const oContent = option.querySelector('.pt-option-content');
+                if (tContent && oContent) tContent.innerHTML = oContent.innerHTML;
+                // Mark selected state
+                select.querySelectorAll('.pt-custom-option').forEach(o => o.classList.toggle('selected', o === option));
+                select.classList.remove('open');
+                // Notify dependent code (e.g. port auto-fill)
+                select.dispatchEvent(new CustomEvent('pt-select-change', { bubbles: true, detail: { name: (hidden||{}).name, value: val } }));
+                return;
+            }
+
+            if (trigger) {
+                const select = trigger.closest('.pt-custom-select');
+                const wasOpen = select.classList.contains('open');
+                // Close all other open selects
+                document.querySelectorAll('.pt-custom-select.open').forEach(s => s !== select && s.classList.remove('open'));
+                select.classList.toggle('open', !wasOpen);
+                return;
+            }
+
+            // Click outside → close all
+            if (!e.target.closest('.pt-custom-select')) {
+                document.querySelectorAll('.pt-custom-select.open').forEach(s => s.classList.remove('open'));
+            }
+        });
+
         // --- Show Connector Form Modal ---
                 function showConnectorForm(connector, fields, connectorLabel) {
                         let modal = document.getElementById('connector-modal');
@@ -2314,18 +2485,35 @@
                         const fieldHtml = fields.map(f => {
                                 if (String(f.type || '').toLowerCase() === 'select') {
                                         const opts = Array.isArray(f.options) ? f.options : [];
-                                        const def = (f.default != null) ? String(f.default) : '';
+                                        const def = (f.default != null) ? String(f.default) : (opts[0] ? String(opts[0]) : '');
                                         const optionsHtml = opts.map(o => {
                                                 const val = String(o);
-                                                const sel = (def && val === def) ? 'selected' : '';
-                                                return `<option value="${val}" ${sel}>${val}</option>`;
+                                                const isSel = val === def;
+                                                return `
+                                                <div class="pt-custom-option${isSel ? ' selected' : ''}" data-value="${val}">
+                                                    <span class="pt-option-content">
+                                                        ${renderProviderLogo(val)}
+                                                        <span>${val}</span>
+                                                    </span>
+                                                </div>`;
                                         }).join('');
+                                        const defLogoHtml = renderProviderLogo(def);
                                         return `
                                                 <div class="mb-3">
-                                                        <label class="form-label">${f.label}</label>
-                                                        <select name="${f.name}" class="form-select" required>
-                                                                ${optionsHtml}
-                                                        </select>
+                                                    <label class="form-label">${f.label}</label>
+                                                    <input type="hidden" name="${f.name}" value="${def}">
+                                                    <div class="pt-custom-select" data-name="${f.name}">
+                                                        <div class="pt-custom-select-trigger">
+                                                            <span class="pt-option-content">
+                                                                ${defLogoHtml}
+                                                                <span>${def}</span>
+                                                            </span>
+                                                            <span class="pt-select-arrow">&#9660;</span>
+                                                        </div>
+                                                        <div class="pt-custom-select-dropdown">
+                                                            ${optionsHtml}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                         `;
                                 }
@@ -2341,7 +2529,7 @@
 
                         // Small convenience: set a sensible default port for database providers.
                         if (connector === 'database') {
-                                const providerSel = modal.querySelector('select[name="provider"]');
+                                const providerHidden = modal.querySelector('input[type="hidden"][name="provider"]');
                                 const portInput = modal.querySelector('input[name="port"]');
                                 const portByProvider = {
                                         "MySQL": 3306,
@@ -2350,15 +2538,17 @@
                                         "Oracle": 1521,
                                         "Other": ""
                                 };
-                                if (providerSel && portInput) {
-                                        const applyPort = () => {
-                                                const p = providerSel.value;
-                                                const v = portByProvider[p];
+                                if (providerHidden && portInput) {
+                                        const applyPort = (val) => {
+                                                const v = portByProvider[val];
                                                 if (v !== undefined) portInput.value = String(v);
                                         };
-                                        providerSel.addEventListener('change', applyPort);
-                                        // initialize once (respects schema default provider)
-                                        applyPort();
+                                        // Listen for custom select change
+                                        modal.addEventListener('pt-select-change', function(e) {
+                                                if (e.detail && e.detail.name === 'provider') applyPort(e.detail.value);
+                                        });
+                                        // Initialize with the current default
+                                        applyPort(providerHidden.value);
                                 }
                         }
 
