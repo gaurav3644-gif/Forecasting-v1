@@ -10,7 +10,7 @@
     }
     .pt-data-header {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 12px;
@@ -39,6 +39,135 @@
         color: #166534;
         font-size: 0.82rem;
         font-weight: 700;
+    }
+
+    /* Action buttons row */
+    .pt-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .pt-upload-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(18,24,39,0.18);
+        background: #fff;
+        color: rgba(18,24,39,0.78);
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: border-color 0.13s, background 0.13s;
+    }
+    .pt-upload-btn:hover {
+        border-color: rgba(18,24,39,0.32);
+        background: rgba(18,24,39,0.04);
+        color: #0b1410;
+    }
+    .pt-connect-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 16px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%);
+        border: none;
+        color: #0b1410;
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.13s, box-shadow 0.13s;
+        box-shadow: 0 4px 14px rgba(67,233,123,0.22);
+    }
+    .pt-connect-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(67,233,123,0.30);
+    }
+    .pt-connect-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 3px 10px rgba(67,233,123,0.18);
+    }
+
+    /* Connector picker panel */
+    .pt-connector-panel {
+        display: none;
+        background: #fff;
+        border-radius: 18px;
+        border: 1px solid rgba(18,24,39,0.09);
+        box-shadow: 0 12px 40px rgba(18,24,39,0.09);
+        padding: 22px 22px 20px;
+        margin-bottom: 24px;
+        animation: ptSlideDown 0.18s ease;
+    }
+    .pt-connector-panel.open {
+        display: block;
+    }
+    @keyframes ptSlideDown {
+        from { opacity: 0; transform: translateY(-8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .pt-connector-panel-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(18,24,39,0.44);
+        margin: 0 0 16px;
+    }
+    .pt-connector-tiles {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .pt-connector-tile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 20px;
+        border-radius: 14px;
+        border: 1px solid rgba(18,24,39,0.09);
+        background: rgba(18,24,39,0.018);
+        cursor: pointer;
+        transition: border-color 0.14s, background 0.14s, transform 0.14s, box-shadow 0.14s;
+        min-width: 110px;
+        text-align: center;
+        user-select: none;
+    }
+    .pt-connector-tile:hover {
+        border-color: rgba(67,233,123,0.45);
+        background: rgba(67,233,123,0.06);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(67,233,123,0.12);
+    }
+    .pt-connector-tile:active {
+        transform: translateY(0);
+        box-shadow: none;
+    }
+    .pt-tile-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 11px;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+    .pt-tile-label {
+        font-size: 0.79rem;
+        font-weight: 700;
+        color: rgba(18,24,39,0.75);
+        line-height: 1.2;
+    }
+    .pt-tile-sub {
+        font-size: 0.71rem;
+        color: rgba(18,24,39,0.42);
+        line-height: 1.3;
     }
 
     /* Table card */
@@ -149,9 +278,7 @@
         transform: translateY(0);
         box-shadow: 0 4px 10px rgba(67,233,123,0.18);
     }
-    .pt-use-btn svg {
-        flex-shrink: 0;
-    }
+    .pt-use-btn svg { flex-shrink: 0; }
 
     /* Empty state */
     .pt-empty-state {
@@ -181,11 +308,96 @@
         max-width: 360px;
         margin: 0 auto 24px;
     }
+    .pt-empty-actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    /* Connector modal / backdrop (shared with landing page) */
+    .connector-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(18,24,39,0.18);
+        backdrop-filter: blur(1px);
+        -webkit-backdrop-filter: blur(1px);
+        z-index: 1050;
+    }
+    /* Custom provider select with logos */
+    .pt-custom-select { position: relative; user-select: none; }
+    .pt-custom-select-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.375rem 0.75rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        background: #fff;
+        cursor: pointer;
+        font-size: 1rem;
+        line-height: 1.5;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .pt-custom-select-trigger:hover { border-color: #86b7fe; }
+    .pt-custom-select.open .pt-custom-select-trigger {
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.25rem rgba(13,110,253,0.25);
+        border-radius: 0.375rem 0.375rem 0 0;
+    }
+    .pt-select-arrow {
+        font-size: 0.75rem;
+        color: #6c757d;
+        transition: transform 0.18s ease;
+        flex-shrink: 0;
+        margin-left: 8px;
+    }
+    .pt-custom-select.open .pt-select-arrow { transform: rotate(180deg); }
+    .pt-custom-select-dropdown {
+        display: none;
+        position: absolute;
+        top: 100%; left: 0; right: 0;
+        background: #fff;
+        border: 1px solid #86b7fe;
+        border-top: none;
+        border-radius: 0 0 0.375rem 0.375rem;
+        box-shadow: 0 6px 20px rgba(18,24,39,0.12);
+        z-index: 9999;
+        max-height: 240px;
+        overflow-y: auto;
+    }
+    .pt-custom-select.open .pt-custom-select-dropdown { display: block; }
+    .pt-custom-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: background 0.12s ease;
+    }
+    .pt-custom-option:hover { background: #f0f4ff; }
+    .pt-custom-option.selected { background: #e8f0fe; font-weight: 600; }
+    .pt-option-content { display: inline-flex; align-items: center; gap: 10px; }
+    .pt-provider-icon { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; display: block; }
+    .pt-provider-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px; height: 20px;
+        border-radius: 5px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        flex-shrink: 0;
+        line-height: 1;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="pt-data-shell">
+
     <!-- Header -->
     <div class="pt-data-header">
         <div>
@@ -194,7 +406,7 @@
                 {% if is_admin %}All datasets across all users.{% else %}Your uploaded and connected datasets.{% endif %}
             </p>
         </div>
-        <div class="d-flex align-items-center gap-3">
+        <div class="pt-header-actions">
             {% if datasets %}
             <span class="pt-data-count">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -204,13 +416,88 @@
                 {{ datasets|length }} dataset{{ 's' if datasets|length != 1 else '' }}
             </span>
             {% endif %}
-            <a href="/" class="btn btn-outline-secondary btn-sm" style="border-radius:999px;font-size:0.82rem;">
+            <a href="/" class="pt-upload-btn">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 11V1M4 5l4-4 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M1.5 11v2.5A1.5 1.5 0 0 0 3 15h10a1.5 1.5 0 0 0 1.5-1.5V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
                 Upload new CSV
             </a>
+            <button type="button" class="pt-connect-btn" id="toggleConnectorPanel">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                    <path d="M2 8h12M8 2v12" stroke="#0b1410" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Connect Data Source
+            </button>
         </div>
     </div>
 
-    <!-- Table / Empty state -->
+    <!-- Connector picker panel (shown on button click) -->
+    <div class="pt-connector-panel" id="connectorPanel">
+        <p class="pt-connector-panel-title">Choose a connector</p>
+        <div class="pt-connector-tiles">
+
+            <div class="pt-connector-tile" data-connector="ecommerce" data-label="E-commerce">
+                <div class="pt-tile-icon" style="background:rgba(96,191,72,0.12);">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" stroke="#15803d" stroke-width="1.6" stroke-linejoin="round"/>
+                        <path d="M3 6h18M16 10a4 4 0 0 1-8 0" stroke="#15803d" stroke-width="1.6" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <span class="pt-tile-label">E-commerce</span>
+                <span class="pt-tile-sub">Shopify, WooCommerce…</span>
+            </div>
+
+            <div class="pt-connector-tile" data-connector="pos" data-label="POS System">
+                <div class="pt-tile-icon" style="background:rgba(59,130,246,0.10);">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <rect x="2" y="3" width="20" height="14" rx="2" stroke="#1d4ed8" stroke-width="1.6"/>
+                        <path d="M8 21h8M12 17v4" stroke="#1d4ed8" stroke-width="1.6" stroke-linecap="round"/>
+                        <path d="M6 8h4M6 11h6" stroke="#1d4ed8" stroke-width="1.4" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <span class="pt-tile-label">POS Systems</span>
+                <span class="pt-tile-sub">Square, Toast…</span>
+            </div>
+
+            <div class="pt-connector-tile" data-connector="erp" data-label="ERP System">
+                <div class="pt-tile-icon" style="background:rgba(245,158,11,0.10);">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 21V7l9-4 9 4v14" stroke="#b45309" stroke-width="1.6" stroke-linejoin="round"/>
+                        <path d="M9 21V12h6v9" stroke="#b45309" stroke-width="1.6" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <span class="pt-tile-label">ERP Systems</span>
+                <span class="pt-tile-sub">SAP, Dynamics…</span>
+            </div>
+
+            <div class="pt-connector-tile" data-connector="warehouse" data-label="Cloud Warehouse">
+                <div class="pt-tile-icon" style="background:rgba(139,92,246,0.10);">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M20 16.4A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" stroke="#7c3aed" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M9 17l3 3 3-3M12 12v8" stroke="#7c3aed" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <span class="pt-tile-label">Cloud Warehouse</span>
+                <span class="pt-tile-sub">BigQuery, Snowflake…</span>
+            </div>
+
+            <div class="pt-connector-tile" data-connector="database" data-label="Database">
+                <div class="pt-tile-icon" style="background:rgba(239,68,68,0.09);">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <ellipse cx="12" cy="5" rx="9" ry="3" stroke="#b91c1c" stroke-width="1.6"/>
+                        <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" stroke="#b91c1c" stroke-width="1.6"/>
+                        <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" stroke="#b91c1c" stroke-width="1.6"/>
+                    </svg>
+                </div>
+                <span class="pt-tile-label">Database</span>
+                <span class="pt-tile-sub">PostgreSQL, MySQL…</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Datasets table / empty state -->
     <div class="pt-data-card">
         {% if datasets %}
         <table class="pt-data-table">
@@ -272,15 +559,250 @@
                 </svg>
             </div>
             <p class="pt-empty-title">No datasets yet</p>
-            <p class="pt-empty-hint">Upload a CSV from the home page or connect a data source via Connectors to get started.</p>
-            <a href="/" class="pt-use-btn" style="display:inline-flex; text-decoration:none;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 1v14M1 8l7-7 7 7" stroke="#0b1410" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Upload CSV
-            </a>
+            <p class="pt-empty-hint">Upload a CSV or connect a data source to get started.</p>
+            <div class="pt-empty-actions">
+                <a href="/" class="pt-use-btn" style="text-decoration:none;">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 11V1M4 5l4-4 4 4" stroke="#0b1410" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M1.5 11v2.5A1.5 1.5 0 0 0 3 15h10a1.5 1.5 0 0 0 1.5-1.5V11" stroke="#0b1410" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    Upload CSV
+                </a>
+                <button type="button" class="pt-connect-btn" id="toggleConnectorPanelEmpty">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                        <path d="M2 8h12M8 2v12" stroke="#0b1410" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Connect Data Source
+                </button>
+            </div>
         </div>
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // ── Provider logo map (Simple Icons CDN + badge fallbacks) ─────────────
+    const PROVIDER_LOGOS = {
+        'Shopify':            { icon: 'shopify',              color: '96BF48' },
+        'WooCommerce':        { icon: 'woocommerce',          color: '7F54B3' },
+        'Magento':            { icon: 'magento',              color: 'EE672F' },
+        'BigCommerce':        { icon: 'bigcommerce',          color: '34313F' },
+        'Square':             { icon: 'square',               color: '3E4348' },
+        'Toast':              { badge: 'T', bg: '#FF6B35', fg: '#fff' },
+        'Clover':             { badge: 'C', bg: '#32A234', fg: '#fff' },
+        'Lightspeed':         { icon: 'lightspeed',           color: 'E01A2B' },
+        'SAP':                { icon: 'sap',                  color: '0FAAFF' },
+        'Oracle ERP':         { icon: 'oracle',               color: 'F80000' },
+        'Microsoft Dynamics': { icon: 'microsoftdynamics365', color: '002050' },
+        'Snowflake':          { icon: 'snowflake',            color: '29B5E8' },
+        'BigQuery':           { icon: 'googlebigquery',       color: '4285F4' },
+        'Redshift':           { icon: 'amazonredshift',       color: '8C4FFF' },
+        'Azure Synapse':      { icon: 'microsoftazure',       color: '0078D4' },
+        'MySQL':              { icon: 'mysql',                color: '4479A1' },
+        'PostgreSQL':         { icon: 'postgresql',           color: '4169E1' },
+        'SQL Server':         { icon: 'microsoftsqlserver',   color: 'CC2927' },
+        'Oracle':             { icon: 'oracle',               color: 'F80000' },
+        'Other':              { badge: '?', bg: '#e2e8f0', fg: '#475569' },
+    };
+
+    function renderProviderLogo(name) {
+        const cfg = PROVIDER_LOGOS[name];
+        if (!cfg) return `<span class="pt-provider-badge" style="background:#e2e8f0;color:#475569">${(name||'?')[0]}</span>`;
+        if (cfg.badge) return `<span class="pt-provider-badge" style="background:${cfg.bg};color:${cfg.fg}">${cfg.badge}</span>`;
+        const letter = (name||'?')[0];
+        const fbBg = '#' + cfg.color;
+        return `<img class="pt-provider-icon" src="https://cdn.simpleicons.org/${cfg.icon}/${cfg.color}" alt="${name}" onerror="this.outerHTML='<span class=\\'pt-provider-badge\\' style=\\'background:${fbBg};color:#fff\\'>${letter}</span>'">`;
+    }
+
+    // ── Custom provider select interaction ─────────────────────────────────
+    document.addEventListener('click', function(e) {
+        const trigger = e.target.closest('.pt-custom-select-trigger');
+        const option  = e.target.closest('.pt-custom-option');
+
+        if (option) {
+            const select = option.closest('.pt-custom-select');
+            const val    = option.dataset.value;
+            const hidden = select.querySelector('input[type="hidden"]');
+            if (hidden) hidden.value = val;
+            const tContent = select.querySelector('.pt-custom-select-trigger .pt-option-content');
+            const oContent = option.querySelector('.pt-option-content');
+            if (tContent && oContent) tContent.innerHTML = oContent.innerHTML;
+            select.querySelectorAll('.pt-custom-option').forEach(o => o.classList.toggle('selected', o === option));
+            select.classList.remove('open');
+            select.dispatchEvent(new CustomEvent('pt-select-change', { bubbles: true, detail: { name: (hidden||{}).name, value: val } }));
+            return;
+        }
+        if (trigger) {
+            const select = trigger.closest('.pt-custom-select');
+            const wasOpen = select.classList.contains('open');
+            document.querySelectorAll('.pt-custom-select.open').forEach(s => s !== select && s.classList.remove('open'));
+            select.classList.toggle('open', !wasOpen);
+            return;
+        }
+        if (!e.target.closest('.pt-custom-select')) {
+            document.querySelectorAll('.pt-custom-select.open').forEach(s => s.classList.remove('open'));
+        }
+    });
+
+    // ── Backdrop helpers ───────────────────────────────────────────────────
+    function ensureConnectorBackdrop() {
+        let bd = document.getElementById('connector-backdrop');
+        if (!bd) {
+            bd = document.createElement('div');
+            bd.id = 'connector-backdrop';
+            bd.className = 'connector-backdrop';
+            document.body.appendChild(bd);
+        }
+        return bd;
+    }
+    function removeConnectorBackdrop() {
+        const bd = document.getElementById('connector-backdrop');
+        if (bd) bd.remove();
+    }
+
+    // ── Connector form modal ───────────────────────────────────────────────
+    function showConnectorForm(connector, fields, connectorLabel) {
+        let modal = document.getElementById('connector-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'connector-modal';
+            modal.className = 'modal fade';
+            modal.tabIndex = -1;
+            modal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Connect to <span id="connector-modal-title"></span></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form id="connector-form">
+                        <div class="modal-body"></div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-primary">Connect</button>
+                        </div>
+                    </form>
+                </div>
+            </div>`;
+            document.body.appendChild(modal);
+        }
+
+        modal.querySelector('#connector-modal-title').textContent =
+            connectorLabel || (connector.charAt(0).toUpperCase() + connector.slice(1));
+
+        const body = modal.querySelector('.modal-body');
+        const fieldHtml = fields.map(f => {
+            if (String(f.type || '').toLowerCase() === 'select') {
+                const opts = Array.isArray(f.options) ? f.options : [];
+                const def  = (f.default != null) ? String(f.default) : (opts[0] ? String(opts[0]) : '');
+                const optionsHtml = opts.map(o => {
+                    const val   = String(o);
+                    const isSel = val === def;
+                    return `<div class="pt-custom-option${isSel ? ' selected' : ''}" data-value="${val}">
+                        <span class="pt-option-content">${renderProviderLogo(val)}<span>${val}</span></span>
+                    </div>`;
+                }).join('');
+                return `<div class="mb-3">
+                    <label class="form-label">${f.label}</label>
+                    <input type="hidden" name="${f.name}" value="${def}">
+                    <div class="pt-custom-select" data-name="${f.name}">
+                        <div class="pt-custom-select-trigger">
+                            <span class="pt-option-content">${renderProviderLogo(def)}<span>${def}</span></span>
+                            <span class="pt-select-arrow">&#9660;</span>
+                        </div>
+                        <div class="pt-custom-select-dropdown">${optionsHtml}</div>
+                    </div>
+                </div>`;
+            }
+            const valAttr = (f.default != null) ? `value='${String(f.default)}'` : '';
+            return `<div class="mb-3">
+                <label class="form-label">${f.label}</label>
+                <input name="${f.name}" type="${f.type}" class="form-control" ${valAttr} required>
+            </div>`;
+        }).join('');
+        body.innerHTML = fieldHtml;
+
+        // Auto-fill port for database connectors
+        if (connector === 'database') {
+            const providerHidden = modal.querySelector('input[type="hidden"][name="provider"]');
+            const portInput = modal.querySelector('input[name="port"]');
+            const portByProvider = { "MySQL": 3306, "PostgreSQL": 5432, "SQL Server": 1433, "Oracle": 1521, "Other": "" };
+            if (providerHidden && portInput) {
+                const applyPort = (val) => { const v = portByProvider[val]; if (v !== undefined) portInput.value = String(v); };
+                modal.addEventListener('pt-select-change', function(e) {
+                    if (e.detail && e.detail.name === 'provider') applyPort(e.detail.value);
+                });
+                applyPort(providerHidden.value);
+            }
+        }
+
+        // Form submit
+        const form = modal.querySelector('#connector-form');
+        form.onsubmit = function(e) {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(form));
+            fetch(`/connect/${connector}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(resp => {
+                alert(resp.status === 'success' ? 'Connected!' : 'Connection failed');
+                const inst = bootstrap.Modal.getInstance(modal);
+                if (inst) inst.hide();
+            })
+            .catch(() => alert('Connection error.'));
+        };
+
+        try { const ex = bootstrap.Modal.getInstance(modal); if (ex) ex.dispose(); } catch (e) {}
+        const modalInstance = new bootstrap.Modal(modal, { backdrop: false, keyboard: true, focus: true });
+        const bd = ensureConnectorBackdrop();
+        bd.onclick = function() { modalInstance.hide(); };
+        modal.addEventListener('hidden.bs.modal', removeConnectorBackdrop, { once: true });
+        modalInstance.show();
+    }
+
+    // ── Connector tile click ───────────────────────────────────────────────
+    function handleConnectorTileClick(tile) {
+        const connector = tile.dataset.connector;
+        const label     = tile.dataset.label;
+        if (!connector) return;
+        fetch(`/connector-schema/${connector}`)
+            .then(res => res.json())
+            .then(schema => {
+                if (schema.error) { alert(schema.error); return; }
+                showConnectorForm(connector, schema.fields, label);
+            })
+            .catch(() => alert('Failed to load connector schema.'));
+    }
+
+    document.querySelectorAll('.pt-connector-tile').forEach(tile => {
+        tile.addEventListener('click', () => handleConnectorTileClick(tile));
+    });
+
+    // ── Toggle connector panel ─────────────────────────────────────────────
+    function togglePanel() {
+        const panel = document.getElementById('connectorPanel');
+        if (!panel) return;
+        panel.classList.toggle('open');
+        // Scroll into view if opening
+        if (panel.classList.contains('open')) {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    const toggleBtn = document.getElementById('toggleConnectorPanel');
+    if (toggleBtn) toggleBtn.addEventListener('click', togglePanel);
+
+    const toggleBtnEmpty = document.getElementById('toggleConnectorPanelEmpty');
+    if (toggleBtnEmpty) toggleBtnEmpty.addEventListener('click', function() {
+        // Scroll up to the panel first (it's above the empty state card)
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setTimeout(togglePanel, 180);
+    });
+})();
+</script>
 {% endblock %}
