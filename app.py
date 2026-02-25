@@ -6635,57 +6635,241 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
 async def download_supply_plan(request: Request, run_session_id: Optional[str] = None):
     session_id = _session_id_from_request(request)
     run, _ = _get_run_state(session_id, run_session_id, create=False)
-    supply_plan = None
+    supply_plan: Optional[pd.DataFrame] = None
+    user_email = _get_user_email(request)
+    is_admin = _is_admin(user_email)
 
-    # Prefer exporting all item/store series for the run.
+    def _stable_seed(value: str) -> int:
+        import hashlib as _hashlib
+
+        h = _hashlib.md5(value.encode("utf-8")).hexdigest()
+        return int(h[:8], 16)
+
+    def _build_inputs_from_latest_forecast(run_state: dict[str, Any]) -> dict[str, Any]:
+        # Build planning inputs from the run's full forecast_df (not from the selected-series supply plan).
+        forecast_df0 = run_state.get("forecast_df")
+        if not isinstance(forecast_df0, pd.DataFrame) or forecast_df0.empty:
+            raise ValueError("Missing forecast_df in run state")
+
+        start_month = run_state.get("start_month")
+        months_val = run_state.get("months")
+        if not start_month or not months_val:
+            raise ValueError("Missing forecast params (start_month/months) in run state")
+
+        start_ts = pd.to_datetime(f"{start_month}-01", errors="coerce")
+        if pd.isna(start_ts):
+            raise ValueError("Invalid start_month in run state")
+        horizon_months = int(months_val)
+        horizon_months = max(1, min(horizon_months, 120))
+        end_ts = start_ts + pd.DateOffset(months=horizon_months)
+
+        df = forecast_df0.copy()
+        if "date" not in df.columns:
+            raise ValueError("Latest forecast is missing required column: date")
+        if "forecast" not in df.columns:
+            quantile_fallback = next((c for c in ["forecast_p60", "forecast_p50"] if c in df.columns), None)
+            if not quantile_fallback:
+                raise ValueError("Latest forecast is missing required column: forecast")
+            df = df.rename(columns={quantile_fallback: "forecast"})
+
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date"])
+        df = df[(df["date"] >= start_ts) & (df["date"] < end_ts)]
+
+        exclude = {"date", "actual", "forecast"}
+        grain_cols = [c for c in df.columns if c not in exclude and not str(c).startswith("forecast_p")]
+        sku_col = "item" if "item" in df.columns else (grain_cols[0] if len(grain_cols) >= 1 else None)
+        loc_col = "store" if "store" in df.columns else (grain_cols[1] if len(grain_cols) >= 2 else None)
+        extra_cols = [c for c in grain_cols if c not in {sku_col, loc_col} and c in df.columns]
+
+        df["sku_id"] = df[sku_col].astype(str) if sku_col else "ALL"
+        df["location"] = df[loc_col].astype(str) if loc_col else "ALL"
+        for col in extra_cols:
+            df["location"] = df["location"] + "|" + str(col) + "=" + df[col].astype(str)
+
+        df["period_start"] = df["date"].dt.to_period("M").apply(lambda p: p.start_time)
+        df["forecast_demand"] = pd.to_numeric(df["forecast"], errors="coerce").fillna(0.0)
+
+        meta_cols = [c for c in [sku_col, loc_col, *extra_cols] if c and c in df.columns]
+        meta_df = df[["sku_id", "location", *meta_cols]].drop_duplicates()
+        forecast_input_df = df.groupby(["sku_id", "location", "period_start"], as_index=False)["forecast_demand"].sum()
+
+        return {
+            "forecast_input_df": forecast_input_df,
+            "meta_df": meta_df,
+            "sku_col": sku_col,
+            "loc_col": loc_col,
+            "extra_cols": extra_cols,
+            "start_date": f"{start_month}-01",
+            "months": horizon_months,
+        }
+
+    def _generate_constraints_df(forecast_monthly: pd.DataFrame) -> pd.DataFrame:
+        import numpy as _np
+
+        sku_ids = sorted(forecast_monthly["sku_id"].astype(str).unique().tolist())
+        mean_monthly = forecast_monthly.groupby("sku_id")["forecast_demand"].mean().to_dict()
+        rows = []
+        for sku in sku_ids:
+            rng = _np.random.default_rng(_stable_seed(f"constraints:{sku}"))
+            lead_time_days = int(rng.choice([7, 14, 21, 28]))
+            moq = int(rng.choice([50, 100, 200, 300]))
+            order_multiple = int(rng.choice([5, 10, 20, 25]))
+            cap = float(max(200.0, (mean_monthly.get(sku, 0.0) or 0.0) * rng.uniform(3.0, 8.0)))
+            max_capacity_per_week = int(_np.ceil((cap / 4.0) / order_multiple) * order_multiple)
+            rows.append(
+                {
+                    "sku_id": sku,
+                    "supplier": f"SUP_{int(rng.integers(1, 6))}",
+                    "lead_time_days": lead_time_days,
+                    "moq": moq,
+                    "order_multiple": order_multiple,
+                    "max_capacity_per_week": max_capacity_per_week,
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def _generate_policy_df(constraints_df: pd.DataFrame) -> pd.DataFrame:
+        import numpy as _np
+
+        rows = []
+        for sku in sorted(constraints_df["sku_id"].astype(str).unique().tolist()):
+            rng = _np.random.default_rng(_stable_seed(f"policy:{sku}"))
+            rows.append(
+                {
+                    "sku_id": sku,
+                    "service_level": float(rng.choice([0.90, 0.92, 0.95, 0.97])),
+                    "holding_cost_per_unit": round(float(rng.uniform(0.5, 6.0)), 2),
+                    "stockout_cost_per_unit": round(float(rng.uniform(10.0, 80.0)), 2),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def _generate_inventory_df(forecast_monthly: pd.DataFrame) -> pd.DataFrame:
+        import numpy as _np
+
+        mean_monthly_combo = forecast_monthly.groupby(["sku_id", "location"])["forecast_demand"].mean().to_dict()
+        combos = forecast_monthly[["sku_id", "location"]].drop_duplicates()
+        rows = []
+        for _, r in combos.iterrows():
+            sku = str(r["sku_id"])
+            loc = str(r["location"])
+            mean_m = float(mean_monthly_combo.get((sku, loc), 0.0) or 0.0)
+            rng = _np.random.default_rng(_stable_seed(f"inv:{sku}:{loc}"))
+            on_hand = int(_np.ceil(max(0.0, mean_m * rng.uniform(0.5, 3.0))))
+            allocated = int(_np.floor(max(0.0, on_hand * rng.uniform(0.0, 0.15))))
+            backorders = int(_np.ceil(max(0.0, mean_m * rng.uniform(0.0, 0.25))))
+            rows.append({"sku_id": sku, "location": loc, "on_hand": on_hand, "allocated": allocated, "backorders": backorders})
+        return pd.DataFrame(rows)
+
     try:
-        if isinstance(run, dict):
-            inputs = run.get("supply_plan_inputs") if isinstance(run.get("supply_plan_inputs"), dict) else {}
-            forecast_input_df = inputs.get("forecast_input_df")
-            inventory_df = inputs.get("inventory_df")
-            constraints_df = inputs.get("constraints_df")
-            policy_df = inputs.get("policy_df")
-            meta_df = inputs.get("meta_df")
-            sku_col = inputs.get("sku_col")
-            loc_col = inputs.get("loc_col")
-            extra_cols = inputs.get("extra_cols") if isinstance(inputs.get("extra_cols"), list) else []
-            params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
+        if not isinstance(run, dict):
+            raise ValueError("Run state not found")
 
-            if isinstance(forecast_input_df, pd.DataFrame) and not forecast_input_df.empty:
-                start_date = params.get("start_date") or datetime.now().strftime("%Y-%m-%d")
-                months = int(params.get("months") or 10)
-                months = max(1, min(months, 120))
+        # Ensure forecast_df is available even for history-loaded runs where only a saved supply plan was hydrated.
+        if (not isinstance(run.get("forecast_df"), pd.DataFrame)) or run.get("forecast_df").empty:  # type: ignore[union-attr]
+            frid = run.get("forecast_run_id") or run.get("run_id")
+            if frid is not None:
+                try:
+                    if is_admin:
+                        loaded = history_store.load_forecast_run_admin(run_id=int(frid))
+                    else:
+                        loaded = history_store.load_forecast_run(str(user_email), int(frid))
+                    if isinstance(loaded, dict):
+                        fdf = loaded.get("forecast_df")
+                        if isinstance(fdf, pd.DataFrame) and not fdf.empty:
+                            run["forecast_df"] = fdf
+                        params_loaded = loaded.get("params") if isinstance(loaded.get("params"), dict) else {}
+                        if params_loaded:
+                            run.setdefault("start_month", params_loaded.get("start_month") or params_loaded.get("start_date") or run.get("start_month"))
+                            run.setdefault("months", params_loaded.get("months") or run.get("months"))
+                except Exception:
+                    pass
 
-                full_plan = generate_time_phased_supply_plan(
-                    forecast_df=forecast_input_df,
-                    inventory_df=inventory_df if isinstance(inventory_df, pd.DataFrame) else None,
-                    constraints_df=constraints_df if isinstance(constraints_df, pd.DataFrame) else None,
-                    policy_df=policy_df if isinstance(policy_df, pd.DataFrame) else None,
-                    start_date=start_date,
-                    months=months,
-                    strict=False,
-                )
+        # Prefer exporting all series for the run. If we have cached inputs from a generate call, use them;
+        # otherwise reconstruct from the run's forecast_df (works for history-loaded runs too).
+        cached = run.get("supply_plan_inputs") if isinstance(run.get("supply_plan_inputs"), dict) else {}
+        forecast_input_df = cached.get("forecast_input_df")
+        inventory_df = cached.get("inventory_df")
+        constraints_df = cached.get("constraints_df")
+        policy_df = cached.get("policy_df")
+        meta_df = cached.get("meta_df")
+        sku_col = cached.get("sku_col")
+        loc_col = cached.get("loc_col")
+        extra_cols = cached.get("extra_cols") if isinstance(cached.get("extra_cols"), list) else []
+        params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
 
-                if isinstance(meta_df, pd.DataFrame) and not meta_df.empty:
-                    full_plan = full_plan.merge(meta_df, on=["sku_id", "location"], how="left")
-                    preferred_front = [c for c in [sku_col, loc_col, *extra_cols] if c and c in full_plan.columns]
-                    remaining = [c for c in full_plan.columns if c not in preferred_front]
-                    full_plan = full_plan[preferred_front + remaining]
+        if not isinstance(forecast_input_df, pd.DataFrame) or forecast_input_df.empty:
+            rebuilt = _build_inputs_from_latest_forecast(run)
+            forecast_input_df = rebuilt["forecast_input_df"]
+            meta_df = rebuilt["meta_df"]
+            sku_col = rebuilt["sku_col"]
+            loc_col = rebuilt["loc_col"]
+            extra_cols = rebuilt["extra_cols"]
+            params = {**rebuilt, **params}
 
-                export_df = full_plan.copy()
-                if isinstance(meta_df, pd.DataFrame) and not meta_df.empty:
-                    if "sku_id" in export_df.columns and sku_col and sku_col in export_df.columns:
-                        export_df = export_df.drop(columns=["sku_id"])
-                    if "location" in export_df.columns and loc_col and loc_col in export_df.columns:
-                        export_df = export_df.drop(columns=["location"])
+        if not isinstance(constraints_df, pd.DataFrame) or constraints_df.empty:
+            constraints_df = _generate_constraints_df(forecast_input_df)
+        if not isinstance(policy_df, pd.DataFrame) or policy_df.empty:
+            policy_df = _generate_policy_df(constraints_df)
+        if not isinstance(inventory_df, pd.DataFrame) or inventory_df.empty:
+            inventory_df = _generate_inventory_df(forecast_input_df)
 
-                supply_plan = export_df
+        # If the user generated a selected-series plan and edited inputs, try to reflect those edits in the full export.
+        try:
+            selected_combo = (
+                (params.get("combo_key") if isinstance(params, dict) else None)
+                or run.get("supply_plan_last_combo_key")
+            )
+            sp_selected = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
+            if isinstance(selected_combo, str) and "|||" in selected_combo and isinstance(sp_selected, pd.DataFrame) and not sp_selected.empty:
+                sku_sel, loc_sel = selected_combo.split("|||", 1)
+                row0 = sp_selected.iloc[0].to_dict()
+                for col in ["lead_time_days", "moq", "order_multiple", "max_capacity_per_week"]:
+                    if col in row0 and "sku_id" in constraints_df.columns:
+                        constraints_df.loc[constraints_df["sku_id"].astype(str) == str(sku_sel), col] = row0.get(col)
+                if "service_level" in row0 and "sku_id" in policy_df.columns:
+                    policy_df.loc[policy_df["sku_id"].astype(str) == str(sku_sel), "service_level"] = row0.get("service_level")
+                if "sku_id" in inventory_df.columns and "location" in inventory_df.columns:
+                    mask_i = (inventory_df["sku_id"].astype(str) == str(sku_sel)) & (inventory_df["location"].astype(str) == str(loc_sel))
+                    for src, dst in [("input_on_hand", "on_hand"), ("input_allocated", "allocated"), ("input_backorders", "backorders")]:
+                        if src in row0:
+                            inventory_df.loc[mask_i, dst] = row0.get(src)
+        except Exception:
+            pass
+
+        start_date = (params or {}).get("start_date") or (run.get("start_month") and f"{run.get('start_month')}-01") or datetime.now().strftime("%Y-%m-%d")
+        months = int((params or {}).get("months") or (run.get("months") or 10))
+        months = max(1, min(months, 120))
+
+        full_plan = generate_time_phased_supply_plan(
+            forecast_df=forecast_input_df,
+            inventory_df=inventory_df,
+            constraints_df=constraints_df,
+            policy_df=policy_df,
+            start_date=str(start_date),
+            months=months,
+            strict=False,
+        )
+
+        if isinstance(meta_df, pd.DataFrame) and not meta_df.empty:
+            full_plan = full_plan.merge(meta_df, on=["sku_id", "location"], how="left")
+            preferred_front = [c for c in [sku_col, loc_col, *extra_cols] if c and c in full_plan.columns]
+            remaining = [c for c in full_plan.columns if c not in preferred_front]
+            full_plan = full_plan[preferred_front + remaining]
+
+        export_df = full_plan.copy()
+        if isinstance(meta_df, pd.DataFrame) and not meta_df.empty:
+            if "sku_id" in export_df.columns and sku_col and sku_col in export_df.columns:
+                export_df = export_df.drop(columns=["sku_id"])
+            if "location" in export_df.columns and loc_col and loc_col in export_df.columns:
+                export_df = export_df.drop(columns=["location"])
+
+        supply_plan = export_df
     except Exception as e:
         logging.warning(f"[SUPPLY_PLAN] Full export failed; falling back to selected series export: {e}")
-        supply_plan = None
-
-    if supply_plan is None and isinstance(run, dict):
-        supply_plan = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
+        if isinstance(run, dict):
+            supply_plan = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
 
     if supply_plan is None or supply_plan.empty:
         raise HTTPException(status_code=404, detail="No supply plan available. Please generate it first.")
