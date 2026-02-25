@@ -4158,10 +4158,41 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     else:
         store_share_note = "No store/location column found in raw data."
 
+    def _bar_height(n: int, base: int) -> int:
+        n = int(n or 0)
+        if n <= 1:
+            return min(int(base), 220)
+        if n == 2:
+            return min(int(base), 240)
+        if n <= 4:
+            return min(int(base), 260)
+        return int(base)
+
+    def _bar_width(n: int) -> float:
+        n = int(n or 0)
+        if n <= 1:
+            return 0.35
+        if n == 2:
+            return 0.45
+        if n <= 4:
+            return 0.55
+        return 0.7
+
+    def _style_bar_fig(fig: go.Figure, n: int) -> None:
+        try:
+            fig.update_layout(bargap=0.55)
+        except Exception:
+            pass
+        try:
+            fig.update_traces(width=_bar_width(n))
+        except Exception:
+            pass
+
     # Top SKUs by sales
     chart_top_sales_skus = ""
     if sku_col:
         top_sales = df.groupby(sku_col, as_index=False)[sales_col].sum().sort_values(sales_col, ascending=False).head(10)
+        n_bars = int(top_sales.shape[0])
         fig_top = go.Figure(
             data=[
                 go.Bar(
@@ -4172,25 +4203,28 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             ]
         )
         fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
+        _style_bar_fig(fig_top, n_bars)
         try:
             fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
             fig_top.update_traces(hovertemplate="%{y}<br>Sales: %{x:,.0f}<extra></extra>")
         except Exception:
             pass
         fig_top.update_yaxes(autorange="reversed")
-        chart_top_sales_skus = _fig_html(fig_top, height=300, showlegend=False)
+        chart_top_sales_skus = _fig_html(fig_top, height=_bar_height(n_bars, 300), showlegend=False)
     else:
         # single series/no sku column
         top_sales = df.groupby(df.index // max(1, len(df)), as_index=False)[sales_col].sum().head(1)
+        n_bars = int(top_sales.shape[0])
         fig_top = go.Figure(data=[go.Bar(x=[float(total_sales)], y=["ALL"], orientation="h")])
         fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
+        _style_bar_fig(fig_top, n_bars)
         try:
             fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
             fig_top.update_traces(hovertemplate="%{y}<br>Sales: %{x:,.0f}<extra></extra>")
         except Exception:
             pass
         fig_top.update_yaxes(autorange="reversed")
-        chart_top_sales_skus = _fig_html(fig_top, height=220, showlegend=False)
+        chart_top_sales_skus = _fig_html(fig_top, height=_bar_height(n_bars, 220), showlegend=False)
 
     # Revenue SKUs (sales * price)
     chart_top_revenue_skus = None
@@ -4200,6 +4234,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         if not rev.empty:
             rev["revenue"] = rev[sales_col] * rev[price_col]
             top_rev = rev.groupby(sku_col, as_index=False)["revenue"].sum().sort_values("revenue", ascending=False).head(10)
+            n_bars = int(top_rev.shape[0])
             fig_rev = go.Figure(
                 data=[
                     go.Bar(
@@ -4211,13 +4246,14 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 ]
             )
             fig_rev.update_layout(xaxis_title="Revenue", yaxis_title="SKU")
+            _style_bar_fig(fig_rev, n_bars)
             try:
                 fig_rev.update_xaxes(tickformat=",.0f", exponentformat="none")
                 fig_rev.update_traces(hovertemplate="%{y}<br>Revenue: %{x:,.0f}<extra></extra>")
             except Exception:
                 pass
             fig_rev.update_yaxes(autorange="reversed")
-            chart_top_revenue_skus = _fig_html(fig_rev, height=300, showlegend=False)
+            chart_top_revenue_skus = _fig_html(fig_rev, height=_bar_height(n_bars, 300), showlegend=False)
         else:
             revenue_unavailable = "Revenue chart unavailable (price column is empty)."
 
@@ -4239,6 +4275,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             joined = joined.dropna(subset=["pct_change"])
             joined = joined.sort_values("pct_change", ascending=True).head(10)
             if not joined.empty:
+                n_bars = int(joined.shape[0])
                 fig_dec = go.Figure(
                     data=[
                         go.Bar(
@@ -4250,12 +4287,13 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                     ]
                 )
                 fig_dec.update_layout(xaxis_title=f"% change ({prev_m} → {last_m})", yaxis_title="SKU")
+                _style_bar_fig(fig_dec, n_bars)
                 try:
                     fig_dec.update_traces(hovertemplate="%{y}<br>% change: %{x:.1f}%<extra></extra>")
                 except Exception:
                     pass
                 fig_dec.update_yaxes(autorange="reversed")
-                chart_declining_skus = _fig_html(fig_dec, height=300, showlegend=False)
+                chart_declining_skus = _fig_html(fig_dec, height=_bar_height(n_bars, 300), showlegend=False)
                 decline_note = "Computed from the last two months of actuals in raw data."
 
     # Stockout SKUs from supply plan
@@ -4274,6 +4312,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             )
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
             if not by_so.empty:
+                n_bars = int(by_so.shape[0])
                 by_so["_label"] = by_so[sku_p].astype(str) + " / " + by_so[store_p].astype(str)
                 fig_so = go.Figure(
                     data=[
@@ -4286,19 +4325,21 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                     ]
                 )
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="Item / Store")
+                _style_bar_fig(fig_so, n_bars)
                 try:
                     fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
                     fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
                 except Exception:
                     pass
                 fig_so.update_yaxes(autorange="reversed")
-                chart_stockout_skus = _fig_html(fig_so, height=300, showlegend=False)
+                chart_stockout_skus = _fig_html(fig_so, height=_bar_height(n_bars, 300), showlegend=False)
             else:
                 stockout_unavailable = "No stockouts found in the saved supply plan."
         elif sku_p and not p.empty:
             by_so = p.groupby(sku_p, as_index=False)["_stockout_units"].sum().sort_values("_stockout_units", ascending=False)
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
             if not by_so.empty:
+                n_bars = int(by_so.shape[0])
                 fig_so = go.Figure(
                     data=[
                         go.Bar(
@@ -4310,13 +4351,14 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                     ]
                 )
                 fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
+                _style_bar_fig(fig_so, n_bars)
                 try:
                     fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
                     fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
                 except Exception:
                     pass
                 fig_so.update_yaxes(autorange="reversed")
-                chart_stockout_skus = _fig_html(fig_so, height=300, showlegend=False)
+                chart_stockout_skus = _fig_html(fig_so, height=_bar_height(n_bars, 300), showlegend=False)
             else:
                 stockout_unavailable = "No stockouts found in the saved supply plan."
 
@@ -4334,6 +4376,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             by_ov = p.groupby(sku_p, as_index=False)["overstock_units"].sum().sort_values("overstock_units", ascending=False).head(10)
             by_ov = by_ov[by_ov["overstock_units"] > 0]
             if not by_ov.empty:
+                n_bars = int(by_ov.shape[0])
                 fig_ov = go.Figure(
                     data=[
                         go.Bar(
@@ -4345,13 +4388,14 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                     ]
                 )
                 fig_ov.update_layout(xaxis_title="Overstock units (sum)", yaxis_title="SKU")
+                _style_bar_fig(fig_ov, n_bars)
                 try:
                     fig_ov.update_xaxes(tickformat=",.0f", exponentformat="none")
                     fig_ov.update_traces(hovertemplate="%{y}<br>Overstock units: %{x:,.0f}<extra></extra>")
                 except Exception:
                     pass
                 fig_ov.update_yaxes(autorange="reversed")
-                chart_overstock_skus = _fig_html(fig_ov, height=280, showlegend=False)
+                chart_overstock_skus = _fig_html(fig_ov, height=_bar_height(n_bars, 280), showlegend=False)
                 overstock_note = "Overstock = max(0, ending_on_hand − target_level), summed over horizon."
             else:
                 overstock_unavailable = "No overstock detected using ending_on_hand vs target_level."
