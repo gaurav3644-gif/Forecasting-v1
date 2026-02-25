@@ -6637,7 +6637,7 @@ async def download_supply_plan(request: Request, run_session_id: Optional[str] =
     run, _ = _get_run_state(session_id, run_session_id, create=False)
     supply_plan: Optional[pd.DataFrame] = None
     user_email = _get_user_email(request)
-    is_admin = _is_admin(user_email)
+    is_admin = _is_admin_email(user_email)
 
     def _stable_seed(value: str) -> int:
         import hashlib as _hashlib
@@ -6651,15 +6651,24 @@ async def download_supply_plan(request: Request, run_session_id: Optional[str] =
         if not isinstance(forecast_df0, pd.DataFrame) or forecast_df0.empty:
             raise ValueError("Missing forecast_df in run state")
 
+        # Prefer supply-plan params (most reliable for history-loaded runs), otherwise fall back to forecast params.
+        sp_params = run_state.get("supply_plan_params") if isinstance(run_state.get("supply_plan_params"), dict) else {}
+        start_date_any = sp_params.get("start_date")
+        months_any = sp_params.get("months")
+
         start_month = run_state.get("start_month")
         months_val = run_state.get("months")
-        if not start_month or not months_val:
-            raise ValueError("Missing forecast params (start_month/months) in run state")
 
-        start_ts = pd.to_datetime(f"{start_month}-01", errors="coerce")
+        start_ts = pd.to_datetime(start_date_any, errors="coerce") if start_date_any else pd.NaT
+        if pd.isna(start_ts) and start_month:
+            start_ts = pd.to_datetime(f"{start_month}-01", errors="coerce")
+
         if pd.isna(start_ts):
-            raise ValueError("Invalid start_month in run state")
-        horizon_months = int(months_val)
+            raise ValueError("Missing/invalid start date for export (start_month/start_date)")
+
+        horizon_months = int(months_any or months_val or 0)
+        if horizon_months <= 0:
+            raise ValueError("Missing/invalid horizon months for export")
         horizon_months = max(1, min(horizon_months, 120))
         end_ts = start_ts + pd.DateOffset(months=horizon_months)
 
@@ -6700,7 +6709,7 @@ async def download_supply_plan(request: Request, run_session_id: Optional[str] =
             "sku_col": sku_col,
             "loc_col": loc_col,
             "extra_cols": extra_cols,
-            "start_date": f"{start_month}-01",
+            "start_date": str(start_ts.date()),
             "months": horizon_months,
         }
 
@@ -6781,8 +6790,10 @@ async def download_supply_plan(request: Request, run_session_id: Optional[str] =
                             run["forecast_df"] = fdf
                         params_loaded = loaded.get("params") if isinstance(loaded.get("params"), dict) else {}
                         if params_loaded:
-                            run.setdefault("start_month", params_loaded.get("start_month") or params_loaded.get("start_date") or run.get("start_month"))
-                            run.setdefault("months", params_loaded.get("months") or run.get("months"))
+                            if not run.get("start_month"):
+                                run["start_month"] = params_loaded.get("start_month") or run.get("start_month")
+                            if not run.get("months"):
+                                run["months"] = params_loaded.get("months") or run.get("months")
                 except Exception:
                     pass
 
@@ -6873,6 +6884,14 @@ async def download_supply_plan(request: Request, run_session_id: Optional[str] =
 
     if supply_plan is None or supply_plan.empty:
         raise HTTPException(status_code=404, detail="No supply plan available. Please generate it first.")
+    try:
+        series_cols = [c for c in ["sku_id", "location"] if c in supply_plan.columns]
+        if len(series_cols) < 2:
+            series_cols = [c for c in ["item", "store"] if c in supply_plan.columns]
+        series_n = supply_plan[series_cols].drop_duplicates().shape[0] if len(series_cols) >= 2 else None
+        logging.info(f"[SUPPLY_PLAN] Exporting CSV rows={len(supply_plan)} series={series_n}")
+    except Exception:
+        pass
     stream = io.StringIO()
     supply_plan.to_csv(stream, index=False)
     stream.seek(0)
