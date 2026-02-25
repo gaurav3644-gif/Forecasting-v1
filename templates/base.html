@@ -235,6 +235,33 @@
             box-shadow: 0 10px 26px rgba(67,233,123,0.18);
         }
 
+        /* ── Dark application navbar (logo is designed for dark backgrounds) ── */
+        .pt-app-navbar {
+            background: #0a0f0d;
+            border-bottom: 1px solid rgba(67,233,123,0.14);
+        }
+        .pt-app-navbar .btn-outline-secondary {
+            border-color: rgba(255,255,255,0.28);
+            color: rgba(255,255,255,0.78);
+        }
+        .pt-app-navbar .btn-outline-secondary:hover,
+        .pt-app-navbar .btn-outline-secondary:active {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.40);
+            color: #fff;
+            box-shadow: none;
+        }
+        .pt-app-navbar .pt-navbar-text-muted {
+            color: rgba(255,255,255,0.52) !important;
+        }
+        .pt-app-navbar .lang-picker {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.18);
+        }
+        .pt-app-navbar .lang-picker select {
+            color: rgba(255,255,255,0.78);
+        }
+
     </style>
 
     <script>
@@ -574,7 +601,7 @@
 <body>
     <div class="zoom-wrapper">
     {% block navbar %}
-    <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+    <nav class="navbar navbar-expand-lg navbar-dark pt-app-navbar mb-4">
         <div class="container-fluid">
             <a class="navbar-brand pt-navbar-brand" href="/" aria-label="PiTensor Home">
                 <img class="pt-navbar-logo" src="/static/pitensor-logo-cropped.png" alt="PiTensor">
@@ -591,7 +618,7 @@
                 {% set user_email = request.state.user_email if request and request.state is not none else None %}
                 {% if user_email %}
                     <a class="btn btn-outline-secondary btn-sm" href="/dashboard"><span data-i18n="nav_dashboard">Dashboard</span></a>
-                    <span class="small text-muted d-none d-sm-inline">{{ user_email }}</span>
+                    <span class="small pt-navbar-text-muted d-none d-sm-inline">{{ user_email }}</span>
                     <a class="btn btn-outline-secondary btn-sm" href="/signout"><span data-i18n="nav_sign_out">Sign out</span></a>
                 {% else %}
                     <a class="btn btn-outline-primary btn-sm" href="/signin"><span data-i18n="nav_sign_in">Sign in</span></a>
