@@ -31,13 +31,14 @@
     margin-bottom: 10px;
   }
   .auth-logo {
-    width: 52px;
-    height: 52px;
-    border-radius: 18px;
-    display: grid;
-    place-items: center;
-    margin: 0 auto 10px auto;
-    background: rgba(18,24,39,0.04);
+    display: flex;
+    justify-content: center;
+    margin: 0 auto 12px auto;
+  }
+  .auth-logo img {
+    height: 34px;
+    width: auto;
+    display: block;
   }
   .auth-title {
     text-align: center;
@@ -94,8 +95,8 @@
     <div class="auth-topbar">
       <a class="btn btn-outline-secondary btn-sm" href="/">Go back</a>
     </div>
-    <div class="auth-logo" aria-hidden="true">
-      <span style="font-size: 26px;">&#129433;</span>
+    <div class="auth-logo">
+      <img src="/static/pitensor-logo-cropped.png" alt="PiTensor">
     </div>
     <h2 class="auth-title">Sign-in with One Time Password (OTP)</h2>
 

@@ -23,6 +23,7 @@ import retriever
 import hashlib
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from urllib.parse import quote, urlparse, urlencode
 import base64
@@ -46,6 +47,16 @@ app = FastAPI()
 # Use absolute path for templates to ensure it works in all deployment environments
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+STATIC_DIR = BASE_DIR / "static"
+try:
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+try:
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+except Exception:
+    # Static mounting is best-effort; the app can still run without it.
+    pass
 
 def _pick_col_ci(df: pd.DataFrame, candidates: list[str]) -> Optional[str]:
     try:
@@ -3015,7 +3026,8 @@ async def forecast_page(request: Request, run_session_id: Optional[str] = None):
         "numeric_columns": numeric_columns,
         "date_range": f"{df['date'].min().strftime('%Y-%m-%d')} to {df['date'].max().strftime('%Y-%m-%d')}",
         "last_month": last_month,
-        "default_start_month": default_start_month
+        "default_start_month": default_start_month,
+        "enable_quantiles": bool((run or {}).get("enable_quantiles", False)),
     })
 
 @app.get("/status")
@@ -3079,6 +3091,7 @@ async def run_forecast(
     months: int = Form(...),
     grain: List[str] = Form(None),
     extra_features: List[str] = Form(None),
+    enable_quantiles: Optional[str] = Form(None),
     enable_oos_imputation: Optional[str] = Form(None),
     oos_column: Optional[str] = Form(None)
 ):
@@ -3102,6 +3115,7 @@ async def run_forecast(
         )
 
     # Store OOS settings
+    quantiles_enabled = enable_quantiles == "on"
     oos_enabled = enable_oos_imputation == "on"
     oos_col = oos_column if (oos_enabled and oos_column) else None
 
@@ -3109,6 +3123,7 @@ async def run_forecast(
     run["months"] = months
     run["grain"] = grain if grain else []
     run["extra_features"] = extra_features if extra_features else []
+    run["enable_quantiles"] = bool(quantiles_enabled)
     run["oos_enabled"] = oos_enabled
     run["oos_column"] = oos_col
     logging.debug(f"Start month stored in run: {run.get('start_month')}")
@@ -3164,7 +3179,7 @@ async def run_forecast(
                 _set_forecast_cancelled_run(session_id, rid, "Forecast cancelled.")
                 return
             start_date = pd.to_datetime(start_month + "-01")
-            from run_forecast2 import forecast_all_combined_prob, impute_oos_sales
+            from run_forecast2 import forecast_all_combined_prob, forecast_all_combined, impute_oos_sales
 
             # Conditional OOS imputation
             oos_enabled = run_state.get("oos_enabled", False)
@@ -3185,7 +3200,13 @@ async def run_forecast(
                 _set_forecast_cancelled_run(session_id, rid, "Forecast cancelled.")
                 return
 
-            set_forecast_progress(session_id, 0.35, "Running forecast model...", run_session_id=rid)
+            enable_quantiles_run = bool(run_state.get("enable_quantiles", False))
+            set_forecast_progress(
+                session_id,
+                0.35,
+                "Running quantile forecast model..." if enable_quantiles_run else "Running forecast model...",
+                run_session_id=rid,
+            )
             df = run_state["df"].copy()
             extra_features = run_state.get("extra_features", [])
             grain = run_state.get("grain", [])
@@ -3196,10 +3217,25 @@ async def run_forecast(
                     raise ForecastCancelled()
                 set_forecast_progress(session_id, 0.35 + 0.6 * p, msg or "Forecasting...", run_session_id=rid)
 
-            forecast_df, feature_importance, driver_artifacts = forecast_all_combined_prob(
-                df, start_date=start_date, months=months, grain=grain, extra_features=extra_features,
-                progress_callback=_progress_cb
-            )
+            if enable_quantiles_run:
+                forecast_df, feature_importance, driver_artifacts = forecast_all_combined_prob(
+                    df,
+                    start_date=start_date,
+                    months=months,
+                    grain=grain,
+                    extra_features=extra_features,
+                    progress_callback=_progress_cb,
+                )
+            else:
+                forecast_df, feature_importance = forecast_all_combined(
+                    df,
+                    start_date=start_date,
+                    months=months,
+                    grain=grain,
+                    extra_features=extra_features,
+                    progress_callback=_progress_cb,
+                )
+                driver_artifacts = {}
             logging.debug(f"[LOG] Forecast thread: forecast_df shape={getattr(forecast_df, 'shape', None)}")
             run_state["forecast_df"] = forecast_df
             run_state["feature_importance"] = feature_importance
@@ -6694,6 +6730,279 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
     except Exception as e:
         logging.warning(f"[HISTORY] Failed to save supply plan (manual) for {user_email}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save supply plan: {e}")
+
+
+@app.post("/supply_plan/generate_all")
+async def supply_plan_generate_all(
+    request: Request,
+    payload: Dict = Body(default={}),
+    background_tasks: BackgroundTasks = None,
+):
+    """
+    Generate and save supply plans for ALL item/store combinations using default
+    (auto-fill) values.  Called automatically by the UI after the user clicks
+    Generate so that the Insights page can show stockout/overstock KPIs for every
+    series without the user having to iterate manually.
+
+    The response is immediate; all heavy computation runs as a background task.
+    """
+    session_id = _session_id_from_request(request)
+    user_email = _get_user_email(request)
+    if not user_email:
+        return {"error": "Not signed in. Please sign in to generate all supply plans."}
+
+    rid_in = payload.get("run_session_id") if isinstance(payload, dict) else None
+    run_session_id = _normalize_run_session_id(rid_in if isinstance(rid_in, str) else None)
+    run, rid = _get_run_state(session_id, run_session_id, create=False)
+    if not isinstance(run, dict):
+        return {"error": "Session not found."}
+
+    forecast_df = run.get("forecast_df")
+    if not isinstance(forecast_df, pd.DataFrame) or forecast_df.empty:
+        return {"error": "No forecast data available."}
+
+    start_month = run.get("start_month")
+    months_val = run.get("months")
+    run_id = run.get("forecast_run_id")
+    if not all([start_month, months_val, run_id]):
+        return {"error": "Missing forecast parameters (start_month / months / run_id)."}
+
+    is_admin = _is_admin_email(user_email)
+    effective_email = user_email
+    try:
+        if is_admin and run.get("run_owner_email"):
+            effective_email = str(run.get("run_owner_email"))
+    except Exception:
+        pass
+
+    # Determine total number of combos for the response
+    sp_inputs = run.get("supply_plan_inputs")
+    if isinstance(sp_inputs, dict) and isinstance(sp_inputs.get("forecast_input_df"), pd.DataFrame):
+        total_combos = int(sp_inputs["forecast_input_df"][["sku_id", "location"]].drop_duplicates().shape[0])
+    else:
+        try:
+            _exc = {"date", "actual", "forecast"}
+            _gc = [c for c in forecast_df.columns if c not in _exc and not str(c).startswith("forecast_p")]
+            _sc = "item" if "item" in forecast_df.columns else (_gc[0] if _gc else None)
+            _lc = "store" if "store" in forecast_df.columns else (_gc[1] if len(_gc) >= 2 else None)
+            total_combos = int(forecast_df[[_sc, _lc]].drop_duplicates().shape[0]) if (_sc and _lc) else 1
+        except Exception:
+            total_combos = 1
+
+    def _generate_all_combos():
+        """Background task: generate and persist supply plans for every combo."""
+        try:
+            import history_store as _hs
+            import numpy as _np
+            import hashlib as _hashlib
+
+            try:
+                horizon_m = max(1, min(int(months_val), 120))
+            except Exception:
+                horizon_m = 12
+            start_date_str = f"{start_month}-01"
+
+            # ── 1. Get or rebuild planning inputs ──────────────────────────────
+            _sp_inputs = run.get("supply_plan_inputs") if isinstance(run, dict) else None
+
+            if isinstance(_sp_inputs, dict):
+                fi_df = _sp_inputs.get("forecast_input_df")
+                inv_df = _sp_inputs.get("inventory_df")
+                con_df = _sp_inputs.get("constraints_df")
+                pol_df = _sp_inputs.get("policy_df")
+                meta_df = _sp_inputs.get("meta_df")
+                sku_col = _sp_inputs.get("sku_col")
+                loc_col = _sp_inputs.get("loc_col")
+            else:
+                # Fallback: rebuild inputs from forecast_df with defaults
+                from io import StringIO as _StringIO
+
+                def __stable_seed(v: str) -> int:
+                    return int(_hashlib.md5(v.encode()).hexdigest()[:8], 16)
+
+                wdf = forecast_df.copy()
+                if "forecast" not in wdf.columns:
+                    _qf = next((c for c in ["forecast_p60", "forecast_p50"] if c in wdf.columns), None)
+                    if not _qf:
+                        logging.warning("[GENERATE_ALL] forecast column missing – aborting")
+                        return
+                    wdf = wdf.rename(columns={_qf: "forecast"})
+
+                wdf["date"] = pd.to_datetime(wdf["date"], errors="coerce")
+                wdf = wdf.dropna(subset=["date"])
+                _exc2 = {"date", "actual", "forecast"}
+                grain_cols = [c for c in wdf.columns if c not in _exc2 and not str(c).startswith("forecast_p")]
+                sku_col = "item" if "item" in wdf.columns else (grain_cols[0] if grain_cols else None)
+                loc_col = "store" if "store" in wdf.columns else (grain_cols[1] if len(grain_cols) >= 2 else None)
+                extra_cols2 = [c for c in grain_cols if c not in {sku_col, loc_col} and c in wdf.columns]
+
+                wdf["sku_id"] = wdf[sku_col].astype(str) if sku_col else "ALL"
+                wdf["location"] = wdf[loc_col].astype(str) if loc_col else "ALL"
+                for _ec in extra_cols2:
+                    wdf["location"] = wdf["location"] + "|" + _ec + "=" + wdf[_ec].astype(str)
+
+                start_ts2 = pd.to_datetime(start_date_str, errors="coerce")
+                end_ts2 = start_ts2 + pd.DateOffset(months=horizon_m)
+                wdf = wdf[(wdf["date"] >= start_ts2) & (wdf["date"] < end_ts2)]
+                wdf["period_start"] = wdf["date"].dt.to_period("M").apply(lambda p: p.start_time)
+                wdf["forecast_demand"] = pd.to_numeric(wdf["forecast"], errors="coerce").fillna(0.0)
+
+                fi_df = wdf.groupby(["sku_id", "location", "period_start"], as_index=False)["forecast_demand"].sum()
+                meta_df = wdf[["sku_id", "location", *([sku_col] if sku_col else []), *([loc_col] if loc_col else [])]].drop_duplicates() if (sku_col or loc_col) else None
+
+                # Generate constraints and policy using the same deterministic seeds
+                sku_ids = sorted(fi_df["sku_id"].astype(str).unique().tolist())
+                mean_weekly = fi_df.groupby("sku_id")["forecast_demand"].mean().to_dict()
+                con_rows = []
+                for _sku in sku_ids:
+                    _rng = _np.random.default_rng(__stable_seed(f"constraints:{_sku}"))
+                    _lt = int(_rng.choice([7, 14, 21, 28]))
+                    _moq = int(_rng.choice([50, 100, 200, 300]))
+                    _om = int(_rng.choice([5, 10, 20, 25]))
+                    _cap = float(max(200.0, (mean_weekly.get(_sku, 0.0) or 0.0) * _rng.uniform(3.0, 8.0)))
+                    con_rows.append({
+                        "sku_id": _sku, "supplier": f"SUP_{int(_rng.integers(1, 6))}",
+                        "lead_time_days": _lt, "moq": _moq, "order_multiple": _om,
+                        "max_capacity_per_week": int(_np.ceil(_cap / _om) * _om),
+                        "shelf_life_days": int(_rng.choice([60, 90, 120, 180])),
+                    })
+                con_df = pd.DataFrame(con_rows)
+
+                pol_rows = []
+                for _sku in sku_ids:
+                    _rng2 = _np.random.default_rng(__stable_seed(f"policy:{_sku}"))
+                    pol_rows.append({
+                        "sku_id": _sku,
+                        "holding_cost_per_unit": round(float(_rng2.uniform(0.5, 6.0)), 2),
+                        "stockout_cost_per_unit": round(float(_rng2.uniform(10.0, 80.0)), 2),
+                        "service_level": float(_rng2.choice([0.90, 0.92, 0.95, 0.97])),
+                    })
+                pol_df = pd.DataFrame(pol_rows)
+
+                # Generate inventory: try raw_df first, then generated defaults
+                raw_df2 = data_store.get(session_id, {}).get("df")
+                if raw_df2 is None and isinstance(run, dict):
+                    raw_df2 = run.get("raw_df") or run.get("df")
+
+                inv_col = None
+                if raw_df2 is not None and isinstance(raw_df2, pd.DataFrame):
+                    _inv_candidates = ["on_hand", "onhand", "inventory", "inventory_on_hand", "stock", "qty_on_hand", "qoh"]
+                    _lower_map = {str(c).lower(): c for c in raw_df2.columns}
+                    inv_col = next((str(_lower_map[c]) for c in _inv_candidates if c in _lower_map), None)
+
+                if inv_col and raw_df2 is not None:
+                    # Build from raw data
+                    combos_df = fi_df[["sku_id", "location"]].drop_duplicates().copy()
+                    _rdf = raw_df2.copy()
+                    if "date" in _rdf.columns:
+                        _rdf["date"] = pd.to_datetime(_rdf["date"], errors="coerce")
+                        _rdf = _rdf.dropna(subset=["date"]).sort_values("date")
+                    _keys = [c for c in [sku_col, loc_col] if c and c in _rdf.columns]
+                    if _keys:
+                        _latest = _rdf.groupby(_keys, as_index=False).tail(1).copy()
+                        _latest["on_hand"] = pd.to_numeric(_latest[inv_col], errors="coerce").fillna(0.0)
+                        _latest["sku_id"] = _latest[sku_col].astype(str) if sku_col else "ALL"
+                        _latest["location"] = _latest[loc_col].astype(str) if loc_col else "ALL"
+                        _latest["allocated"] = 0.0
+                        _latest["backorders"] = 0.0
+                        _inv = _latest[["sku_id", "location", "on_hand", "allocated", "backorders"]]
+                        _inv = _inv.groupby(["sku_id", "location"], as_index=False).agg({"on_hand": "max", "allocated": "max", "backorders": "max"})
+                        inv_df = combos_df.merge(_inv, on=["sku_id", "location"], how="left")
+                        for _c in ["on_hand", "allocated", "backorders"]:
+                            inv_df[_c] = inv_df[_c].fillna(0.0)
+                    else:
+                        inv_df = None
+                else:
+                    inv_df = None
+
+                if inv_df is None:
+                    mean_wk = fi_df.groupby(["sku_id", "location"])["forecast_demand"].mean().to_dict()
+                    combos_df2 = fi_df[["sku_id", "location"]].drop_duplicates()
+                    inv_rows = []
+                    for _, _cr in combos_df2.iterrows():
+                        _s, _l = str(_cr["sku_id"]), str(_cr["location"])
+                        _rng3 = _np.random.default_rng(__stable_seed(f"inv:{_s}:{_l}"))
+                        _base = float(mean_wk.get((_s, _l), 0.0) or 0.0)
+                        inv_rows.append({
+                            "sku_id": _s, "location": _l,
+                            "on_hand": int(_np.ceil(max(0.0, _base * _rng3.uniform(0.5, 3.0)))),
+                            "allocated": int(_np.floor(max(0.0, _base * _rng3.uniform(0.0, 0.15)))),
+                            "backorders": int(_np.ceil(max(0.0, _base * _rng3.uniform(0.0, 0.25)))),
+                        })
+                    inv_df = pd.DataFrame(inv_rows)
+
+            if not isinstance(fi_df, pd.DataFrame) or fi_df.empty:
+                logging.warning("[GENERATE_ALL] forecast_input_df is empty – aborting")
+                return
+
+            # ── 2. Generate supply plans for all combos at once ────────────────
+            logging.info(f"[GENERATE_ALL] Generating plans for {len(fi_df[['sku_id','location']].drop_duplicates())} combos")
+            sp_all = generate_time_phased_supply_plan(
+                forecast_df=fi_df,
+                inventory_df=inv_df,
+                constraints_df=con_df,
+                policy_df=pol_df,
+                start_date=start_date_str,
+                months=horizon_m,
+                strict=False,
+            )
+
+            if not isinstance(sp_all, pd.DataFrame) or sp_all.empty:
+                logging.warning("[GENERATE_ALL] generate_time_phased_supply_plan returned empty DataFrame")
+                return
+
+            # ── 3. Save each combo separately to history ───────────────────────
+            saved_count = 0
+            failed_count = 0
+
+            for (combo_sku, combo_loc), sp_combo in sp_all.groupby(["sku_id", "location"]):
+                combo_key_bg = f"{combo_sku}|||{combo_loc}"
+                try:
+                    sp_export = sp_combo.copy()
+                    if meta_df is not None and not meta_df.empty:
+                        sp_export = sp_export.merge(meta_df, on=["sku_id", "location"], how="left")
+                        if sku_col and "sku_id" in sp_export.columns and sku_col in sp_export.columns:
+                            sp_export = sp_export.drop(columns=["sku_id"])
+                        if loc_col and "location" in sp_export.columns and loc_col in sp_export.columns:
+                            sp_export = sp_export.drop(columns=["location"])
+
+                    _plan_params = {
+                        "combo_key": combo_key_bg,
+                        "start_date": start_date_str,
+                        "months": horizon_m,
+                        "override_enabled": False,
+                        "generated_by": "generate_all",
+                    }
+                    _hs.save_supply_plan(
+                        str(effective_email),
+                        int(run_id),
+                        params=_plan_params,
+                        supply_export_df=sp_export,
+                        supply_full_df=sp_combo,
+                    )
+                    saved_count += 1
+                except Exception as _e:
+                    logging.warning(f"[GENERATE_ALL] Failed to save {combo_key_bg}: {_e}")
+                    failed_count += 1
+
+            logging.info(f"[GENERATE_ALL] Complete – saved={saved_count}, failed={failed_count}")
+            try:
+                if isinstance(run, dict):
+                    run["supply_plan_all_generated"] = True
+                    run["supply_plan_all_saved_count"] = saved_count
+            except Exception:
+                pass
+
+        except Exception as _ex:
+            logging.warning(f"[GENERATE_ALL] Unexpected error: {_ex}")
+
+    if background_tasks:
+        background_tasks.add_task(_generate_all_combos)
+        return {"ok": True, "total": total_combos, "status": "started"}
+    else:
+        _generate_all_combos()
+        return {"ok": True, "total": total_combos, "status": "completed"}
+
 
 # Download endpoint for supply plan
 @app.get("/download_supply_plan")

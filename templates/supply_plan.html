@@ -86,6 +86,7 @@
                 <button type="button" class="btn btn-outline-primary disabled" id="saveSupplyBtn" aria-disabled="true" disabled>Save</button>
                 <a href="/download_supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-success disabled" id="downloadPlanBtn" target="_blank" aria-disabled="true">Download CSV</a>
                 <div id="supplyPlanAlert" class="small text-muted"></div>
+                <div id="generateAllStatus" class="small text-muted mt-1" style="display:none;"></div>
             </div>
         </form>
 
@@ -982,6 +983,37 @@ function collectSupplyOverridesFromTable() {
     return out;
 }
 
+// Trigger background generation + save for ALL item/store combos so the
+// Insights page can show stockout KPIs without the user iterating manually.
+async function triggerGenerateAll() {
+    const statusEl = document.getElementById('generateAllStatus');
+    try {
+        if (statusEl) {
+            statusEl.style.display = '';
+            statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Saving all combos in background…';
+        }
+        const res = await fetch('/supply_plan/generate_all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ run_session_id: runSessionId || undefined }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data && data.ok) {
+            const n = data.total || '?';
+            if (statusEl) {
+                statusEl.innerHTML = `<span class="text-success">All ${n} combo plans saved</span> <span class="text-muted">(Insights updated)</span>`;
+                setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 8000);
+            }
+        } else if (data && data.error) {
+            if (statusEl) statusEl.innerHTML = `<span class="text-warning small">${data.error}</span>`;
+        }
+    } catch (e) {
+        // Silent fail – background generation is best-effort
+        if (statusEl) statusEl.style.display = 'none';
+        console.warn('[generate_all] background generation error:', e);
+    }
+}
+
 async function requestSupplyPlan({ includeTableOverrides, source } = { includeTableOverrides: false, source: 'apply' }) {
     const isApply = String(source || '') === 'apply';
     const btn = document.getElementById(isApply ? 'applySeriesBtn' : 'generateSupplyBtn');
@@ -1074,6 +1106,13 @@ async function requestSupplyPlan({ includeTableOverrides, source } = { includeTa
         window._piTensorSupplyLoadedComboKey = comboKey;
         setDownloadEnabled(true);
         setSaveEnabled(true);
+
+        // After a user-initiated Generate (not just Apply/series-switch),
+        // silently generate + save plans for ALL combos in the background so
+        // the Insights page shows stockout KPIs for every item/store.
+        if (String(source || '') === 'generate') {
+            triggerGenerateAll();
+        }
     } catch (err) {
         if (alertEl) alertEl.innerHTML = `<span class="text-danger">Unexpected error: ${err}</span>`;
         if (plotEl) plotEl.innerHTML = `<div class="p-3 text-danger small">Unexpected error: ${err}</div>`;
