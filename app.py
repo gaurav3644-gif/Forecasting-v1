@@ -3911,43 +3911,35 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         plan_df = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
 
     print("gg plan_df 3911", plan_df.columns.tolist() if isinstance(plan_df, pd.DataFrame) else "No plan_df")
-    # If we loaded this run from history via /history/load (target=insights), we likely did not
-    # hydrate the supply plan into the in-memory run_state. Load it lazily here so the Insights
-    # page can render stockout/overstock charts when a saved supply plan exists.
-    if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
+    # Always prefer DB-saved supply plans (all combo_keys) for Insights.
+    # The in-memory `supply_plan_full_df` is typically only the last selected series.
+    try:
+        import history_store
+
+        user_email = _get_user_email(request)
+        is_admin = bool(user_email and _is_admin_email(user_email))
+        run_id = (run or {}).get("forecast_run_id") if isinstance(run, dict) else None
+        effective_email = user_email
         try:
-            import history_store
-
-            user_email = _get_user_email(request)
-            is_admin = bool(user_email and _is_admin_email(user_email))
-            run_id = (run or {}).get("forecast_run_id") if isinstance(run, dict) else None
-            effective_email = user_email
-            try:
-                if is_admin and isinstance(run, dict) and run.get("run_owner_email"):
-                    effective_email = str(run.get("run_owner_email"))
-            except Exception:
-                effective_email = user_email
-
-            if effective_email and run_id:
-                # Load ALL saved supply plans for this run (one per combo_key), then combine them.
-                # This ensures Insights reflects multiple stockout series, not just the most recent.
-                saved = history_store.list_supply_plans(str(effective_email), int(run_id), include_full=False)
-                dfs = [r.get("supply_plan_df") for r in saved if isinstance(r, dict)]
-                dfs = [d for d in dfs if isinstance(d, pd.DataFrame) and not d.empty]
-                if dfs:
-                    combined = pd.concat(dfs, ignore_index=True)
-                    if "period_start" in combined.columns:
-                        combined = combined.copy()
-                        combined["period_start"] = pd.to_datetime(combined["period_start"], errors="coerce")
-                    plan_df = combined
-
-                    # Cache into the in-memory run_state to avoid reloading within the same session.
-                    if isinstance(run, dict):
-                        run["supply_plan_insights_df"] = plan_df
-        except KeyError:
-            pass
+            if is_admin and isinstance(run, dict) and run.get("run_owner_email"):
+                effective_email = str(run.get("run_owner_email"))
         except Exception:
-            pass
+            effective_email = user_email
+
+        if effective_email and run_id:
+            saved = history_store.list_supply_plans(str(effective_email), int(run_id), include_full=False)
+            dfs = [r.get("supply_plan_df") for r in saved if isinstance(r, dict)]
+            dfs = [d for d in dfs if isinstance(d, pd.DataFrame) and not d.empty]
+            if dfs:
+                combined = pd.concat(dfs, ignore_index=True)
+                if "period_start" in combined.columns:
+                    combined = combined.copy()
+                    combined["period_start"] = pd.to_datetime(combined["period_start"], errors="coerce")
+                plan_df = combined
+                if isinstance(run, dict):
+                    run["supply_plan_insights_df"] = plan_df
+    except Exception:
+        pass
 
     if not isinstance(raw_df, pd.DataFrame) or raw_df.empty:
         return templates.TemplateResponse(
