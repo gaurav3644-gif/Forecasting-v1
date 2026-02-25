@@ -4640,6 +4640,82 @@ async def data_use(request: Request, dataset_id: int = Form(...)):
     return RedirectResponse(f"/forecast?run_session_id={quote(run_session_id)}", status_code=303)
 
 
+_CONNECTOR_SCHEMAS: dict[str, dict] = {
+    "ecommerce": {
+        "label": "E-commerce",
+        "fields": [
+            {"name": "provider", "label": "Platform", "type": "select",
+             "options": ["Shopify", "WooCommerce", "Magento", "BigCommerce"], "default": "Shopify"},
+            {"name": "store_url", "label": "Store URL", "type": "text"},
+            {"name": "api_key",   "label": "API Key",   "type": "password"},
+        ],
+    },
+    "pos": {
+        "label": "POS System",
+        "fields": [
+            {"name": "provider",    "label": "Platform",    "type": "select",
+             "options": ["Square", "Toast", "Clover", "Lightspeed"], "default": "Square"},
+            {"name": "api_key",     "label": "API Key",     "type": "password"},
+            {"name": "location_id", "label": "Location ID", "type": "text"},
+        ],
+    },
+    "erp": {
+        "label": "ERP System",
+        "fields": [
+            {"name": "provider", "label": "Platform", "type": "select",
+             "options": ["SAP", "Oracle ERP", "Microsoft Dynamics"], "default": "SAP"},
+            {"name": "host",     "label": "Host / Base URL", "type": "text"},
+            {"name": "username", "label": "Username",        "type": "text"},
+            {"name": "password", "label": "Password",        "type": "password"},
+        ],
+    },
+    "warehouse": {
+        "label": "Cloud Warehouse",
+        "fields": [
+            {"name": "provider",    "label": "Platform",                 "type": "select",
+             "options": ["BigQuery", "Snowflake", "Redshift", "Azure Synapse"], "default": "BigQuery"},
+            {"name": "project",     "label": "Project / Account",        "type": "text"},
+            {"name": "dataset",     "label": "Dataset / Database",       "type": "text"},
+            {"name": "credentials", "label": "Credentials (JSON / key)", "type": "password"},
+        ],
+    },
+    "database": {
+        "label": "Database",
+        "fields": [
+            {"name": "provider", "label": "Database Engine", "type": "select",
+             "options": ["MySQL", "PostgreSQL", "SQL Server", "Oracle", "Other"], "default": "PostgreSQL"},
+            {"name": "host",     "label": "Host",     "type": "text"},
+            {"name": "port",     "label": "Port",     "type": "text", "default": "5432"},
+            {"name": "database", "label": "Database", "type": "text"},
+            {"name": "username", "label": "Username", "type": "text"},
+            {"name": "password", "label": "Password", "type": "password"},
+        ],
+    },
+}
+
+
+@app.get("/connector-schema/{connector}")
+async def connector_schema(connector: str):
+    schema = _CONNECTOR_SCHEMAS.get(connector)
+    if not schema:
+        return JSONResponse({"error": f"Unknown connector: {connector}"}, status_code=404)
+    return JSONResponse({"fields": schema["fields"]})
+
+
+@app.post("/connect/{connector}")
+async def connector_connect(connector: str, request: Request):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return JSONResponse({"status": "error", "message": "Not authenticated"}, status_code=401)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    # Stub: real integration logic lives here per connector type.
+    logging.info(f"[CONNECTOR] {user_email} connected via {connector}: keys={list(payload.keys())}")
+    return JSONResponse({"status": "success", "connector": connector})
+
+
 @app.post("/history/load")
 async def history_load(request: Request, run_id: int = Form(...), target: str = Form(default="results")):
     user_email = _get_user_email(request)
