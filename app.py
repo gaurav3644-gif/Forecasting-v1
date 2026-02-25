@@ -3904,7 +3904,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
 
     raw_df = run.get("df") if isinstance(run.get("df"), pd.DataFrame) else run.get("raw_df")
     forecast_df = run.get("forecast_df") if isinstance(run.get("forecast_df"), pd.DataFrame) else None
-    plan_df = run.get("supply_plan_full_df") if isinstance(run.get("supply_plan_full_df"), pd.DataFrame) else None
+    plan_df = run.get("supply_plan_insights_df") if isinstance(run.get("supply_plan_insights_df"), pd.DataFrame) else None
+    if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
+        plan_df = run.get("supply_plan_full_df") if isinstance(run.get("supply_plan_full_df"), pd.DataFrame) else None
     if not (isinstance(plan_df, pd.DataFrame) and not plan_df.empty):
         plan_df = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
 
@@ -3919,32 +3921,29 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             user_email = _get_user_email(request)
             is_admin = bool(user_email and _is_admin_email(user_email))
             run_id = (run or {}).get("forecast_run_id") if isinstance(run, dict) else None
-            if user_email and run_id:
-                sp = (
-                    history_store.load_supply_plan_admin(run_id=int(run_id))
-                    if is_admin
-                    else history_store.load_supply_plan(user_email, int(run_id))
-                )
-                sp_df = sp.get("supply_plan_df")
-                sp_full = sp.get("supply_plan_full_df")
-                if isinstance(sp_df, pd.DataFrame) and not sp_df.empty and "period_start" in sp_df.columns:
-                    sp_df = sp_df.copy()
-                    sp_df["period_start"] = pd.to_datetime(sp_df["period_start"], errors="coerce")
-                if isinstance(sp_full, pd.DataFrame) and not sp_full.empty and "period_start" in sp_full.columns:
-                    sp_full = sp_full.copy()
-                    sp_full["period_start"] = pd.to_datetime(sp_full["period_start"], errors="coerce")
+            effective_email = user_email
+            try:
+                if is_admin and isinstance(run, dict) and run.get("run_owner_email"):
+                    effective_email = str(run.get("run_owner_email"))
+            except Exception:
+                effective_email = user_email
 
-                if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
-                    plan_df = sp_full
-                elif isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
-                    plan_df = sp_df
+            if effective_email and run_id:
+                # Load ALL saved supply plans for this run (one per combo_key), then combine them.
+                # This ensures Insights reflects multiple stockout series, not just the most recent.
+                saved = history_store.list_supply_plans(str(effective_email), int(run_id), include_full=False)
+                dfs = [r.get("supply_plan_df") for r in saved if isinstance(r, dict)]
+                dfs = [d for d in dfs if isinstance(d, pd.DataFrame) and not d.empty]
+                if dfs:
+                    combined = pd.concat(dfs, ignore_index=True)
+                    if "period_start" in combined.columns:
+                        combined = combined.copy()
+                        combined["period_start"] = pd.to_datetime(combined["period_start"], errors="coerce")
+                    plan_df = combined
 
-                # Cache into the in-memory run_state to avoid reloading within the same session.
-                if isinstance(run, dict):
-                    if isinstance(sp_df, pd.DataFrame) and not sp_df.empty:
-                        run["supply_plan_df"] = sp_df
-                    if isinstance(sp_full, pd.DataFrame) and not sp_full.empty:
-                        run["supply_plan_full_df"] = sp_full
+                    # Cache into the in-memory run_state to avoid reloading within the same session.
+                    if isinstance(run, dict):
+                        run["supply_plan_insights_df"] = plan_df
         except KeyError:
             pass
         except Exception:
@@ -4274,7 +4273,37 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         p = plan_df.copy()
         p["_stockout_units"] = _stockout_units_series(p)
         sku_p = _pick_col_ci(p, ["sku_id", "item", "sku"])
-        if sku_p and not p.empty:
+        store_p = _pick_col_ci(p, ["store", "location", "site"])
+        if sku_p and store_p and not p.empty:
+            by_so = (
+                p.groupby([sku_p, store_p], as_index=False)["_stockout_units"]
+                .sum()
+                .sort_values("_stockout_units", ascending=False)
+            )
+            by_so = by_so[by_so["_stockout_units"] > 0].head(10)
+            if not by_so.empty:
+                by_so["_label"] = by_so[sku_p].astype(str) + " / " + by_so[store_p].astype(str)
+                fig_so = go.Figure(
+                    data=[
+                        go.Bar(
+                            x=pd.to_numeric(by_so["_stockout_units"], errors="coerce").fillna(0.0).tolist(),
+                            y=by_so["_label"].astype(str).tolist(),
+                            orientation="h",
+                            marker_color="#dc3545",
+                        )
+                    ]
+                )
+                fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="Item / Store")
+                try:
+                    fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
+                    fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
+                except Exception:
+                    pass
+                fig_so.update_yaxes(autorange="reversed")
+                chart_stockout_skus = _fig_html(fig_so, height=300, showlegend=False)
+            else:
+                stockout_unavailable = "No stockouts found in the saved supply plan."
+        elif sku_p and not p.empty:
             by_so = p.groupby(sku_p, as_index=False)["_stockout_units"].sum().sort_values("_stockout_units", ascending=False)
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
             if not by_so.empty:
