@@ -655,7 +655,7 @@
             bd = document.createElement('div');
             bd.id = 'connector-backdrop';
             bd.className = 'connector-backdrop';
-            document.body.appendChild(bd);
+            (document.querySelector('.zoom-wrapper') || document.body).appendChild(bd);
         }
         return bd;
     }
@@ -687,7 +687,7 @@
                     </form>
                 </div>
             </div>`;
-            document.body.appendChild(modal);
+            (document.querySelector('.zoom-wrapper') || document.body).appendChild(modal);
         }
 
         modal.querySelector('#connector-modal-title').textContent =
@@ -743,19 +743,40 @@
         const form = modal.querySelector('#connector-form');
         form.onsubmit = function(e) {
             e.preventDefault();
-            const data = Object.fromEntries(new FormData(form));
+            const formData = Object.fromEntries(new FormData(form));
+            const submitBtn = form.querySelector('[type="submit"]');
+            const origHtml  = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Connecting…';
+            }
             fetch(`/connect/${connector}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify(formData)
             })
             .then(res => res.json())
             .then(resp => {
-                alert(resp.status === 'success' ? 'Connected!' : 'Connection failed');
-                const inst = bootstrap.Modal.getInstance(modal);
-                if (inst) inst.hide();
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = origHtml; }
+                if (resp.status === 'error') {
+                    alert('Connection failed: ' + (resp.message || 'Unknown error'));
+                    return;
+                }
+                // Database connector: show table picker (step 2)
+                if (connector === 'database' && Array.isArray(resp.tables)) {
+                    _showTablePicker(modal, modalInstance, connector, formData, resp.tables);
+                    return;
+                }
+                // Other connectors: credentials saved (API integration coming soon)
+                alert(resp.status === 'success'
+                    ? 'Connected! Credentials saved.'
+                    : ('Info: ' + (resp.message || 'Done.')));
+                modalInstance.hide();
             })
-            .catch(() => alert('Connection error.'));
+            .catch(err => {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = origHtml; }
+                alert('Connection error: ' + (err && err.message ? err.message : String(err)));
+            });
         };
 
         try { const ex = bootstrap.Modal.getInstance(modal); if (ex) ex.dispose(); } catch (e) {}
@@ -764,6 +785,73 @@
         bd.onclick = function() { modalInstance.hide(); };
         modal.addEventListener('hidden.bs.modal', removeConnectorBackdrop, { once: true });
         modalInstance.show();
+    }
+
+    // ── Step 2: pick a table and import ───────────────────────────────────────
+    function _showTablePicker(modal, modalInstance, connector, credentials, tables) {
+        const titleEl = modal.querySelector('#connector-modal-title');
+        if (titleEl) titleEl.textContent = 'Import Table';
+
+        const body   = modal.querySelector('.modal-body');
+        const footer = modal.querySelector('.modal-footer');
+
+        const opts = tables.map(t =>
+            `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`
+        ).join('');
+
+        body.innerHTML = `
+            <div class="alert alert-success py-2 mb-3" style="font-size:0.88rem;">
+                ✓ Connected successfully. Choose a table to import.
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Table</label>
+                <select id="pt-table-select" class="form-select">${opts || '<option value="">— no tables found —</option>'}</select>
+            </div>
+            <div id="pt-import-msg" class="small mt-2"></div>`;
+
+        footer.innerHTML = `
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" id="pt-import-btn" class="btn btn-primary btn-sm"${tables.length === 0 ? ' disabled' : ''}>
+                Import
+            </button>`;
+
+        footer.querySelector('#pt-import-btn').addEventListener('click', function() {
+            const table  = body.querySelector('#pt-table-select').value;
+            const btn    = this;
+            const msgEl  = body.querySelector('#pt-import-msg');
+            if (!table) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Importing…';
+            if (msgEl) msgEl.textContent = 'Fetching rows from table…';
+
+            fetch('/connector/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ connector, table, credentials })
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    modalInstance.hide();
+                    // Reload the Data page so the new dataset appears in the list
+                    window.location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Import';
+                    if (msgEl) {
+                        msgEl.innerHTML = `<span class="text-danger">⚠ ${res.message || 'Import failed.'}</span>`;
+                    }
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = 'Import';
+                if (msgEl) {
+                    msgEl.innerHTML = `<span class="text-danger">⚠ ${err && err.message ? err.message : String(err)}</span>`;
+                }
+            });
+        });
     }
 
     // ── Connector tile click ───────────────────────────────────────────────
