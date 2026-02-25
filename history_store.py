@@ -2296,6 +2296,128 @@ def delete_forecast_run_admin(*, run_id: int) -> bool:
         finally:
             conn.close()
 
+def delete_dataset(email: str, dataset_id: int) -> bool:
+    """Delete a dataset (and any forecast runs that reference it) owned by *email*.
+
+    Returns True if the dataset was found and deleted, False if not found.
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                user_id = _get_or_create_user_id_pg(conn, email)
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id FROM datasets WHERE id = %s AND user_id = %s",
+                    (int(dataset_id), user_id),
+                )
+                if not cur.fetchone():
+                    return False
+                # Cascade: supply_plans → forecast_runs → dataset
+                cur.execute(
+                    "DELETE FROM supply_plans WHERE forecast_run_id IN "
+                    "(SELECT id FROM forecast_runs WHERE dataset_id = %s AND user_id = %s)",
+                    (int(dataset_id), user_id),
+                )
+                cur.execute(
+                    "DELETE FROM forecast_runs WHERE dataset_id = %s AND user_id = %s",
+                    (int(dataset_id), user_id),
+                )
+                cur.execute(
+                    "DELETE FROM datasets WHERE id = %s AND user_id = %s",
+                    (int(dataset_id), user_id),
+                )
+                conn.commit()
+                return True
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            user_id = _get_or_create_user_id(conn, email)
+            row = conn.execute(
+                "SELECT id FROM datasets WHERE id = ? AND user_id = ?",
+                (int(dataset_id), user_id),
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "DELETE FROM supply_plans WHERE forecast_run_id IN "
+                "(SELECT id FROM forecast_runs WHERE dataset_id = ? AND user_id = ?)",
+                (int(dataset_id), user_id),
+            )
+            conn.execute(
+                "DELETE FROM forecast_runs WHERE dataset_id = ? AND user_id = ?",
+                (int(dataset_id), user_id),
+            )
+            conn.execute(
+                "DELETE FROM datasets WHERE id = ? AND user_id = ?",
+                (int(dataset_id), user_id),
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
+def delete_dataset_admin(*, dataset_id: int) -> bool:
+    """Admin-only: delete any dataset regardless of owner.
+
+    NOTE: Callers must enforce authorization (e.g., check PITENSOR_ADMIN_EMAILS).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM datasets WHERE id = %s", (int(dataset_id),))
+                if not cur.fetchone():
+                    return False
+                cur.execute(
+                    "DELETE FROM supply_plans WHERE forecast_run_id IN "
+                    "(SELECT id FROM forecast_runs WHERE dataset_id = %s)",
+                    (int(dataset_id),),
+                )
+                cur.execute(
+                    "DELETE FROM forecast_runs WHERE dataset_id = %s",
+                    (int(dataset_id),),
+                )
+                cur.execute("DELETE FROM datasets WHERE id = %s", (int(dataset_id),))
+                conn.commit()
+                return True
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT id FROM datasets WHERE id = ?", (int(dataset_id),)
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "DELETE FROM supply_plans WHERE forecast_run_id IN "
+                "(SELECT id FROM forecast_runs WHERE dataset_id = ?)",
+                (int(dataset_id),),
+            )
+            conn.execute(
+                "DELETE FROM forecast_runs WHERE dataset_id = ?", (int(dataset_id),)
+            )
+            conn.execute("DELETE FROM datasets WHERE id = ?", (int(dataset_id),))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
 def create_auth_otp(
     *,
     otp_id: str,

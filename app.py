@@ -4640,6 +4640,23 @@ async def data_use(request: Request, dataset_id: int = Form(...)):
     return RedirectResponse(f"/forecast?run_session_id={quote(run_session_id)}", status_code=303)
 
 
+@app.post("/data/delete")
+async def data_delete(request: Request, dataset_id: int = Form(...)):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/data", status_code=303)
+    is_admin = _is_admin_email(user_email)
+    try:
+        import history_store
+        if is_admin:
+            history_store.delete_dataset_admin(dataset_id=int(dataset_id))
+        else:
+            history_store.delete_dataset(user_email, int(dataset_id))
+    except Exception as e:
+        logging.warning(f"[DATA] Failed to delete dataset {dataset_id} for {user_email}: {e}")
+    return RedirectResponse("/data", status_code=303)
+
+
 _CONNECTOR_SCHEMAS: dict[str, dict] = {
     "ecommerce": {
         "label": "E-commerce",

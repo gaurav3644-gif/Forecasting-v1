@@ -253,7 +253,7 @@
         white-space: nowrap;
     }
 
-    /* Use button */
+    /* Action buttons */
     .pt-use-btn {
         display: inline-flex;
         align-items: center;
@@ -269,6 +269,31 @@
         transition: transform 0.13s, box-shadow 0.13s;
         box-shadow: 0 4px 14px rgba(67,233,123,0.20);
         white-space: nowrap;
+    }
+    .pt-del-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        border: 1px solid rgba(239,68,68,0.25);
+        background: rgba(239,68,68,0.06);
+        color: rgba(185,28,28,0.80);
+        cursor: pointer;
+        transition: background 0.13s, border-color 0.13s, color 0.13s;
+        flex-shrink: 0;
+    }
+    .pt-del-btn:hover {
+        background: rgba(239,68,68,0.14);
+        border-color: rgba(239,68,68,0.50);
+        color: #b91c1c;
+    }
+    .pt-row-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
     }
     .pt-use-btn:hover {
         transform: translateY(-1px);
@@ -534,16 +559,27 @@
                     <td>
                         <span class="pt-created-at">{{ ds.created_at or '—' }}</span>
                     </td>
-                    <td style="text-align:right;">
-                        <form method="POST" action="/data/use" style="display:inline;">
-                            <input type="hidden" name="dataset_id" value="{{ ds.dataset_id }}">
-                            <button type="submit" class="pt-use-btn">
-                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                                    <path d="M8 1v14M1 8l7-7 7 7" stroke="#0b1410" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                                Use for Forecast
-                            </button>
-                        </form>
+                    <td>
+                        <div class="pt-row-actions">
+                            <form method="POST" action="/data/use" style="display:contents;">
+                                <input type="hidden" name="dataset_id" value="{{ ds.dataset_id }}">
+                                <button type="submit" class="pt-use-btn">
+                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                                        <path d="M8 1v14M1 8l7-7 7 7" stroke="#0b1410" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    Use for Forecast
+                                </button>
+                            </form>
+                            <form method="POST" action="/data/delete" style="display:contents;" class="pt-delete-form">
+                                <input type="hidden" name="dataset_id" value="{{ ds.dataset_id }}">
+                                <button type="submit" class="pt-del-btn" title="Delete dataset"
+                                        data-filename="{{ ds.filename or 'this dataset' }}">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                                        <path d="M2 4h12M5 4V2.5A1.5 1.5 0 0 1 6.5 1h3A1.5 1.5 0 0 1 11 2.5V4M6 7v5M10 7v5M3 4l1 9.5A1.5 1.5 0 0 0 5.5 15h5a1.5 1.5 0 0 0 1.5-1.5L13 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -894,6 +930,17 @@
         // Scroll up to the panel first (it's above the empty state card)
         window.scrollTo({ top: 0, behavior: 'smooth' });
         setTimeout(togglePanel, 180);
+    });
+
+    // ── Delete dataset confirmation ────────────────────────────────────────
+    document.addEventListener('submit', function(e) {
+        const form = e.target.closest('.pt-delete-form');
+        if (!form) return;
+        const btn  = form.querySelector('[data-filename]');
+        const name = btn ? btn.dataset.filename : 'this dataset';
+        if (!confirm(`Delete "${name}"?\n\nThis will also remove all forecast runs and supply plans linked to it.`)) {
+            e.preventDefault();
+        }
     });
 })();
 </script>
