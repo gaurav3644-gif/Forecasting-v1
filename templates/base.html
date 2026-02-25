@@ -619,6 +619,7 @@
                 {% set user_email = request.state.user_email if request and request.state is not none else None %}
                 {% if user_email %}
                     <a class="btn btn-outline-secondary btn-sm" href="/dashboard"><span data-i18n="nav_dashboard">Dashboard</span></a>
+                    <a class="btn btn-outline-secondary btn-sm" href="/data">Data</a>
                     <span class="small pt-navbar-text-muted d-none d-sm-inline">{{ user_email }}</span>
                     <a class="btn btn-outline-secondary btn-sm" href="/signout"><span data-i18n="nav_sign_out">Sign out</span></a>
                 {% else %}

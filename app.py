@@ -4556,6 +4556,90 @@ async def dashboard_page(request: Request):
         },
     )
 
+@app.get("/data", response_class=HTMLResponse)
+async def data_page(request: Request):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/data", status_code=303)
+    is_admin = _is_admin_email(user_email)
+    datasets: list[dict[str, Any]] = []
+    try:
+        import history_store
+        if is_admin:
+            datasets = history_store.list_datasets_admin(limit=500)
+        else:
+            datasets = history_store.list_datasets(user_email, limit=500)
+    except Exception as e:
+        logging.warning(f"[DATA] Failed to list datasets for {user_email}: {e}")
+    return templates.TemplateResponse(
+        "data.html",
+        {
+            "request": request,
+            "datasets": datasets,
+            "is_admin": is_admin,
+        },
+    )
+
+
+@app.post("/data/use")
+async def data_use(request: Request, dataset_id: int = Form(...)):
+    user_email = _get_user_email(request)
+    if not user_email:
+        return RedirectResponse("/signin?next=/data", status_code=303)
+    is_admin = _is_admin_email(user_email)
+
+    import history_store
+
+    # Load the raw DataFrame
+    try:
+        if is_admin:
+            raw_df = history_store.load_dataset_raw_admin(dataset_id=int(dataset_id))
+        else:
+            raw_df = history_store.load_dataset_raw(user_email, int(dataset_id))
+    except Exception as e:
+        logging.warning(f"[DATA] Failed to load dataset {dataset_id} for {user_email}: {e}")
+        raw_df = None
+
+    if raw_df is None or (isinstance(raw_df, pd.DataFrame) and raw_df.empty):
+        raise HTTPException(status_code=404, detail="Dataset not found or is empty.")
+
+    # Parse date column
+    if "date" in raw_df.columns:
+        raw_df = raw_df.copy()
+        raw_df["date"] = pd.to_datetime(raw_df["date"], errors="coerce")
+
+    # Look up the filename for display
+    filename: Optional[str] = None
+    try:
+        all_ds = (
+            history_store.list_datasets_admin(limit=500)
+            if is_admin
+            else history_store.list_datasets(user_email, limit=500)
+        )
+        for ds in all_ds:
+            if int(ds.get("dataset_id", -1)) == int(dataset_id):
+                filename = ds.get("filename")
+                break
+    except Exception:
+        pass
+
+    session_id = _session_id_from_request(request)
+    session = _ensure_session_container(session_id)
+    runs: dict[str, Any] = session.get("runs") or {}
+    run_session_id = _new_run_session_id(prefix="data_")
+    runs[run_session_id] = {
+        "run_session_id": run_session_id,
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "df": raw_df,
+        "raw_df": raw_df.copy(),
+        "uploaded_filename": filename,
+        "dataset_id": int(dataset_id),
+    }
+    session["runs"] = runs
+    session["active_run_session_id"] = run_session_id
+    return RedirectResponse(f"/forecast?run_session_id={quote(run_session_id)}", status_code=303)
+
+
 @app.post("/history/load")
 async def history_load(request: Request, run_id: int = Form(...), target: str = Form(default="results")):
     user_email = _get_user_email(request)

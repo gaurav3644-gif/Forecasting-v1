@@ -1468,6 +1468,215 @@ def list_forecast_runs_admin(*, limit: int = 50) -> list[dict[str, Any]]:
             conn.close()
 
 
+def list_datasets(email: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Return metadata (no blobs) for datasets owned by *email*."""
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                user_id = _get_or_create_user_id_pg(conn, email)
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    SELECT id AS dataset_id, filename, created_at
+                    FROM datasets
+                    WHERE user_id = %s
+                    ORDER BY id DESC
+                    LIMIT %s
+                    """,
+                    (user_id, int(limit)),
+                )
+                rows = cur.fetchall() or []
+                return [
+                    {
+                        "dataset_id": int(r.get("dataset_id")),
+                        "filename": r.get("filename"),
+                        "created_at": r.get("created_at"),
+                    }
+                    for r in rows
+                ]
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            user_id = _get_or_create_user_id(conn, email)
+            rows = conn.execute(
+                """
+                SELECT id AS dataset_id, filename, created_at
+                FROM datasets
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (user_id, int(limit)),
+            ).fetchall()
+            return [
+                {
+                    "dataset_id": int(r["dataset_id"]),
+                    "filename": r["filename"],
+                    "created_at": r["created_at"],
+                }
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+
+def list_datasets_admin(*, limit: int = 200) -> list[dict[str, Any]]:
+    """Admin-only: list datasets across all users.
+
+    NOTE: Callers must enforce authorization (e.g., check PITENSOR_ADMIN_EMAILS).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    SELECT d.id AS dataset_id, d.filename, d.created_at, u.email AS user_email
+                    FROM datasets d
+                    INNER JOIN users u ON u.id = d.user_id
+                    ORDER BY d.id DESC
+                    LIMIT %s
+                    """,
+                    (int(limit),),
+                )
+                rows = cur.fetchall() or []
+                return [
+                    {
+                        "dataset_id": int(r.get("dataset_id")),
+                        "filename": r.get("filename"),
+                        "created_at": r.get("created_at"),
+                        "user_email": r.get("user_email"),
+                    }
+                    for r in rows
+                ]
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT d.id AS dataset_id, d.filename, d.created_at, u.email AS user_email
+                FROM datasets d
+                INNER JOIN users u ON u.id = d.user_id
+                ORDER BY d.id DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+            return [
+                {
+                    "dataset_id": int(r["dataset_id"]),
+                    "filename": r["filename"],
+                    "created_at": r["created_at"],
+                    "user_email": r["user_email"],
+                }
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+
+def load_dataset_raw(email: str, dataset_id: int) -> Optional[pd.DataFrame]:
+    """Return the raw DataFrame for a dataset owned by *email*.
+
+    Returns None if not found or the blob is empty.
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                user_id = _get_or_create_user_id_pg(conn, email)
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    "SELECT raw_csv_gz, filename FROM datasets WHERE id = %s AND user_id = %s",
+                    (int(dataset_id), user_id),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                raw_blob = _bytea_to_bytes(row.get("raw_csv_gz"))
+                if raw_blob is None:
+                    return None
+                return _csv_gz_to_df(raw_blob)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            user_id = _get_or_create_user_id(conn, email)
+            row = conn.execute(
+                "SELECT raw_csv_gz, filename FROM datasets WHERE id = ? AND user_id = ?",
+                (int(dataset_id), user_id),
+            ).fetchone()
+            if not row:
+                return None
+            if row["raw_csv_gz"] is None:
+                return None
+            return _csv_gz_to_df(row["raw_csv_gz"])
+        finally:
+            conn.close()
+
+
+def load_dataset_raw_admin(*, dataset_id: int) -> Optional[pd.DataFrame]:
+    """Admin-only: load any dataset's raw DataFrame regardless of owner.
+
+    NOTE: Callers must enforce authorization (e.g., check PITENSOR_ADMIN_EMAILS).
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    "SELECT raw_csv_gz FROM datasets WHERE id = %s",
+                    (int(dataset_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                raw_blob = _bytea_to_bytes(row.get("raw_csv_gz"))
+                if raw_blob is None:
+                    return None
+                return _csv_gz_to_df(raw_blob)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT raw_csv_gz FROM datasets WHERE id = ?",
+                (int(dataset_id),),
+            ).fetchone()
+            if not row:
+                return None
+            if row["raw_csv_gz"] is None:
+                return None
+            return _csv_gz_to_df(row["raw_csv_gz"])
+        finally:
+            conn.close()
+
+
 def load_forecast_run(email: str, run_id: int) -> dict[str, Any]:
     init_db()
     with _LOCK:
