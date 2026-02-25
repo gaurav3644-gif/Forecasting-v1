@@ -6201,6 +6201,23 @@ async def supply_plan_submit(
                 forecast_input_df = forecast_input_df[~((forecast_input_df["sku_id"].astype(str) == str(selected_sku)) & (forecast_input_df["location"].astype(str) == str(selected_location)))]
                 forecast_input_df = pd.concat([forecast_input_df, base_series[["sku_id", "location", "period_start", "forecast_demand"]]], ignore_index=True)
 
+        # Persist the fully-built planning inputs (all combos) so that download/export
+        # can include every item/store even if the UI computes only the selected series.
+        try:
+            if isinstance(run, dict):
+                run["supply_plan_inputs"] = {
+                    "forecast_input_df": forecast_input_df.copy() if isinstance(forecast_input_df, pd.DataFrame) else None,
+                    "inventory_df": inventory_df.copy() if isinstance(inventory_df, pd.DataFrame) else None,
+                    "constraints_df": constraints_df.copy() if isinstance(constraints_df, pd.DataFrame) else None,
+                    "policy_df": policy_df.copy() if isinstance(policy_df, pd.DataFrame) else None,
+                    "meta_df": meta_df.copy() if isinstance(meta_df, pd.DataFrame) else None,
+                    "sku_col": sku_col,
+                    "loc_col": loc_col,
+                    "extra_cols": list(extra_cols) if isinstance(extra_cols, (list, tuple)) else [],
+                }
+        except Exception:
+            pass
+
         # Performance: only compute the supply plan for the selected combo.
         # The UI displays one series at a time; computing all combos can take
         # very long on large datasets and cause server timeouts.
@@ -6618,13 +6635,68 @@ async def supply_plan_save(request: Request, payload: Dict = Body(default={})):
 async def download_supply_plan(request: Request, run_session_id: Optional[str] = None):
     session_id = _session_id_from_request(request)
     run, _ = _get_run_state(session_id, run_session_id, create=False)
-    supply_plan = (run or {}).get("supply_plan_df") if isinstance(run, dict) else None
+    supply_plan = None
+
+    # Prefer exporting all item/store series for the run.
+    try:
+        if isinstance(run, dict):
+            inputs = run.get("supply_plan_inputs") if isinstance(run.get("supply_plan_inputs"), dict) else {}
+            forecast_input_df = inputs.get("forecast_input_df")
+            inventory_df = inputs.get("inventory_df")
+            constraints_df = inputs.get("constraints_df")
+            policy_df = inputs.get("policy_df")
+            meta_df = inputs.get("meta_df")
+            sku_col = inputs.get("sku_col")
+            loc_col = inputs.get("loc_col")
+            extra_cols = inputs.get("extra_cols") if isinstance(inputs.get("extra_cols"), list) else []
+            params = run.get("supply_plan_params") if isinstance(run.get("supply_plan_params"), dict) else {}
+
+            if isinstance(forecast_input_df, pd.DataFrame) and not forecast_input_df.empty:
+                start_date = params.get("start_date") or datetime.now().strftime("%Y-%m-%d")
+                months = int(params.get("months") or 10)
+                months = max(1, min(months, 120))
+
+                full_plan = generate_time_phased_supply_plan(
+                    forecast_df=forecast_input_df,
+                    inventory_df=inventory_df if isinstance(inventory_df, pd.DataFrame) else None,
+                    constraints_df=constraints_df if isinstance(constraints_df, pd.DataFrame) else None,
+                    policy_df=policy_df if isinstance(policy_df, pd.DataFrame) else None,
+                    start_date=start_date,
+                    months=months,
+                    strict=False,
+                )
+
+                if isinstance(meta_df, pd.DataFrame) and not meta_df.empty:
+                    full_plan = full_plan.merge(meta_df, on=["sku_id", "location"], how="left")
+                    preferred_front = [c for c in [sku_col, loc_col, *extra_cols] if c and c in full_plan.columns]
+                    remaining = [c for c in full_plan.columns if c not in preferred_front]
+                    full_plan = full_plan[preferred_front + remaining]
+
+                export_df = full_plan.copy()
+                if isinstance(meta_df, pd.DataFrame) and not meta_df.empty:
+                    if "sku_id" in export_df.columns and sku_col and sku_col in export_df.columns:
+                        export_df = export_df.drop(columns=["sku_id"])
+                    if "location" in export_df.columns and loc_col and loc_col in export_df.columns:
+                        export_df = export_df.drop(columns=["location"])
+
+                supply_plan = export_df
+    except Exception as e:
+        logging.warning(f"[SUPPLY_PLAN] Full export failed; falling back to selected series export: {e}")
+        supply_plan = None
+
+    if supply_plan is None and isinstance(run, dict):
+        supply_plan = run.get("supply_plan_df") if isinstance(run.get("supply_plan_df"), pd.DataFrame) else None
+
     if supply_plan is None or supply_plan.empty:
         raise HTTPException(status_code=404, detail="No supply plan available. Please generate it first.")
     stream = io.StringIO()
     supply_plan.to_csv(stream, index=False)
     stream.seek(0)
-    return StreamingResponse(stream, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=order_recommendations.csv"})
+    return StreamingResponse(
+        stream,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=supply_plan.csv"},
+    )
 
 # --- Planning Pipeline Endpoints ---
 @app.get("/planning/context")
