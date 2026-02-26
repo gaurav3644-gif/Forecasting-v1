@@ -478,7 +478,15 @@ def sales_engine(session: dict, filters: dict, *,
         except Exception:
             pass
 
-    raw_df = session.get("df") or session.get("original_sales_df") or session.get("raw_df")
+    # raw_df = session.get("df") or session.get("original_sales_df") or session.get("raw_df")
+    raw_df = session.get("df")
+
+    if raw_df is None:
+        raw_df = session.get("original_sales_df")
+
+    if raw_df is None:
+        raw_df = session.get("raw_df")
+    
     if (raw_df is None or (hasattr(raw_df, "empty") and raw_df.empty)) \
             and user_email and dataset_id:
         try:
