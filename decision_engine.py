@@ -58,7 +58,9 @@ def volatility_engine(session: dict, filters: dict) -> dict:
 
     Returns a scored, ranked dict or {"error": str} on failure.
     """
-    raw_df = session.get("df") or session.get("original_sales_df")
+    # raw_df = session.get("df") or session.get("original_sales_df")
+    raw_df = session.get("df")
+    raw_df = raw_df if raw_df is not None else session.get("original_sales_df")
     if raw_df is None or (hasattr(raw_df, "empty") and raw_df.empty):
         return {"error": "No raw sales data available in this session."}
 
