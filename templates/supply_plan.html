@@ -114,34 +114,35 @@
                 </div>
             </div>
 
-            <div class="card pt-card mt-3" id="planningInsightsCard">
+            <div class="card pt-card mt-3" id="decisionEngineCard">
                 <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
-                            <div class="pt-section-title">Planning Insights</div>
-                            <div class="text-muted small">Top risks, suggested actions, and recommendations.</div>
+                            <div class="pt-section-title">Decision Engine</div>
+                            <div class="text-muted small">Ask a question or run a quick analysis across all dimensions.</div>
                         </div>
-                        <button type="button" class="btn btn-outline-primary btn-sm" id="run-planning-btn"><span data-i18n="sp_generate">Generate</span></button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="de-quick-btn">Quick Insights</button>
                     </div>
 
-                    <div class="row g-2">
-                        <div class="col-12">
-                            <label class="form-label small mb-1">Question (optional)</label>
-                            <input type="text" class="form-control" id="planning_question" value="Provide prioritized recommendations and next steps.">
-                        </div>
+                    <!-- Quick-start chips -->
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button type="button" class="btn btn-sm border rounded-pill de-chip"
+                                data-q="Which SKUs or regions are most volatile and drive the most instability?">📊 Volatility</button>
+                        <button type="button" class="btn btn-sm border rounded-pill de-chip"
+                                data-q="How accurate is my forecast and is there systematic bias?">🎯 Forecast Accuracy</button>
+                        <button type="button" class="btn btn-sm border rounded-pill de-chip"
+                                data-q="Which SKUs are at risk of stockout in the next 4 months?">⚠️ Inventory Risk</button>
                     </div>
 
-                    <div class="mt-3" id="planningInsightsOutput" style="display:none;"></div>
-
-                    <div class="mt-3">
-                        <div class="fw-semibold small mb-1">Ask a follow-up</div>
-                        <div class="d-flex gap-2">
-                            <input type="text" class="form-control" id="planning_followup_input" placeholder="Ask a question about these risks/actions/recommendations..." disabled>
-                            <button type="button" class="btn btn-outline-secondary" id="planning_followup_send" disabled>Send</button>
-                        </div>
-                        <div id="planningFollowupChat" class="mt-2 d-grid gap-2" style="display:none; max-height: 240px; overflow:auto;"></div>
-                        <div class="text-muted small mt-1" data-i18n="sp_tip_followups">Tip: Click Generate first to load context, then ask follow-ups.</div>
+                    <!-- NL question input -->
+                    <div class="d-flex gap-2">
+                        <input type="text" class="form-control" id="de-question"
+                               placeholder="e.g. Why is North region unstable? or Which SKUs will stock out?">
+                        <button type="button" class="btn btn-primary px-4" id="de-analyze-btn">Analyze</button>
                     </div>
+
+                    <!-- Results area -->
+                    <div id="de-output" class="mt-3" style="display:none;"></div>
                 </div>
             </div>
         </div>
@@ -215,7 +216,6 @@
 // runSessionId must be in module scope so the form submit handler can access it.
 const runSessionId = "{{ run_session_id or '' }}";
 const initialSupplyPlanUI = {{ initial_supply_plan_ui_json }};
-const initialPlanningUI = {{ initial_planning_ui_json }};
 window._piTensorSupplyLoadedComboKey = null;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -316,17 +316,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (alertEl) alertEl.innerHTML = '';
         setDownloadEnabled(false);
         setSaveEnabled(false);
-        // Planning insights are tied to the selected series; clear on change.
+        // Clear Decision Engine output on series change.
         try {
-            const out = document.getElementById('planningInsightsOutput');
-            if (out) out.style.display = 'none';
-            if (out) out.innerHTML = '';
-            if (followupChat) {
-                followupChat.innerHTML = '';
-                followupChat.style.display = 'none';
-            }
-            planningChatHistory = [];
-            setFollowupEnabled(false);
+            const deOut = document.getElementById('de-output');
+            if (deOut) { deOut.style.display = 'none'; deOut.innerHTML = ''; }
+            const deQ = document.getElementById('de-question');
+            if (deQ) deQ.value = '';
         } catch (e) {}
     }
 
@@ -346,75 +341,289 @@ document.addEventListener('DOMContentLoaded', function() {
         .replace(/\"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
-    const runPlanningBtn = document.getElementById('run-planning-btn');
-    const followupInput = document.getElementById('planning_followup_input');
-    const followupSend = document.getElementById('planning_followup_send');
-    const followupChat = document.getElementById('planningFollowupChat');
-    let planningChatHistory = [];
-    let planningInFlight = false;
+    // ── Decision Engine ────────────────────────────────────────────────────────
 
-    function renderPlanningInsights(data, comboKey) {
-        const out = document.getElementById('planningInsightsOutput');
-        if (!out) return;
+    const deOutput   = document.getElementById('de-output');
+    const deQuestion = document.getElementById('de-question');
+    const deAnalyze  = document.getElementById('de-analyze-btn');
+    const deQuick    = document.getElementById('de-quick-btn');
+    let deInFlight   = false;
 
-        const provider = data && data.provider ? String(data.provider) : 'unknown';
-        const llmProvider = data && data.llm_provider ? String(data.llm_provider) : provider;
-        const llmError = data && data.llm_error ? String(data.llm_error) : '';
-        const risks = (data && Array.isArray(data.risks)) ? data.risks : [];
-        const actions = (data && Array.isArray(data.actions)) ? data.actions : [];
-        const answer = data && data.answer ? String(data.answer) : '';
+    // Risk level → Bootstrap colour mapping
+    function _riskClass(rl) {
+        if (!rl) return 'secondary';
+        const s = String(rl).toLowerCase();
+        if (s === 'high')   return 'danger';
+        if (s === 'medium') return 'warning';
+        return 'success';
+    }
 
-        const riskItems = risks.slice(0, 8).map(r => {
-            const sev = (r && r.severity) ? String(r.severity) : 'info';
-            const sevClass = (sev === 'high') ? 'danger' : (sev === 'medium') ? 'warning' : 'secondary';
-            const msg = (r && (r.message || r.type)) ? String(r.message || r.type) : '';
-            return `<li class="mb-1"><span class="badge text-bg-${sevClass} me-2">${esc(sev)}</span>${esc(msg)}</li>`;
-        }).join('');
-        const actionItems = actions.slice(0, 8).map(a => {
-            const msg = (a && (a.message || a.type)) ? String(a.message || a.type) : '';
-            return `<li class="mb-1">${esc(msg)}</li>`;
-        }).join('');
+    // Render a single engine result block
+    function _renderEngineBlock(data) {
+        const at = data.analysis_type || '';
+        const rl = data.risk_level    || 'Unknown';
+        const rlClass = _riskClass(rl);
 
-        out.style.display = 'block';
-        out.innerHTML = `
+        let intentLabel = 'Analysis';
+        if (at === 'volatility')          intentLabel = '📊 Volatility Analysis';
+        if (at === 'forecast_performance') intentLabel = '🎯 Forecast Performance';
+        if (at === 'inventory_risk')       intentLabel = '⚠️ Inventory Risk';
+
+        // Build engine-specific metrics
+        let metricsHtml = '';
+
+        if (at === 'volatility') {
+            const score = data.volatility_score != null ? data.volatility_score : '—';
+            const top   = esc(data.top_contributor || '—');
+            const topPct = data.top_contribution_percent != null
+                ? data.top_contribution_percent.toFixed(1) + '%' : '—';
+            const rankEntries = Object.entries(data.ranking || {}).slice(0, 8);
+            const rankRows = rankEntries.map(([k, v]) =>
+                `<tr><td class="text-truncate" style="max-width:160px;">${esc(k)}</td>
+                      <td class="text-end fw-semibold">${Number(v).toFixed(1)}%</td></tr>`
+            ).join('');
+            metricsHtml = `
+                <div class="row g-3">
+                    <div class="col-sm-5">
+                        <div class="text-muted small mb-1">Volatility Score</div>
+                        <div class="display-6 fw-bold">${score}<small class="fs-6 text-muted">/100</small></div>
+                        <div class="text-muted small mt-1">Top contributor</div>
+                        <div class="fw-semibold">${top}</div>
+                        <div class="text-muted small">${topPct} of total variance</div>
+                    </div>
+                    <div class="col-sm-7">
+                        <div class="text-muted small mb-1">Contribution Ranking (${esc(data.dimension || '')})</div>
+                        ${rankRows ? `<table class="table table-sm mb-0"><tbody>${rankRows}</tbody></table>` : '<div class="text-muted small">No ranking data.</div>'}
+                    </div>
+                </div>`;
+        }
+
+        if (at === 'forecast_performance') {
+            const mape  = data.mape  != null ? data.mape.toFixed(1)  + '%' : '—';
+            const bias  = data.bias  != null ? (data.bias >= 0 ? '+' : '') + data.bias.toFixed(2) : '—';
+            const ofr   = data.over_forecast_ratio != null ? (data.over_forecast_ratio * 100).toFixed(0) + '%' : '—';
+            const score = data.forecast_error_score != null ? data.forecast_error_score : '—';
+            const rankEntries = Object.entries(data.ranking || {}).slice(0, 8);
+            const rankRows = rankEntries.map(([k, v]) =>
+                `<tr><td class="text-truncate" style="max-width:160px;">${esc(k)}</td>
+                      <td class="text-end fw-semibold">${Number(v).toFixed(1)}%</td></tr>`
+            ).join('');
+            metricsHtml = `
+                <div class="row g-3">
+                    <div class="col-sm-5">
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <div class="border rounded-2 px-2 py-1 text-center" style="min-width:80px;">
+                                <div class="text-muted" style="font-size:0.72rem;">MAPE</div>
+                                <div class="fw-bold">${mape}</div>
+                            </div>
+                            <div class="border rounded-2 px-2 py-1 text-center" style="min-width:80px;">
+                                <div class="text-muted" style="font-size:0.72rem;">Bias</div>
+                                <div class="fw-bold">${bias}</div>
+                            </div>
+                            <div class="border rounded-2 px-2 py-1 text-center" style="min-width:80px;">
+                                <div class="text-muted" style="font-size:0.72rem;">Over-forecast</div>
+                                <div class="fw-bold">${ofr}</div>
+                            </div>
+                        </div>
+                        <div class="small"><span class="badge text-bg-light border me-1">${esc(data.accuracy_rating || '—')}</span><span class="badge text-bg-${rlClass}">${esc(data.risk_flag || '—')}</span></div>
+                        <div class="text-muted small mt-2">Error score: ${score}/100</div>
+                    </div>
+                    <div class="col-sm-7">
+                        <div class="text-muted small mb-1">MAPE by ${esc(data.dimension || 'entity')}</div>
+                        ${rankRows ? `<table class="table table-sm mb-0"><tbody>${rankRows}</tbody></table>` : '<div class="text-muted small">No per-entity breakdown.</div>'}
+                    </div>
+                </div>`;
+        }
+
+        if (at === 'inventory_risk') {
+            const prob  = data.stockout_probability != null ? (data.stockout_probability * 100).toFixed(0) + '%' : '—';
+            const units = data.total_stockout_units != null ? Number(data.total_stockout_units).toLocaleString() : '—';
+            const score = data.risk_score != null ? data.risk_score : '—';
+            const highRisk = (data.high_risk_skus || []).map(s => `<span class="badge text-bg-danger me-1 mb-1">${esc(s)}</span>`).join('');
+            const overstock = (data.overstock_items || []).map(s => `<span class="badge text-bg-warning me-1 mb-1">${esc(s)}</span>`).join('');
+            const probPct = data.stockout_probability != null ? Math.round(data.stockout_probability * 100) : 0;
+            metricsHtml = `
+                <div class="row g-3">
+                    <div class="col-sm-5">
+                        <div class="text-muted small mb-1">Risk Score</div>
+                        <div class="display-6 fw-bold">${score}<small class="fs-6 text-muted">/100</small></div>
+                        <div class="mt-2">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="text-muted">Stockout probability</span><span class="fw-semibold">${prob}</span>
+                            </div>
+                            <div class="progress" style="height:6px;">
+                                <div class="progress-bar bg-danger" role="progressbar" style="width:${probPct}%"></div>
+                            </div>
+                        </div>
+                        <div class="text-muted small mt-2">Stockout units: <strong>${units}</strong></div>
+                    </div>
+                    <div class="col-sm-7">
+                        ${highRisk ? `<div class="text-muted small mb-1">High-risk SKUs</div><div class="mb-2">${highRisk}</div>` : ''}
+                        ${overstock ? `<div class="text-muted small mb-1">Overstock items</div><div>${overstock}</div>` : ''}
+                        ${!highRisk && !overstock ? '<div class="text-muted small">No high-risk or overstock items detected.</div>' : ''}
+                    </div>
+                </div>`;
+        }
+
+        return `
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <span class="badge text-bg-light border">Recommendations: ${esc(provider)}</span>
-                <span class="badge text-bg-light border">Risks/Actions: rule-based</span>
-                ${comboKey ? `<span class="badge text-bg-light border">Series: ${esc(comboKey)}</span>` : ``}
-                ${(llmProvider && llmProvider !== provider) ? `<span class="badge text-bg-light border">Attempted: ${esc(llmProvider)}</span>` : ``}
+                <span class="badge text-bg-light border fs-6 px-2 py-1">${intentLabel}</span>
+                <span class="badge text-bg-${rlClass}">${esc(rl)}</span>
             </div>
-            ${llmError ? `<div class="alert alert-warning py-2 px-3 small mb-2">${esc(llmError)}</div>` : ``}
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                        <div class="fw-semibold mb-2">Top Risks</div>
-                        ${riskItems ? `<ul class="mb-0 ps-3">${riskItems}</ul>` : `<div class="text-muted small mb-0">No risks returned.</div>`}
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                        <div class="fw-semibold mb-2">Suggested Actions</div>
-                        ${actionItems ? `<ul class="mb-0 ps-3">${actionItems}</ul>` : `<div class="text-muted small mb-0">No actions returned.</div>`}
-                    </div>
-                </div>
-                <div class="col-12">
-                    <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                        <div class="fw-semibold mb-2">Recommendations</div>
-                        <pre class="mb-0" style="white-space:pre-wrap; font-size:0.95em;">${esc(answer)}</pre>
-                    </div>
-                </div>
-            </div>
-        `;
+            ${metricsHtml}`;
+    }
 
-        setFollowupEnabled(true);
-        planningChatHistory = [];
-        if (answer) {
-            planningChatHistory.push({ role: 'assistant', content: answer });
+    function renderDecisionOutput(data, { append } = {}) {
+        if (!deOutput) return;
+        deOutput.style.display = 'block';
+
+        if (data.error || (data.engine_output && data.engine_output.error)) {
+            const msg = data.error || (data.engine_output && data.engine_output.error) || 'Unknown error.';
+            if (!append) deOutput.innerHTML = '';
+            deOutput.insertAdjacentHTML('beforeend',
+                `<div class="alert alert-warning py-2 px-3 mb-0 small">${esc(msg)}</div>`);
+            return;
         }
-        if (followupChat) {
-            followupChat.innerHTML = '';
-            followupChat.style.display = 'none';
+
+        const engineOut  = data.engine_output || {};
+        const explanation = data.explanation ? String(data.explanation) : '';
+
+        const block = `
+            <div class="border rounded-3 p-3 mb-3" style="border-color: rgba(18,24,39,0.10) !important;">
+                ${_renderEngineBlock(engineOut)}
+                ${explanation ? `
+                <hr class="my-3">
+                <div class="text-muted small mb-1">AI Explanation</div>
+                <div class="small">${esc(explanation)}</div>` : ''}
+            </div>`;
+
+        if (!append) deOutput.innerHTML = '';
+        deOutput.insertAdjacentHTML('beforeend', block);
+        deOutput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function runDecisionQuery(question) {
+        if (deInFlight || !question) return;
+        deInFlight = true;
+        if (deAnalyze) deAnalyze.disabled = true;
+
+        const comboKey = document.getElementById('combo_key')
+            ? document.getElementById('combo_key').value : null;
+
+        if (deOutput) {
+            deOutput.style.display = 'block';
+            deOutput.innerHTML = `<div class="text-muted small py-2">
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>Analyzing…</div>`;
         }
+
+        try {
+            const res = await fetch('/decision/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message:        question,
+                    run_session_id: runSessionId || undefined,
+                    combo_key:      comboKey    || undefined,
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            renderDecisionOutput(data);
+        } catch (err) {
+            if (deOutput) deOutput.innerHTML =
+                `<div class="alert alert-danger py-2 px-3 small mb-0">Error: ${esc(String(err))}</div>`;
+        } finally {
+            deInFlight = false;
+            if (deAnalyze) deAnalyze.disabled = false;
+        }
+    }
+
+    // Quick Insights: run all 3 engines in parallel
+    if (deQuick) {
+        deQuick.addEventListener('click', async function() {
+            if (deInFlight) return;
+            deInFlight = true;
+            deQuick.disabled = true;
+            if (deOutput) { deOutput.style.display = 'block'; deOutput.innerHTML = ''; }
+
+            const comboKey = document.getElementById('combo_key')
+                ? document.getElementById('combo_key').value : null;
+
+            const questions = [
+                { q: 'Which SKUs or regions are most volatile?',              intent: 'volatility_analysis'  },
+                { q: 'How accurate is my forecast? Is there systematic bias?', intent: 'forecast_performance' },
+                { q: 'Which SKUs are at risk of stockout in the next 4 months?', intent: 'inventory_risk'    },
+            ];
+
+            // Show 3 spinners immediately
+            if (deOutput) {
+                deOutput.innerHTML = questions.map((_, i) =>
+                    `<div id="de-quick-slot-${i}" class="border rounded-3 p-3 mb-3 text-muted small" style="border-color:rgba(18,24,39,0.10)!important;">
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>Loading…
+                    </div>`
+                ).join('');
+            }
+
+            await Promise.all(questions.map(async ({ q, intent }, i) => {
+                try {
+                    const res = await fetch('/decision/query', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message:        q,
+                            run_session_id: runSessionId || undefined,
+                            combo_key:      comboKey    || undefined,
+                        })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    const slot = document.getElementById(`de-quick-slot-${i}`);
+                    if (!slot) return;
+                    const engineOut  = data.engine_output || {};
+                    const explanation = data.explanation ? String(data.explanation) : '';
+                    if (data.error || engineOut.error) {
+                        slot.innerHTML = `<div class="text-warning small">${esc(data.error || engineOut.error)}</div>`;
+                        return;
+                    }
+                    slot.innerHTML = `
+                        ${_renderEngineBlock(engineOut)}
+                        ${explanation ? `<hr class="my-2"><div class="text-muted small mb-1">AI Explanation</div><div class="small">${esc(explanation)}</div>` : ''}`;
+                } catch (err) {
+                    const slot = document.getElementById(`de-quick-slot-${i}`);
+                    if (slot) slot.innerHTML = `<div class="text-danger small">Error: ${esc(String(err))}</div>`;
+                }
+            }));
+
+            deInFlight = false;
+            deQuick.disabled = false;
+        });
+    }
+
+    // Chip clicks
+    document.querySelectorAll('.de-chip').forEach(chip => {
+        chip.addEventListener('click', function() {
+            const q = this.dataset.q || '';
+            if (deQuestion) deQuestion.value = q;
+            runDecisionQuery(q);
+        });
+    });
+
+    // Analyze button
+    if (deAnalyze) {
+        deAnalyze.addEventListener('click', function() {
+            const q = (deQuestion ? deQuestion.value : '').trim();
+            if (q) runDecisionQuery(q);
+        });
+    }
+
+    // Enter key in question input
+    if (deQuestion) {
+        deQuestion.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); deAnalyze && deAnalyze.click(); }
+        });
+    }
+
+    // ── (Legacy placeholder — kept so old references don't crash) ──────────────
+    function renderPlanningInsights(data, comboKey) {
+        // No-op: replaced by Decision Engine (renderDecisionOutput).
     }
 
     function renderSupplyPlan(payload, { message } = {}) {
@@ -484,301 +693,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Expose for other handlers (Apply/Generate) that run outside this closure.
     window._piTensorRenderSupplyPlan = renderSupplyPlan;
 
-    
-
-    function addPlanningChat(text, who) {
-        if (!followupChat) return;
-        followupChat.style.display = 'block';
-        const wrap = document.createElement('div');
-        wrap.className = `border rounded-3 p-2 small ${who === 'user' ? 'bg-white' : 'bg-light'}`;
-        wrap.textContent = String(text || '');
-        followupChat.appendChild(wrap);
-        followupChat.scrollTop = followupChat.scrollHeight;
-    }
-
-    function setFollowupEnabled(enabled) {
-        if (followupInput) followupInput.disabled = !enabled;
-        if (followupSend) followupSend.disabled = !enabled;
-    }
-
-    async function planningFollowupAsk(question) {
-        const comboKey = document.getElementById('combo_key') ? document.getElementById('combo_key').value : null;
-        const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2));
-
-        const trimmedHistory = planningChatHistory.slice(-8);
-        const res = await fetch('/planning/followup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                run_session_id: runSessionId || undefined,
-                combo_key: comboKey,
-                question: question,
-                history: trimmedHistory,
-                request_id: requestId
-            })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            const msg = data && data.detail ? String(data.detail) : `Server error: ${res.status}`;
-            addPlanningChat(msg, 'bot');
-            return;
-        }
-        if (data.llm_error) {
-            addPlanningChat(`(LLM issue: ${data.llm_error})`, 'bot');
-        }
-        addPlanningChat(data.answer || 'No answer.', 'bot');
-        planningChatHistory.push({ role: 'assistant', content: String(data.answer || '') });
-    }
-
-    if (runPlanningBtn) {
-        runPlanningBtn.addEventListener('click', async function() {
-            const out = document.getElementById('planningInsightsOutput');
-            const q = document.getElementById('planning_question') ? document.getElementById('planning_question').value : '';
-            const comboKey = document.getElementById('combo_key') ? document.getElementById('combo_key').value : null;
-            if (!out) return;
-
-            runPlanningBtn.disabled = true;
-            out.style.display = 'block';
-            out.innerHTML = `<div class="text-muted small"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Generating insights...</div>`;
-            setFollowupEnabled(false);
-            planningChatHistory = [];
-            if (followupChat) {
-                followupChat.innerHTML = '';
-                followupChat.style.display = 'none';
-            }
-
-            try {
-                const res = await fetch('/planning/full', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        run_session_id: runSessionId || undefined,
-                        combo_key: comboKey,
-                        question: q,
-                        request_id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString() + '-' + Math.random().toString(16).slice(2))
-                    })
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                    out.innerHTML = `<div class="alert alert-danger mb-0">Server error: ${res.status}</div>`;
-                    return;
-                }
-
-                /* Decision Engine (options + AI narrator) disabled in favor of canonical data-block Q&A.
-                const fmt = (n, d = 2) => (typeof n === 'number' && isFinite(n)) ? n.toFixed(d) : (n === null || n === undefined ? '' : String(n));
-                const fmtPct = (x) => (typeof x === 'number' && isFinite(x)) ? `${x.toFixed(1)}%` : '';
-                const actionLabel = (a) => {
-                    const s = String(a || '');
-                    if (s === 'follow_policy') return 'Follow policy';
-                    if (s === 'expedite_now') return 'Aggressive buffer';
-                    if (s === 'aggressive_buffer') return 'Increase buffer / order more';
-                    if (s === 'capacity_capped') return 'Capacity capped';
-                    return s || 'Option';
-                };
-
-                let decisionHtml = '';
-                try {
-                    if (sku && decisionPeriod) {
-                        const reqBody = {
-                            sku: String(sku),
-                            period: String(decisionPeriod),
-                            location: location ? String(location) : null,
-                            session_id: "default",
-                            service_level_target: slt,
-                            narration_guidance: q ? String(q) : null,
-                        };
-
-                        // Option Engine + Scoring (deterministic)
-                        const sRes = await fetch('/score-options', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(reqBody)
-                        });
-                        const sData = await sRes.json().catch(() => ({}));
-                        if (!sRes.ok) {
-                            const msg = sData && sData.detail ? String(sData.detail) : `Scoring failed (HTTP ${sRes.status}).`;
-                            throw new Error(msg);
-                        }
-                        const options = Array.isArray(sData.options) ? sData.options : [];
-                        const slTarget = Number(sData.service_level_target || 0);
-                        const forecastDemand = Number(sData.forecast_demand || 0);
-                        const beginInv = Number(sData.beginning_on_hand || 0);
-                        const ltMonths = Number(sData.lead_time_months || 0);
-
-                        const bestStockout = options.length ? Math.min(...options.map(o => Number(o.projected_stockout_units || 0))) : 0;
-                        const bestService = options.length ? Math.max(...options.map(o => Number(o.service_level || 0))) : 0;
-
-                        const baseOpt = options.find(o => String(o.option_id) === 'A') || (options.length ? options[0] : null);
-                        const baseStockU = baseOpt ? Number(baseOpt.projected_stockout_units || 0) : 0;
-                        const baseSvc = baseOpt ? Number(baseOpt.service_level || 0) : 0;
-
-                        const buildRows = (chosenId) => options.map((o) => {
-                            const oid = String(o.option_id || '');
-                            const act = actionLabel(o.action);
-                            const oq = Number(o.order_qty || 0);
-                            const stockU = Number(o.projected_stockout_units || 0);
-                            const endInv = Number(o.ending_inventory || 0);
-                            const svc = Number(o.service_level || 0);
-                            const score = Number(o.decision_score || 0);
-
-                            const stockCls = stockU > 0 ? 'text-danger' : 'text-success';
-                            const svcOk = slTarget > 0 ? (svc >= slTarget) : false;
-                            const svcCls = svcOk ? 'text-success' : 'text-muted';
-
-                            const isBestStock = Math.abs(stockU - bestStockout) < 1e-9;
-                            const isBestSvc = Math.abs(svc - bestService) < 1e-9;
-                            const rowCls = (chosenId && oid === String(chosenId)) ? 'table-primary' : '';
-
-                            return `
-                                <tr class="${rowCls}">
-                                    <td class="fw-semibold">${esc(oid)}</td>
-                                    <td>${esc(act)}</td>
-                                    <td class="text-end">${esc(fmt(oq, 0))}</td>
-                                    <td class="text-end ${stockCls}">${isBestStock ? '<span class="fw-semibold">' + esc(fmt(stockU, 0)) + '</span>' : esc(fmt(stockU, 0))}</td>
-                                    <td class="text-end">${esc(fmt(endInv, 0))}</td>
-                                    <td class="text-end ${svcCls}">${isBestSvc ? '<span class="fw-semibold">' + esc(fmt(svc * 100.0, 0)) + '%</span>' : esc(fmt(svc * 100.0, 0)) + '%'}</td>
-                                </tr>
-                            `;
-                        }).join('') || `<tr><td colspan="6" class="text-muted small">No options returned.</td></tr>`;
-
-                        const scoreChips = options
-                            .slice()
-                            .sort((a, b) => Number(b.decision_score || 0) - Number(a.decision_score || 0))
-                            .map(o => `<span class="badge text-bg-light border">Option ${esc(String(o.option_id || ''))}: ${esc(fmt(Number(o.decision_score || 0), 2))}</span>`)
-                            .join(' ');
-
-                        // Remove option-based LLM selection: pick deterministic best-by-score locally.
-                        let aiBlock = '';
-                        let chosenId = options.length ? String(options[0].option_id || '') : '';
-
-                        const rows = buildRows(chosenId);
-
-                        decisionHtml = `
-                            <div class="col-12">
-                                <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                                        <div class="small text-muted">
-                                            <span class="me-2">1️⃣ Context</span>
-                                            <span class="fw-semibold text-dark">SKU:</span> ${esc(String(sku || ''))}
-                                            ${location ? ` <span class="text-muted">|</span> <span class="fw-semibold text-dark">Store:</span> ${esc(String(location))}` : ``}
-                                            <span class="text-muted">|</span> <span class="fw-semibold text-dark">Period:</span> ${esc(String(decisionPeriod))}
-                                        </div>
-                                        <span class="badge text-bg-light border">Decision Engine</span>
-                                    </div>
-                                    <div class="mt-2 small text-muted d-flex flex-wrap gap-3">
-                                        <div><span class="fw-semibold text-dark">Forecast Demand:</span> ${esc(fmt(forecastDemand, 0))} units</div>
-                                        <div><span class="fw-semibold text-dark">Beginning Inventory:</span> ${esc(fmt(beginInv, 0))} units</div>
-                                        <div><span class="fw-semibold text-dark">Lead Time:</span> ${esc(fmt(ltMonths, 0))} months</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="alert ${baseStockU > 0 ? 'alert-danger' : 'alert-light'} border mb-0" style="border-color: rgba(18,24,39,0.10) !important;">
-                                    <div class="fw-semibold mb-1">2️⃣ Situation Summary</div>
-                                    <div class="small mb-1">⚠️ Stock-out Risk Detected</div>
-                                    <ul class="mb-0 ps-3 small">
-                                        <li>Expected stock-out: <span class="fw-semibold">${esc(fmt(baseStockU, 0))}</span> units</li>
-                                        <li>Current policy service level: <span class="fw-semibold">${esc(fmt(baseSvc * 100.0, 0))}%</span></li>
-                                        <li>Business target service level: <span class="fw-semibold">${esc(fmt(slTarget * 100.0, 0))}%</span></li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                                    <div class="fw-semibold mb-2">3️⃣ Decision Options</div>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm align-middle mb-0">
-                                            <thead>
-                                                <tr class="text-muted small">
-                                                    <th style="width:70px;">Option</th>
-                                                    <th>Strategy</th>
-                                                    <th class="text-end">Order Qty</th>
-                                                    <th class="text-end">Stock-out</th>
-                                                    <th class="text-end">Ending Inventory</th>
-                                                    <th class="text-end">Service Level</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>${rows}</tbody>
-                                        </table>
-                                    </div>
-                                    <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
-                                        <span class="text-muted small">Scores:</span> ${scoreChips || '<span class="text-muted small">n/a</span>'}
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                ${aiBlock}
-                            </div>
-                        `;
-                    }
-                } catch (e) {
-                    decisionHtml = `
-                        <div class="col-12">
-                            <div class="border rounded-3 p-3" style="border-color: rgba(18,24,39,0.10) !important;">
-                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                                    <div class="fw-semibold">Decision Engine</div>
-                                    <span class="badge text-bg-light border">Options</span>
-                                </div>
-                                <div class="text-muted small mb-0">${esc(String(e))}</div>
-                            </div>
-                        </div>
-                    `;
-                }
-
-                */
-                renderPlanningInsights(data, comboKey);
-            } catch (err) {
-                out.innerHTML = `<div class="alert alert-danger mb-0">Unexpected error: ${err}</div>`;
-                console.error('Planning insights error:', err);
-            } finally {
-                runPlanningBtn.disabled = false;
-            }
-        });
-    }
-
-    if (followupInput && followupSend) {
-        followupSend.addEventListener('click', async function() {
-            if (planningInFlight) return;
-            const q = (followupInput.value || '').trim();
-            if (!q) return;
-            planningInFlight = true;
-            addPlanningChat(q, 'user');
-            planningChatHistory.push({ role: 'user', content: q });
-            followupInput.value = '';
-            followupInput.disabled = true;
-            followupSend.disabled = true;
-            try {
-                await planningFollowupAsk(q);
-            } finally {
-                planningInFlight = false;
-                followupInput.disabled = false;
-                followupSend.disabled = false;
-                followupInput.focus();
-            }
-        });
-
-        followupInput.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter') {
-                ev.preventDefault();
-                followupSend.click();
-            }
-        });
-    }
-
-    // Restore last generated outputs (supply plan + planning insights) on page load.
+    // Restore last generated outputs (supply plan) on page load.
     try {
         if (initialSupplyPlanUI && typeof initialSupplyPlanUI === 'object') {
             renderSupplyPlan(initialSupplyPlanUI, { message: 'Loaded saved supply plan.' });
             if (document.getElementById('combo_key')) {
                 window._piTensorSupplyLoadedComboKey = document.getElementById('combo_key').value;
             }
-        }
-    } catch (e) {}
-
-    try {
-        if (initialPlanningUI && typeof initialPlanningUI === 'object') {
-            const comboKey = (initialPlanningUI.combo_key || (document.getElementById('combo_key') ? document.getElementById('combo_key').value : null));
-            renderPlanningInsights(initialPlanningUI, comboKey);
         }
     } catch (e) {}
 

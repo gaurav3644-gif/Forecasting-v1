@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Request
 from fastapi import HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 from dataclasses import asdict, is_dataclass
+import json
+import logging
+import os
 
 from decision_models import DecisionContext
 from option_engine import generate_decision_options
@@ -482,3 +485,241 @@ async def ai_decision(request: Request, req: GenerateOptionsRequest):
         return _deterministic_ai_fallback(scored_payload, slt, reason=str(e))
     except Exception as e:
         return _deterministic_ai_fallback(scored_payload, slt, reason=f"AI decision failed: {e}")
+
+
+# ── Decision Engine: Intent Router + Query ─────────────────────────────────────
+
+_INTENT_SYSTEM_PROMPT = """You are a supply chain analytics router.
+Classify the user question into exactly ONE intent:
+  - volatility_analysis   : instability, variance, erratic patterns, which region/SKU fluctuates
+  - forecast_performance  : forecast accuracy, MAPE, bias, over/under forecasting, forecast quality
+  - inventory_risk        : stockout, overstock, safety stock breach, inventory risk, out-of-stock
+
+Also extract filters if mentioned.
+
+Return ONLY valid JSON — no markdown, no explanation:
+{
+  "intent": "volatility_analysis" | "forecast_performance" | "inventory_risk",
+  "filters": {
+    "dimension": "region" | "sku",
+    "value": null,
+    "start_date": null,
+    "end_date": null,
+    "sku": null,
+    "region": null,
+    "future_periods": 4
+  }
+}"""
+
+_INTENT_KEYWORDS = {
+    "volatility_analysis":  ["volatil", "varianc", "unstable", "erratic", "fluctuat", "instab", "spike", "spiky"],
+    "forecast_performance": ["mape", "accuracy", "accurate", "bias", "over-forecast", "underforecast",
+                             "over forecast", "forecast quality", "forecast error", "forecast accuracy"],
+}
+
+
+async def _route_intent(message: str) -> dict:
+    """
+    LLM-based intent classification (classification only — no creativity).
+    Falls back to keyword matching if OpenAI is unavailable.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if api_key:
+        try:
+            import openai  # type: ignore
+            client = openai.AsyncOpenAI(api_key=api_key,
+                                        base_url=os.environ.get("OPENAI_BASE_URL") or None)
+            resp = await client.chat.completions.create(
+                model=os.environ.get("DECISION_AI_MODEL", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": _INTENT_SYSTEM_PROMPT},
+                    {"role": "user",   "content": message},
+                ],
+                max_tokens=200,
+                temperature=0,
+            )
+            raw = resp.choices[0].message.content.strip()
+            result = json.loads(raw)
+            if result.get("intent") in ("volatility_analysis", "forecast_performance", "inventory_risk"):
+                return result
+        except Exception as e:
+            logging.debug(f"[decision/query] intent LLM failed, using keywords: {e}")
+
+    # Keyword fallback
+    msg_lower = message.lower()
+    for intent, kws in _INTENT_KEYWORDS.items():
+        if any(kw in msg_lower for kw in kws):
+            return {"intent": intent, "filters": {"dimension": "sku", "future_periods": 4}}
+    return {"intent": "inventory_risk", "filters": {"future_periods": 4}}
+
+
+_EXPLAIN_CONTEXT = {
+    "volatility_analysis": (
+        "Explain: which dimension drives instability, the planning implication, "
+        "and where to stabilize. Be specific about the top contributor."
+    ),
+    "forecast_performance": (
+        "Explain: whether bias is systematic, what direction (over/under), "
+        "and what planning correction is needed."
+    ),
+    "inventory_risk": (
+        "Explain: why risk exists, what the planner should do immediately, "
+        "and the urgency level."
+    ),
+}
+
+
+async def _explain_output(question: str, intent: str, engine_output: dict) -> str:
+    """
+    LLM explanation layer — uses only numbers from the structured engine output.
+    Falls back to plain-text summary if OpenAI is unavailable.
+    """
+    output_json = json.dumps(engine_output, indent=2)
+    context_instruction = _EXPLAIN_CONTEXT.get(intent, "Provide a concise business explanation.")
+
+    system_prompt = (
+        f"You are a supply chain decision assistant.\n"
+        f"The user asked: \"{question}\"\n\n"
+        f"The analytics engine returned:\n{output_json}\n\n"
+        f"{context_instruction}\n\n"
+        f"Rules:\n"
+        f"- Use ONLY numbers from the engine output above. Do NOT invent figures.\n"
+        f"- 3–5 sentences maximum.\n"
+        f"- End with a concrete, actionable recommendation.\n"
+        f"- Be direct and business-focused."
+    )
+
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if api_key:
+        try:
+            import openai  # type: ignore
+            client = openai.AsyncOpenAI(api_key=api_key,
+                                        base_url=os.environ.get("OPENAI_BASE_URL") or None)
+            resp = await client.chat.completions.create(
+                model=os.environ.get("DECISION_AI_MODEL", "gpt-4o-mini"),
+                messages=[{"role": "user", "content": system_prompt}],
+                max_tokens=300,
+                temperature=0.3,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            logging.debug(f"[decision/query] explanation LLM failed: {e}")
+
+    # Plain-text fallback
+    rl    = engine_output.get("risk_level", "Unknown")
+    at    = engine_output.get("analysis_type", intent)
+    score = engine_output.get("volatility_score") or engine_output.get("risk_score") or engine_output.get("forecast_error_score")
+    score_str = f" Score: {score}/100." if score is not None else ""
+    return f"Analysis complete ({at}).{score_str} Risk level: {rl}. Review the structured output above for details."
+
+
+def _resolve_run_session(request: Request, run_session_id: str) -> Optional[dict]:
+    """
+    Resolve the per-run session dict from app.state.data_store.
+    Tries email-keyed path first, then falls back to direct key lookup.
+    """
+    store = getattr(request.app.state, "data_store", {})
+    if not isinstance(store, dict):
+        return None
+
+    # Primary path: store[email]["runs"][run_session_id]
+    email = getattr(getattr(request, "state", None), "user_email", None)
+    if email:
+        email_norm = str(email).strip().lower()
+        for key in (f"user:{email_norm}", email_norm, email):
+            user_store = store.get(key)
+            if isinstance(user_store, dict):
+                run = user_store.get("runs", {}).get(run_session_id)
+                if isinstance(run, dict):
+                    return run
+
+    # Secondary: flat store[run_session_id]
+    flat = store.get(run_session_id)
+    if isinstance(flat, dict):
+        return flat
+
+    # Tertiary: any user's runs (last resort — single-user dev mode)
+    for v in store.values():
+        if isinstance(v, dict):
+            run = v.get("runs", {}).get(run_session_id)
+            if isinstance(run, dict):
+                return run
+
+    return None
+
+
+@router.post("/decision/query", tags=["Decision Intelligence"])
+async def decision_query(request: Request, payload: Dict = Body(...)):
+    """
+    Decision Engine: NL question → intent classification → deterministic engine → LLM explanation.
+
+    Flow:
+      1. LLM classifies intent → volatility_analysis | forecast_performance | inventory_risk
+      2. Deterministic Python engine runs against session DataFrames
+      3. LLM explains the structured output (no number invention)
+      4. Returns {intent, filters, engine_output, explanation}
+    """
+    from decision_engine import volatility_engine, forecast_engine, risk_engine
+
+    message        = str(payload.get("message") or "").strip()
+    run_session_id = str(payload.get("run_session_id") or "").strip()
+    combo_key      = str(payload.get("combo_key") or "").strip() or None
+
+    if not message:
+        return {"error": "No question provided."}
+
+    # Resolve the run session
+    session = _resolve_run_session(request, run_session_id) if run_session_id else None
+    if not session:
+        # Try the first available run (single-user dev mode)
+        store = getattr(request.app.state, "data_store", {})
+        for v in store.values():
+            if isinstance(v, dict):
+                for run in v.get("runs", {}).values():
+                    if isinstance(run, dict):
+                        session = run
+                        break
+            if session:
+                break
+
+    if not session:
+        return {"error": "No forecast session found. Run a forecast first."}
+
+    # Step 1: Intent routing (LLM classification only)
+    intent_result = await _route_intent(message)
+    intent  = str(intent_result.get("intent") or "inventory_risk")
+    filters = dict(intent_result.get("filters") or {})
+
+    # Merge combo_key into filters (sku + region)
+    if combo_key:
+        parts = combo_key.split("|||")
+        if len(parts) >= 1 and parts[0] and not filters.get("sku"):
+            filters["sku"] = parts[0]
+        if len(parts) >= 2 and parts[1] and not filters.get("region"):
+            filters["region"] = parts[1]
+
+    # Step 2: Deterministic engine
+    if intent == "volatility_analysis":
+        engine_output = volatility_engine(session, filters)
+    elif intent == "forecast_performance":
+        engine_output = forecast_engine(session, filters)
+    else:
+        engine_output = risk_engine(session, filters)
+
+    if "error" in engine_output:
+        return {
+            "intent":        intent,
+            "filters":       filters,
+            "engine_output": engine_output,
+            "explanation":   engine_output["error"],
+        }
+
+    # Step 3: LLM explanation layer
+    explanation = await _explain_output(message, intent, engine_output)
+
+    return {
+        "intent":        intent,
+        "filters":       filters,
+        "engine_output": engine_output,
+        "explanation":   explanation,
+    }
