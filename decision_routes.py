@@ -489,7 +489,9 @@ async def ai_decision(request: Request, req: GenerateOptionsRequest):
 
 # ── Decision Engine: Intent Router + Query ─────────────────────────────────────
 
-_INTENT_SYSTEM_PROMPT = """You are a supply chain analytics router.
+_INTENT_SYSTEM_PROMPT_TEMPLATE = """You are a supply chain analytics router.
+Today's date is {today}.
+
 Classify the user question into exactly ONE intent:
   - volatility_analysis   : instability, variance, erratic patterns, which region/SKU fluctuates
   - forecast_performance  : forecast accuracy, MAPE, bias, over/under forecasting, forecast quality
@@ -498,17 +500,22 @@ Classify the user question into exactly ONE intent:
 Extract filters mentioned in the question:
 - dimension: "region" if question mentions regions/stores/locations; "sku" if SKUs/items/products
 - value: specific entity name if one is mentioned (e.g. "South", "SKU_102"); null = across all
-- start_date / end_date: convert relative references to ISO dates
-  ("this year" -> current year Jan 1 / Dec 31, "last year" -> previous year,
-   "next month" -> first/last day of next calendar month, "last quarter" -> prev quarter)
+- start_date / end_date: convert ALL date references to ISO date strings (YYYY-MM-DD):
+  * Explicit month+year: "September 2025" -> start_date="2025-09-01", end_date="2025-09-30"
+  * Explicit year: "2025" -> start_date="2025-01-01", end_date="2025-12-31"
+  * "this year" -> start_date="{year}-01-01", end_date="{year}-12-31"
+  * "last year" -> start_date="{prev_year}-01-01", end_date="{prev_year}-12-31"
+  * "next month" -> start_date=first day of next month, end_date=last day of next month
+  * "last quarter" -> start_date/end_date for previous calendar quarter
+  * No date mentioned -> leave both null
 - sku: specific SKU name if filtering to one SKU
 - region: specific region/store name if filtering to one
 - future_periods: number of future months to look ahead (default 4; use 1 for "next month")
 
 Return ONLY valid JSON — no markdown, no explanation:
-{
+{{
   "intent": "volatility_analysis" | "forecast_performance" | "inventory_risk",
-  "filters": {
+  "filters": {{
     "dimension": "region" | "sku",
     "value": null,
     "start_date": null,
@@ -516,8 +523,18 @@ Return ONLY valid JSON — no markdown, no explanation:
     "sku": null,
     "region": null,
     "future_periods": 4
-  }
-}"""
+  }}
+}}"""
+
+
+def _build_intent_prompt() -> str:
+    from datetime import date
+    today = date.today()
+    return _INTENT_SYSTEM_PROMPT_TEMPLATE.format(
+        today=today.strftime("%Y-%m-%d"),
+        year=today.year,
+        prev_year=today.year - 1,
+    )
 
 _INTENT_KEYWORDS = {
     "volatility_analysis":  ["volatil", "varianc", "unstable", "erratic", "fluctuat", "instab", "spike", "spiky"],
@@ -540,7 +557,7 @@ async def _route_intent(message: str) -> dict:
             resp = await client.chat.completions.create(
                 model=os.environ.get("DECISION_AI_MODEL", "gpt-4o-mini"),
                 messages=[
-                    {"role": "system", "content": _INTENT_SYSTEM_PROMPT},
+                    {"role": "system", "content": _build_intent_prompt()},
                     {"role": "user",   "content": message},
                 ],
                 max_tokens=200,
@@ -553,12 +570,27 @@ async def _route_intent(message: str) -> dict:
         except Exception as e:
             logging.debug(f"[decision/query] intent LLM failed, using keywords: {e}")
 
-    # Keyword fallback
+    # Keyword fallback (also extract explicit month+year dates without LLM)
     msg_lower = message.lower()
+    fallback_filters: dict = {"dimension": "sku", "future_periods": 4}
+
+    import calendar as _cal
+    _MONTHS = {m.lower(): i for i, m in enumerate(_cal.month_name) if m}
+    for month_name, month_num in _MONTHS.items():
+        if month_name in msg_lower:
+            import re as _re
+            m = _re.search(r'\b(20\d{2})\b', message)
+            if m:
+                yr = int(m.group(1))
+                last_day = _cal.monthrange(yr, month_num)[1]
+                fallback_filters["start_date"] = f"{yr}-{month_num:02d}-01"
+                fallback_filters["end_date"]   = f"{yr}-{month_num:02d}-{last_day:02d}"
+            break
+
     for intent, kws in _INTENT_KEYWORDS.items():
         if any(kw in msg_lower for kw in kws):
-            return {"intent": intent, "filters": {"dimension": "sku", "future_periods": 4}}
-    return {"intent": "inventory_risk", "filters": {"future_periods": 4}}
+            return {"intent": intent, "filters": fallback_filters}
+    return {"intent": "inventory_risk", "filters": fallback_filters}
 
 
 _EXPLAIN_CONTEXT = {
