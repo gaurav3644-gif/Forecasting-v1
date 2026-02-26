@@ -3,7 +3,7 @@
 {% block title %}PiTensor &mdash; Insights{% endblock %}
 
 {% block head %}
-<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<script src="https://code.highcharts.com/highcharts.js"></script>
 <style>
   .card-soft {
     border-radius: 16px;
@@ -20,8 +20,7 @@
   .kpi .value { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
   .chart-wrap { border-radius: 16px; overflow: hidden; }
   .chart-wrap { padding: 10px; background: rgba(18,24,39,0.02); border: 1px solid rgba(18,24,39,0.06); }
-  /* Plotly sometimes uses axis exponent labels; keep them visible inside the container. */
-  .chart-wrap .js-plotly-plot { overflow: visible !important; }
+  .hc-auto { width: 100%; }
   .muted { color: rgba(18,24,39,0.60); }
 </style>
 {% endblock %}
@@ -148,4 +147,19 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.hc-auto').forEach(function (el) {
+    try {
+      var cfg = JSON.parse(el.getAttribute('data-hc'));
+      Highcharts.chart(el, cfg);
+    } catch (e) {
+      console.warn('Highcharts init error', e);
+    }
+  });
+});
+</script>
 {% endblock %}

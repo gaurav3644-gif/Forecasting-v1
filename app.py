@@ -30,8 +30,74 @@ import base64
 import hmac
 import hashlib as _hashlib
 import pandas as pd
-import plotly.graph_objects as go
+import json as _json
+import math as _math_hc
+
 from run_forecast2 import forecast_all_combined
+
+
+# ── Highcharts helpers ─────────────────────────────────────────────────────────
+
+def _hc_ts(timestamps, values) -> list:
+    """Convert parallel timestamp + value lists into Highcharts [[ms, val], ...] pairs."""
+    result = []
+    for ts, v in zip(timestamps, values):
+        try:
+            ms = int(pd.Timestamp(ts).timestamp() * 1000)
+        except Exception:
+            continue
+        try:
+            fv = float(v) if pd.notna(v) else None
+            if fv is not None and not _math_hc.isfinite(fv):
+                fv = None
+        except Exception:
+            fv = None
+        result.append([ms, fv])
+    return result
+
+
+def _hc_json(config: dict) -> str:
+    """Serialize a Highcharts options dict to a JSON string safe for embedding."""
+    def _clean(obj):
+        if obj is None:
+            return None
+        if isinstance(obj, bool):
+            return obj
+        if isinstance(obj, (pd.Timestamp,)):
+            return int(obj.timestamp() * 1000)
+        if isinstance(obj, datetime):
+            return int(obj.timestamp() * 1000)
+        if isinstance(obj, float):
+            return obj if _math_hc.isfinite(obj) else None
+        if isinstance(obj, (int,)):
+            return obj
+        if isinstance(obj, str):
+            return obj
+        if hasattr(obj, 'item'):          # numpy scalar
+            try:
+                v = obj.item()
+                if isinstance(v, float) and not _math_hc.isfinite(v):
+                    return None
+                return v
+            except Exception:
+                return str(obj)
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_clean(v) for v in obj]
+        return obj
+    return _json.dumps(_clean(config))
+
+
+def _hc_chart_div(config: dict, *, height: int = 320) -> str:
+    """Return an HTML div that will be auto-initialized as a Highcharts chart."""
+    config.setdefault("chart", {})
+    config["chart"].setdefault("height", height)
+    config["chart"].setdefault("style", {"fontFamily": "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif"})
+    config.setdefault("credits", {"enabled": False})
+    config.setdefault("exporting", {"enabled": False})
+    safe_json = _hc_json(config).replace("'", "&#39;")
+    return f"<div class='hc-auto' style='height:{height}px;' data-hc='{safe_json}'></div>"
 import io
 from datetime import datetime, timedelta, timezone
 from supply_planner import (
@@ -3592,65 +3658,74 @@ async def get_results(request: Request, run_session_id: Optional[str] = None):
         latest_accuracy = float(accuracy_series.iloc[-1])
 
     try:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=monthly_agg_actual["date"],
-            y=monthly_agg_actual["actual"],
-            name="Sales (imputed)" if oos_imputed else "Sales",
-            mode="lines+markers"
-        ))
+        quantile_colors = {
+            'forecast_p10': '#e06c75',
+            'forecast_p30': '#e5c07b',
+            'forecast_p60': '#61afef',
+            'forecast_p90': '#56b6c2',
+        }
+
+        hc_series = []
+
+        # Sales (actual) trace
+        hc_series.append({
+            "name": "Sales (imputed)" if oos_imputed else "Sales",
+            "data": _hc_ts(monthly_agg_actual["date"], monthly_agg_actual["actual"]),
+            "color": "#4e6cf4",
+            "marker": {"enabled": True, "radius": 4},
+        })
+
+        # Reported sales overlay (OOS imputation)
         if oos_imputed and reported_sales_month is not None and not reported_sales_month.empty:
-            fig.add_trace(go.Scatter(
-                x=reported_sales_month["date"],
-                y=reported_sales_month["sales"],
-                name="Sales (reported)",
-                mode="lines",
-                line=dict(color="rgba(108,117,125,0.85)", dash="dot", width=2),
-                opacity=0.9
-            ))
+            hc_series.append({
+                "name": "Sales (reported)",
+                "data": _hc_ts(reported_sales_month["date"], reported_sales_month["sales"]),
+                "color": "rgba(108,117,125,0.85)",
+                "dashStyle": "Dot",
+                "lineWidth": 2,
+                "marker": {"enabled": False},
+            })
 
         forecast_accuracy_display = monthly_agg_forecast['accuracy'].apply(
             lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A"
         )
-        # Plot original forecast if present
-        if "forecast" in monthly_agg_forecast.columns:
-            fig.add_trace(go.Scatter(
-                x=monthly_agg_forecast["date"],
-                y=monthly_agg_forecast["forecast"],
-                name="Forecast",
-                mode="lines+markers",
-                line=dict(color="green", width=2),
-                customdata=forecast_accuracy_display.values,
-                hovertemplate="Date: %{x|%Y-%m}<br>Forecast Sales: %{y:,.0f}<br>Accuracy: %{customdata}<extra></extra>"
-            ))
 
-        # Add quantile lines if present
-        quantile_colors = {
-            'forecast_p10': 'rgba(255, 99, 132, 0.5)',
-            'forecast_p30': 'rgba(255, 206, 86, 0.5)',
-            'forecast_p60': 'rgba(54, 162, 235, 0.5)',
-            'forecast_p90': 'rgba(75, 192, 192, 0.5)'
-        }
+        # Forecast trace
+        if "forecast" in monthly_agg_forecast.columns:
+            acc_list = forecast_accuracy_display.tolist()
+            fc_pts = []
+            for i, (ts, v) in enumerate(_hc_ts(monthly_agg_forecast["date"], monthly_agg_forecast["forecast"])):
+                acc = acc_list[i] if i < len(acc_list) else "N/A"
+                fc_pts.append({"x": ts, "y": v, "custom": {"accuracy": acc}})
+            hc_series.append({
+                "name": "Forecast",
+                "data": fc_pts,
+                "color": "#198754",
+                "lineWidth": 2,
+                "marker": {"enabled": True, "radius": 4},
+                "tooltip": {"pointFormat": "<span style='color:{point.color}'>●</span> {series.name}: <b>{point.y:,.0f}</b><br/>Accuracy: {point.custom.accuracy}<br/>"},
+            })
+
+        # Quantile traces
         for q in quantile_cols:
             if q in monthly_agg_forecast.columns:
-                fig.add_trace(go.Scatter(
-                    x=monthly_agg_forecast["date"],
-                    y=monthly_agg_forecast[q],
-                    name=q.replace("forecast_", "").upper(),
-                    mode="lines",
-                    line=dict(dash="dot", color=quantile_colors.get(q, None)),
-                    opacity=0.8
-                ))
+                hc_series.append({
+                    "name": q.replace("forecast_", "").upper(),
+                    "data": _hc_ts(monthly_agg_forecast["date"], monthly_agg_forecast[q]),
+                    "color": quantile_colors.get(q, "#aaa"),
+                    "dashStyle": "Dot",
+                    "lineWidth": 1,
+                    "marker": {"enabled": False},
+                    "visible": True,
+                })
 
-        # Optional overlay: numeric column from raw data (monthly aggregation)
+        # Y-axes (one primary; add secondary if raw metric overlay is on secondary axis)
+        y_axes = [{"title": {"text": "Sales"}}]
+        raw_metric_y_axis = 0
+
+        # Optional raw metric overlay
         if selected_raw_metric and raw_numeric_cols and selected_raw_metric in raw_numeric_cols and isinstance(raw_df, pd.DataFrame) and "date" in raw_df.columns:
-            agg_map = {
-                "mean": "mean",
-                "sum": "sum",
-                "median": "median",
-                "min": "min",
-                "max": "max",
-            }
+            agg_map = {"mean": "mean", "sum": "sum", "median": "median", "min": "min", "max": "max"}
             agg_func = agg_map.get(raw_metric_agg, "mean")
             axis = "secondary" if raw_metric_axis not in ("primary", "secondary") else raw_metric_axis
             try:
@@ -3660,99 +3735,61 @@ async def get_results(request: Request, run_session_id: Optional[str] = None):
                     if col in raw_f.columns and col in selected_grain_values:
                         raw_f[col] = raw_f[col].astype(str)
                         raw_f = raw_f[raw_f[col].isin([str(v) for v in selected_grain_values[col]])]
-
                 raw_f[selected_raw_metric] = pd.to_numeric(raw_f[selected_raw_metric], errors="coerce")
                 raw_f = raw_f.dropna(subset=[selected_raw_metric])
                 if not raw_f.empty:
                     raw_month = (
                         raw_f.set_index("date")[selected_raw_metric]
-                        .resample("MS")  # Month Start for consistent x-axis alignment
+                        .resample("MS")
                         .agg(agg_func)
                         .reset_index()
                     )
                     if not raw_month.empty:
                         trace_name = f"{selected_raw_metric} ({agg_func})"
-                        color = "rgba(111, 66, 193, 0.9)"
                         if axis == "secondary":
-                            fig.add_trace(go.Scatter(
-                                x=raw_month["date"],
-                                y=raw_month[selected_raw_metric],
-                                name=trace_name,
-                                mode="lines+markers",
-                                line=dict(color=color, width=2),
-                                marker=dict(size=6, color=color),
-                                yaxis="y2",
-                                opacity=0.95
-                            ))
-                            fig.update_layout(
-                                yaxis2=dict(
-                                    title=selected_raw_metric,
-                                    overlaying="y",
-                                    side="right",
-                                    showgrid=False,
-                                    zeroline=False
-                                )
-                            )
-                        else:
-                            fig.add_trace(go.Scatter(
-                                x=raw_month["date"],
-                                y=raw_month[selected_raw_metric],
-                                name=trace_name,
-                                mode="lines+markers",
-                                line=dict(color=color, width=2),
-                                marker=dict(size=6, color=color),
-                                opacity=0.95
-                            ))
+                            y_axes.append({"title": {"text": selected_raw_metric}, "opposite": True, "gridLineWidth": 0})
+                            raw_metric_y_axis = 1
+                        hc_series.append({
+                            "name": trace_name,
+                            "data": _hc_ts(raw_month["date"], raw_month[selected_raw_metric]),
+                            "color": "rgba(111,66,193,0.9)",
+                            "lineWidth": 2,
+                            "marker": {"enabled": True, "radius": 3},
+                            "yAxis": raw_metric_y_axis,
+                        })
             except Exception as e:
                 print(f"Warning: Error creating raw metric overlay plot: {e}")
 
-        fig.update_layout(
-            template="plotly_white",
-            height=450,
-            xaxis_title="Month",
-            yaxis_title="Sales",
-            hovermode="x unified",
-            hoverlabel=dict(
-                bgcolor="#23243a",
-                bordercolor="#4e6cf4",
-                font=dict(family="Inter, sans-serif", size=14, color="#fff"),
-                namelength=-1
-            ),
-            xaxis=dict(
-                showspikes=True,
-                spikemode="across",
-                spikesnap="cursor",
-                spikecolor="#4e6cf4",
-                spikethickness=2,
-                spikedash="solid",
-                showline=True,
-                showgrid=True,
-                zeroline=False,
-                showticklabels=True
-            ),
-            yaxis=dict(
-                showspikes=False
-            )
-        )
-        plot_html = fig.to_html(full_html=False, config={"responsive": True})
+        hc_config = {
+            "chart": {"type": "line", "height": 450, "zooming": {"type": "x"}},
+            "title": {"text": None},
+            "xAxis": {"type": "datetime", "title": {"text": "Month"}, "crosshair": True, "dateTimeLabelFormats": {"month": "%b %Y"}},
+            "yAxis": y_axes,
+            "tooltip": {"shared": True, "xDateFormat": "%b %Y"},
+            "legend": {"layout": "horizontal", "align": "center", "verticalAlign": "top"},
+            "credits": {"enabled": False},
+            "exporting": {"enabled": False},
+            "series": hc_series,
+        }
+        plot_html = f"<div id='plot-content-inner' class='hc-main-chart' style='height:450px;' data-hc='{_hc_json(hc_config).replace(chr(39), '&#39;')}'></div>"
     except Exception as e:
-        # Fallback simple plot if there's any issue
         print(f"Warning: Error creating main plot: {e}")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=monthly_agg["date"],
-            y=monthly_agg["actual"],
-            name="Actual",
-            mode="lines+markers"
-        ))
-        fig.add_trace(go.Scatter(
-            x=monthly_agg["date"],
-            y=monthly_agg["forecast"],
-            name="Forecast",
-            mode="lines+markers",
-            line=dict(color="green", width=2)
-        ))
-        plot_html = fig.to_html(full_html=False, config={"responsive": True})
+        # Fallback simple chart
+        fb_series = [
+            {"name": "Actual", "data": _hc_ts(monthly_agg["date"], monthly_agg["actual"]), "color": "#4e6cf4"},
+            {"name": "Forecast", "data": _hc_ts(monthly_agg["date"], monthly_agg["forecast"]), "color": "#198754"},
+        ]
+        fb_config = {
+            "chart": {"type": "line", "height": 450},
+            "title": {"text": None},
+            "xAxis": {"type": "datetime", "title": {"text": "Month"}},
+            "yAxis": {"title": {"text": "Sales"}},
+            "tooltip": {"shared": True, "xDateFormat": "%b %Y"},
+            "credits": {"enabled": False},
+            "exporting": {"enabled": False},
+            "series": fb_series,
+        }
+        plot_html = f"<div id='plot-content-inner' class='hc-main-chart' style='height:450px;' data-hc='{_hc_json(fb_config).replace(chr(39), '&#39;')}'></div>"
     
     # Drivers (SHAP-based summaries) from forecast artifacts (per run slot).
     driver_artifacts = (run or {}).get("driver_artifacts") if isinstance(run, dict) else {}
@@ -4122,20 +4159,14 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         header_bits.append(f"Forecast: start {run.get('start_month')} · {run.get('months')} months")
     header_text = " | ".join(header_bits) if header_bits else None
 
-    def _fig_html(fig: go.Figure, *, height: int = 320, showlegend: bool = True) -> str:
-        try:
-            fig.update_layout(
-                height=int(height),
-                margin=dict(l=30, r=20, t=10, b=30),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", size=13),
-                showlegend=bool(showlegend),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            )
-        except Exception:
-            pass
-        return fig.to_html(full_html=False, include_plotlyjs=False, config={"displayModeBar": False, "responsive": True})
+    def _fig_html(config: dict, *, height: int = 320, showlegend: bool = True) -> str:
+        """Return an auto-initializing Highcharts div for embedding in Jinja2 templates."""
+        config.setdefault("chart", {})
+        config["chart"]["height"] = height
+        config.setdefault("legend", {})["enabled"] = showlegend
+        config.setdefault("credits", {"enabled": False})
+        config.setdefault("exporting", {"enabled": False})
+        return _hc_chart_div(config, height=height)
 
     # Monthly sales vs forecast
     monthly_note = None
@@ -4160,13 +4191,19 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     else:
         monthly_note = "No forecast loaded for this run; showing actuals only."
 
-    fig_main = go.Figure()
+    _main_series = []
     if "actual" in m.columns:
-        fig_main.add_trace(go.Scatter(x=m["month"], y=m["actual"], name="Actual", mode="lines+markers"))
+        _main_series.append({"name": "Actual", "data": _hc_ts(m["month"], m["actual"]), "color": "#4e6cf4", "marker": {"enabled": True, "radius": 3}})
     if "forecast" in m.columns:
-        fig_main.add_trace(go.Scatter(x=m["month"], y=m["forecast"], name="Forecast", mode="lines+markers", line=dict(color="#198754")))
-    fig_main.update_layout(xaxis_title="Month", yaxis_title="Units")
-    chart_sales_vs_forecast = _fig_html(fig_main, height=320, showlegend=True)
+        _main_series.append({"name": "Forecast", "data": _hc_ts(m["month"], m["forecast"]), "color": "#198754", "marker": {"enabled": True, "radius": 3}})
+    chart_sales_vs_forecast = _fig_html({
+        "chart": {"type": "line"},
+        "title": {"text": None},
+        "xAxis": {"type": "datetime", "title": {"text": "Month"}, "dateTimeLabelFormats": {"month": "%b %Y"}},
+        "yAxis": {"title": {"text": "Units"}},
+        "tooltip": {"shared": True, "xDateFormat": "%b %Y"},
+        "series": _main_series,
+    }, height=320, showlegend=True)
 
     # Store share pie
     chart_store_share = ""
@@ -4179,16 +4216,17 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             other = float(by_store[sales_col].iloc[top_n:].sum()) if by_store.shape[0] > top_n else 0.0
             if other > 0:
                 top = pd.concat([top, pd.DataFrame([{store_col: "Other", sales_col: other}])], ignore_index=True)
-            fig_store = go.Figure(
-                data=[
-                    go.Pie(
-                        labels=top[store_col].astype(str).tolist(),
-                        values=pd.to_numeric(top[sales_col], errors="coerce").fillna(0.0).tolist(),
-                        hole=0.55,
-                    )
-                ]
-            )
-            chart_store_share = _fig_html(fig_store, height=260, showlegend=False)
+            _pie_data = [{"name": str(n), "y": float(v)} for n, v in zip(
+                top[store_col].astype(str).tolist(),
+                pd.to_numeric(top[sales_col], errors="coerce").fillna(0.0).tolist()
+            )]
+            chart_store_share = _fig_html({
+                "chart": {"type": "pie"},
+                "title": {"text": None},
+                "tooltip": {"pointFormat": "<b>{point.percentage:.1f}%</b>"},
+                "plotOptions": {"pie": {"innerSize": "55%", "dataLabels": {"enabled": True, "format": "{point.name}"}}},
+                "series": [{"name": "Sales", "data": _pie_data}],
+            }, height=260, showlegend=False)
         else:
             store_share_note = "No store values found."
     else:
@@ -4204,63 +4242,30 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             return min(int(base), 260)
         return int(base)
 
-    def _bar_width(n: int) -> float:
-        n = int(n or 0)
-        if n <= 1:
-            return 0.35
-        if n == 2:
-            return 0.45
-        if n <= 4:
-            return 0.55
-        return 0.7
-
-    def _style_bar_fig(fig: go.Figure, n: int) -> None:
-        try:
-            fig.update_layout(bargap=0.55)
-        except Exception:
-            pass
-        try:
-            fig.update_traces(width=_bar_width(n))
-        except Exception:
-            pass
+    def _hc_hbar(categories: list, values: list, *, x_title: str = "", y_title: str = "", color: str = "#4e6cf4", height: int = 300) -> str:
+        """Return a Highcharts horizontal bar chart div."""
+        return _fig_html({
+            "chart": {"type": "bar"},
+            "title": {"text": None},
+            "xAxis": {"categories": categories, "title": {"text": y_title}},
+            "yAxis": {"title": {"text": x_title}, "labels": {"format": "{value:,.0f}"}},
+            "tooltip": {"valueSuffix": "", "valueDecimals": 0},
+            "plotOptions": {"bar": {"dataLabels": {"enabled": False}, "pointPadding": 0.1, "groupPadding": 0.05}},
+            "series": [{"name": x_title or "Value", "data": [float(v) for v in values], "color": color}],
+        }, height=height, showlegend=False)
 
     # Top SKUs by sales
     chart_top_sales_skus = ""
     if sku_col:
         top_sales = df.groupby(sku_col, as_index=False)[sales_col].sum().sort_values(sales_col, ascending=False).head(10)
         n_bars = int(top_sales.shape[0])
-        fig_top = go.Figure(
-            data=[
-                go.Bar(
-                    x=pd.to_numeric(top_sales[sales_col], errors="coerce").fillna(0.0).tolist(),
-                    y=top_sales[sku_col].astype(str).tolist(),
-                    orientation="h",
-                )
-            ]
+        chart_top_sales_skus = _hc_hbar(
+            top_sales[sku_col].astype(str).tolist()[::-1],
+            pd.to_numeric(top_sales[sales_col], errors="coerce").fillna(0.0).tolist()[::-1],
+            x_title="Sales", y_title="SKU", height=_bar_height(n_bars, 300),
         )
-        fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
-        _style_bar_fig(fig_top, n_bars)
-        try:
-            fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
-            fig_top.update_traces(hovertemplate="%{y}<br>Sales: %{x:,.0f}<extra></extra>")
-        except Exception:
-            pass
-        fig_top.update_yaxes(autorange="reversed")
-        chart_top_sales_skus = _fig_html(fig_top, height=_bar_height(n_bars, 300), showlegend=False)
     else:
-        # single series/no sku column
-        top_sales = df.groupby(df.index // max(1, len(df)), as_index=False)[sales_col].sum().head(1)
-        n_bars = int(top_sales.shape[0])
-        fig_top = go.Figure(data=[go.Bar(x=[float(total_sales)], y=["ALL"], orientation="h")])
-        fig_top.update_layout(xaxis_title="Sales", yaxis_title="SKU")
-        _style_bar_fig(fig_top, n_bars)
-        try:
-            fig_top.update_xaxes(tickformat=",.0f", exponentformat="none")
-            fig_top.update_traces(hovertemplate="%{y}<br>Sales: %{x:,.0f}<extra></extra>")
-        except Exception:
-            pass
-        fig_top.update_yaxes(autorange="reversed")
-        chart_top_sales_skus = _fig_html(fig_top, height=_bar_height(n_bars, 220), showlegend=False)
+        chart_top_sales_skus = _hc_hbar(["ALL"], [float(total_sales)], x_title="Sales", y_title="SKU", height=220)
 
     # Revenue SKUs (sales * price)
     chart_top_revenue_skus = None
@@ -4271,25 +4276,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             rev["revenue"] = rev[sales_col] * rev[price_col]
             top_rev = rev.groupby(sku_col, as_index=False)["revenue"].sum().sort_values("revenue", ascending=False).head(10)
             n_bars = int(top_rev.shape[0])
-            fig_rev = go.Figure(
-                data=[
-                    go.Bar(
-                        x=pd.to_numeric(top_rev["revenue"], errors="coerce").fillna(0.0).tolist(),
-                        y=top_rev[sku_col].astype(str).tolist(),
-                        orientation="h",
-                        marker_color="#0d6efd",
-                    )
-                ]
+            chart_top_revenue_skus = _hc_hbar(
+                top_rev[sku_col].astype(str).tolist()[::-1],
+                pd.to_numeric(top_rev["revenue"], errors="coerce").fillna(0.0).tolist()[::-1],
+                x_title="Revenue", y_title="SKU", color="#0d6efd", height=_bar_height(n_bars, 300),
             )
-            fig_rev.update_layout(xaxis_title="Revenue", yaxis_title="SKU")
-            _style_bar_fig(fig_rev, n_bars)
-            try:
-                fig_rev.update_xaxes(tickformat=",.0f", exponentformat="none")
-                fig_rev.update_traces(hovertemplate="%{y}<br>Revenue: %{x:,.0f}<extra></extra>")
-            except Exception:
-                pass
-            fig_rev.update_yaxes(autorange="reversed")
-            chart_top_revenue_skus = _fig_html(fig_rev, height=_bar_height(n_bars, 300), showlegend=False)
         else:
             revenue_unavailable = "Revenue chart unavailable (price column is empty)."
 
@@ -4312,24 +4303,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             joined = joined.sort_values("pct_change", ascending=True).head(10)
             if not joined.empty:
                 n_bars = int(joined.shape[0])
-                fig_dec = go.Figure(
-                    data=[
-                        go.Bar(
-                            x=pd.to_numeric(joined["pct_change"], errors="coerce").fillna(0.0).tolist(),
-                            y=joined.index.astype(str).tolist(),
-                            orientation="h",
-                            marker_color="#dc3545",
-                        )
-                    ]
+                chart_declining_skus = _hc_hbar(
+                    joined.index.astype(str).tolist()[::-1],
+                    pd.to_numeric(joined["pct_change"], errors="coerce").fillna(0.0).tolist()[::-1],
+                    x_title=f"% change ({prev_m} → {last_m})", y_title="SKU", color="#dc3545", height=_bar_height(n_bars, 300),
                 )
-                fig_dec.update_layout(xaxis_title=f"% change ({prev_m} → {last_m})", yaxis_title="SKU")
-                _style_bar_fig(fig_dec, n_bars)
-                try:
-                    fig_dec.update_traces(hovertemplate="%{y}<br>% change: %{x:.1f}%<extra></extra>")
-                except Exception:
-                    pass
-                fig_dec.update_yaxes(autorange="reversed")
-                chart_declining_skus = _fig_html(fig_dec, height=_bar_height(n_bars, 300), showlegend=False)
                 decline_note = "Computed from the last two months of actuals in raw data."
 
     # Stockout SKUs from supply plan
@@ -4350,25 +4328,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             if not by_so.empty:
                 n_bars = int(by_so.shape[0])
                 by_so["_label"] = by_so[sku_p].astype(str) + " / " + by_so[store_p].astype(str)
-                fig_so = go.Figure(
-                    data=[
-                        go.Bar(
-                            x=pd.to_numeric(by_so["_stockout_units"], errors="coerce").fillna(0.0).tolist(),
-                            y=by_so["_label"].astype(str).tolist(),
-                            orientation="h",
-                            marker_color="#dc3545",
-                        )
-                    ]
+                chart_stockout_skus = _hc_hbar(
+                    by_so["_label"].astype(str).tolist()[::-1],
+                    pd.to_numeric(by_so["_stockout_units"], errors="coerce").fillna(0.0).tolist()[::-1],
+                    x_title="Stockout units", y_title="Item / Store", color="#dc3545", height=_bar_height(n_bars, 300),
                 )
-                fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="Item / Store")
-                _style_bar_fig(fig_so, n_bars)
-                try:
-                    fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
-                    fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
-                except Exception:
-                    pass
-                fig_so.update_yaxes(autorange="reversed")
-                chart_stockout_skus = _fig_html(fig_so, height=_bar_height(n_bars, 300), showlegend=False)
             else:
                 stockout_unavailable = "No stockouts found in the saved supply plan."
         elif sku_p and not p.empty:
@@ -4376,25 +4340,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             by_so = by_so[by_so["_stockout_units"] > 0].head(10)
             if not by_so.empty:
                 n_bars = int(by_so.shape[0])
-                fig_so = go.Figure(
-                    data=[
-                        go.Bar(
-                            x=pd.to_numeric(by_so["_stockout_units"], errors="coerce").fillna(0.0).tolist(),
-                            y=by_so[sku_p].astype(str).tolist(),
-                            orientation="h",
-                            marker_color="#dc3545",
-                        )
-                    ]
+                chart_stockout_skus = _hc_hbar(
+                    by_so[sku_p].astype(str).tolist()[::-1],
+                    pd.to_numeric(by_so["_stockout_units"], errors="coerce").fillna(0.0).tolist()[::-1],
+                    x_title="Stockout units", y_title="SKU", color="#dc3545", height=_bar_height(n_bars, 300),
                 )
-                fig_so.update_layout(xaxis_title="Stockout units", yaxis_title="SKU")
-                _style_bar_fig(fig_so, n_bars)
-                try:
-                    fig_so.update_xaxes(tickformat=",.0f", exponentformat="none")
-                    fig_so.update_traces(hovertemplate="%{y}<br>Stockout units: %{x:,.0f}<extra></extra>")
-                except Exception:
-                    pass
-                fig_so.update_yaxes(autorange="reversed")
-                chart_stockout_skus = _fig_html(fig_so, height=_bar_height(n_bars, 300), showlegend=False)
             else:
                 stockout_unavailable = "No stockouts found in the saved supply plan."
 
@@ -4413,25 +4363,11 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             by_ov = by_ov[by_ov["overstock_units"] > 0]
             if not by_ov.empty:
                 n_bars = int(by_ov.shape[0])
-                fig_ov = go.Figure(
-                    data=[
-                        go.Bar(
-                            x=pd.to_numeric(by_ov["overstock_units"], errors="coerce").fillna(0.0).tolist(),
-                            y=by_ov[sku_p].astype(str).tolist(),
-                            orientation="h",
-                            marker_color="#0d6efd",
-                        )
-                    ]
+                chart_overstock_skus = _hc_hbar(
+                    by_ov[sku_p].astype(str).tolist()[::-1],
+                    pd.to_numeric(by_ov["overstock_units"], errors="coerce").fillna(0.0).tolist()[::-1],
+                    x_title="Overstock units (sum)", y_title="SKU", color="#0d6efd", height=_bar_height(n_bars, 280),
                 )
-                fig_ov.update_layout(xaxis_title="Overstock units (sum)", yaxis_title="SKU")
-                _style_bar_fig(fig_ov, n_bars)
-                try:
-                    fig_ov.update_xaxes(tickformat=",.0f", exponentformat="none")
-                    fig_ov.update_traces(hovertemplate="%{y}<br>Overstock units: %{x:,.0f}<extra></extra>")
-                except Exception:
-                    pass
-                fig_ov.update_yaxes(autorange="reversed")
-                chart_overstock_skus = _fig_html(fig_ov, height=_bar_height(n_bars, 280), showlegend=False)
                 overstock_note = "Overstock = max(0, ending_on_hand − target_level), summed over horizon."
             else:
                 overstock_unavailable = "No overstock detected using ending_on_hand vs target_level."
@@ -5146,55 +5082,56 @@ async def api_update_plot(request: Request):
         monthly_agg_actual = monthly_agg[monthly_agg['date'] <= last_actual_date].copy()
         monthly_agg_forecast = monthly_agg[monthly_agg['date'] >= first_forecast_date].copy()
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=monthly_agg_actual["date"],
-            y=monthly_agg_actual["actual"],
-            name="Sales (imputed)" if oos_imputed else "Sales",
-            mode="lines+markers"
-        ))
+        _q_colors = {'forecast_p10': '#e06c75', 'forecast_p30': '#e5c07b', 'forecast_p60': '#61afef', 'forecast_p90': '#56b6c2'}
+        hc_series = []
+
+        hc_series.append({
+            "name": "Sales (imputed)" if oos_imputed else "Sales",
+            "data": _hc_ts(monthly_agg_actual["date"], monthly_agg_actual["actual"]),
+            "color": "#4e6cf4",
+            "marker": {"enabled": True, "radius": 4},
+        })
+
         if oos_imputed and reported_sales_month is not None and not reported_sales_month.empty:
-            fig.add_trace(go.Scatter(
-                x=reported_sales_month["date"],
-                y=reported_sales_month["sales"],
-                name="Sales (reported)",
-                mode="lines",
-                line=dict(color="rgba(108,117,125,0.85)", dash="dot", width=2),
-                opacity=0.9
-            ))
+            hc_series.append({
+                "name": "Sales (reported)",
+                "data": _hc_ts(reported_sales_month["date"], reported_sales_month["sales"]),
+                "color": "rgba(108,117,125,0.85)",
+                "dashStyle": "Dot",
+                "lineWidth": 2,
+                "marker": {"enabled": False},
+            })
 
         forecast_accuracy_display = monthly_agg_forecast['accuracy'].apply(
             lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A"
         )
         if "forecast" in monthly_agg_forecast.columns:
-            fig.add_trace(go.Scatter(
-                x=monthly_agg_forecast["date"],
-                y=monthly_agg_forecast["forecast"],
-                name="Forecast",
-                mode="lines+markers",
-                line=dict(color="green", width=2),
-                customdata=forecast_accuracy_display.values,
-                hovertemplate="Date: %{x|%Y-%m}<br>Forecast Sales: %{y:,.0f}<br>Accuracy: %{customdata}<extra></extra>"
-            ))
+            acc_list = forecast_accuracy_display.tolist()
+            fc_pts = [{"x": ts, "y": v, "custom": {"accuracy": acc_list[i] if i < len(acc_list) else "N/A"}}
+                      for i, (ts, v) in enumerate(_hc_ts(monthly_agg_forecast["date"], monthly_agg_forecast["forecast"]))]
+            hc_series.append({
+                "name": "Forecast",
+                "data": fc_pts,
+                "color": "#198754",
+                "lineWidth": 2,
+                "marker": {"enabled": True, "radius": 4},
+                "tooltip": {"pointFormat": "<span style='color:{point.color}'>●</span> {series.name}: <b>{point.y:,.0f}</b><br/>Accuracy: {point.custom.accuracy}<br/>"},
+            })
 
-        quantile_colors = {
-            'forecast_p10': 'rgba(255, 99, 132, 0.5)',
-            'forecast_p30': 'rgba(255, 206, 86, 0.5)',
-            'forecast_p60': 'rgba(54, 162, 235, 0.5)',
-            'forecast_p90': 'rgba(75, 192, 192, 0.5)'
-        }
         for q in quantile_cols:
             if q in monthly_agg_forecast.columns:
-                fig.add_trace(go.Scatter(
-                    x=monthly_agg_forecast["date"],
-                    y=monthly_agg_forecast[q],
-                    name=q.replace("forecast_", "").upper(),
-                    mode="lines",
-                    line=dict(dash="dot", color=quantile_colors.get(q, None)),
-                    opacity=0.8
-                ))
+                hc_series.append({
+                    "name": q.replace("forecast_", "").upper(),
+                    "data": _hc_ts(monthly_agg_forecast["date"], monthly_agg_forecast[q]),
+                    "color": _q_colors.get(q, "#aaa"),
+                    "dashStyle": "Dot",
+                    "lineWidth": 1,
+                    "marker": {"enabled": False},
+                    "visible": True,
+                })
 
-        # Optional overlay: numeric column from raw data
+        y_axes = [{"title": {"text": "Sales"}}]
+        raw_metric_y_axis = 0
         if selected_raw_metric and raw_numeric_cols and selected_raw_metric in raw_numeric_cols and isinstance(raw_df, pd.DataFrame) and "date" in raw_df.columns:
             agg_map = {"mean": "mean", "sum": "sum", "median": "median", "min": "min", "max": "max"}
             agg_func = agg_map.get(raw_metric_agg, "mean")
@@ -5206,83 +5143,37 @@ async def api_update_plot(request: Request):
                     if col in raw_f.columns and col in selected_grain_values:
                         raw_f[col] = raw_f[col].astype(str)
                         raw_f = raw_f[raw_f[col].isin([str(v) for v in selected_grain_values[col]])]
-
                 raw_f[selected_raw_metric] = pd.to_numeric(raw_f[selected_raw_metric], errors="coerce")
                 raw_f = raw_f.dropna(subset=[selected_raw_metric])
                 if not raw_f.empty:
-                    raw_month = (
-                        raw_f.set_index("date")[selected_raw_metric]
-                        .resample("MS")
-                        .agg(agg_func)
-                        .reset_index()
-                    )
+                    raw_month = raw_f.set_index("date")[selected_raw_metric].resample("MS").agg(agg_func).reset_index()
                     if not raw_month.empty:
-                        trace_name = f"{selected_raw_metric} ({agg_func})"
-                        color = "rgba(111, 66, 193, 0.9)"
                         if axis == "secondary":
-                            fig.add_trace(go.Scatter(
-                                x=raw_month["date"],
-                                y=raw_month[selected_raw_metric],
-                                name=trace_name,
-                                mode="lines+markers",
-                                line=dict(color=color, width=2),
-                                marker=dict(size=6, color=color),
-                                yaxis="y2",
-                                opacity=0.95
-                            ))
-                            fig.update_layout(
-                                yaxis2=dict(
-                                    title=selected_raw_metric,
-                                    overlaying="y",
-                                    side="right",
-                                    showgrid=False,
-                                    zeroline=False
-                                )
-                            )
-                        else:
-                            fig.add_trace(go.Scatter(
-                                x=raw_month["date"],
-                                y=raw_month[selected_raw_metric],
-                                name=trace_name,
-                                mode="lines+markers",
-                                line=dict(color=color, width=2),
-                                marker=dict(size=6, color=color),
-                                opacity=0.95
-                            ))
+                            y_axes.append({"title": {"text": selected_raw_metric}, "opposite": True, "gridLineWidth": 0})
+                            raw_metric_y_axis = 1
+                        hc_series.append({
+                            "name": f"{selected_raw_metric} ({agg_func})",
+                            "data": _hc_ts(raw_month["date"], raw_month[selected_raw_metric]),
+                            "color": "rgba(111,66,193,0.9)",
+                            "lineWidth": 2,
+                            "marker": {"enabled": True, "radius": 3},
+                            "yAxis": raw_metric_y_axis,
+                        })
             except Exception as e:
                 print(f"Warning: Error creating raw metric overlay plot: {e}")
 
-        fig.update_layout(
-            template="plotly_white",
-            height=450,
-            xaxis_title="Month",
-            yaxis_title="Sales",
-            hovermode="x unified",
-            hoverlabel=dict(
-                bgcolor="#23243a",
-                bordercolor="#4e6cf4",
-                font=dict(family="Inter, sans-serif", size=14, color="#fff"),
-                namelength=-1
-            ),
-            xaxis=dict(
-                showspikes=True,
-                spikemode="across",
-                spikesnap="cursor",
-                spikecolor="#4e6cf4",
-                spikethickness=2,
-                spikedash="solid",
-                showline=True,
-                showgrid=True,
-                zeroline=False,
-                showticklabels=True
-            ),
-            yaxis=dict(
-                showspikes=False
-            )
-        )
-        # Return plot as JSON for Plotly.react() (same as supply plan page)
-        # Use Plotly's to_json() to properly handle numpy arrays
-        plot_json = fig.to_json()
+        hc_config = {
+            "chart": {"type": "line", "height": 450, "zooming": {"type": "x"}},
+            "title": {"text": None},
+            "xAxis": {"type": "datetime", "title": {"text": "Month"}, "crosshair": True, "dateTimeLabelFormats": {"month": "%b %Y"}},
+            "yAxis": y_axes,
+            "tooltip": {"shared": True, "xDateFormat": "%b %Y"},
+            "legend": {"layout": "horizontal", "align": "center", "verticalAlign": "top"},
+            "credits": {"enabled": False},
+            "exporting": {"enabled": False},
+            "series": hc_series,
+        }
+        plot_json = _hc_json(hc_config)
     except Exception as e:
         print(f"Error creating plot: {e}")
         return JSONResponse({"error": f"Error creating plot: {str(e)}"}, status_code=500)
@@ -5309,15 +5200,10 @@ def _build_supply_plan_ui(
 ) -> Optional[dict[str, Any]]:
     """
     Build the frontend payload for the Supply Plan page:
-    - Plotly JSON (sawtooth)
+    - Highcharts JSON (sawtooth)
     - Table columns/rows (JSON-safe)
     """
     try:
-        import plotly.graph_objects as go
-        from plotly.utils import PlotlyJSONEncoder
-        import json as _json
-        import math as _math
-
         df = plan_df.copy()
         try:
             if selected_combo_key and "|||" in str(selected_combo_key) and "sku_id" in df.columns and "location" in df.columns:
@@ -5366,81 +5252,60 @@ def _build_supply_plan_ui(
             )
             prev_end = end_inv
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=points_x,
-            y=points_y,
-            mode="lines+markers",
-            name="Projected On-hand",
-            line=dict(color="#2b6ef2", width=3),
-            marker=dict(size=7),
-            hovertext=hover,
-            hoverinfo="text",
-        ))
-
         def _month_end(ts: pd.Timestamp) -> pd.Timestamp:
             ts = pd.to_datetime(ts)
             return (ts + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
 
-        def _step_xy(_df: pd.DataFrame, col: str) -> tuple[list[pd.Timestamp], list[float]]:
-            xs: list[pd.Timestamp] = []
-            ys: list[float] = []
+        def _step_xy(_df: pd.DataFrame, col: str):
+            xs, ys = [], []
             for _, r in _df.iterrows():
                 m_start = pd.to_datetime(r.get("period_start"))
                 if pd.isna(m_start):
                     continue
                 m_end = _month_end(m_start)
                 v = pd.to_numeric(r.get(col), errors="coerce")
-                v = float(v) if pd.notna(v) else float("nan")
+                v = float(v) if pd.notna(v) else None
                 xs.extend([m_start, m_end])
                 ys.extend([v, v])
             return xs, ys
+
+        # Sawtooth: main on-hand trace with per-point tooltip
+        saw_pts = []
+        for i, (ts, v) in enumerate(_hc_ts(points_x, points_y)):
+            saw_pts.append({"x": ts, "y": v, "custom": {"tooltip": hover[i] if i < len(hover) else ""}})
+
+        hc_sawtooth_series = [{
+            "name": "Projected On-hand",
+            "data": saw_pts,
+            "color": "#2b6ef2",
+            "lineWidth": 3,
+            "marker": {"enabled": True, "radius": 4},
+            "tooltip": {"pointFormatter": "function(){ return this.point.custom && this.point.custom.tooltip ? this.point.custom.tooltip.replace(/<br>/g,'<br/>') : Highcharts.numberFormat(this.y, 0); }"},
+        }]
 
         rp_x, rp_y = _step_xy(df, "reorder_point") if "reorder_point" in df.columns else ([], [])
         ss_x, ss_y = _step_xy(df, "safety_stock") if "safety_stock" in df.columns else ([], [])
         tl_x, tl_y = _step_xy(df, "target_level") if "target_level" in df.columns else ([], [])
 
         if rp_x:
-            fig.add_trace(go.Scatter(x=rp_x, y=rp_y, mode="lines", name="Reorder Point", line=dict(color="#e63946", width=2, dash="dash")))
+            hc_sawtooth_series.append({"name": "Reorder Point", "data": _hc_ts(rp_x, rp_y), "color": "#e63946", "dashStyle": "Dash", "lineWidth": 2, "marker": {"enabled": False}})
         if ss_x:
-            fig.add_trace(go.Scatter(x=ss_x, y=ss_y, mode="lines", name="Safety Stock", line=dict(color="#6c757d", width=2, dash="dot")))
+            hc_sawtooth_series.append({"name": "Safety Stock", "data": _hc_ts(ss_x, ss_y), "color": "#6c757d", "dashStyle": "Dot", "lineWidth": 2, "marker": {"enabled": False}})
         if tl_x:
-            fig.add_trace(go.Scatter(x=tl_x, y=tl_y, mode="lines", name="Order-up-to Target", line=dict(color="#7b2cbf", width=2, dash="dash")))
+            hc_sawtooth_series.append({"name": "Order-up-to Target", "data": _hc_ts(tl_x, tl_y), "color": "#7b2cbf", "dashStyle": "Dash", "lineWidth": 2, "marker": {"enabled": False}})
 
-        fig.update_layout(
-            title="Projected Inventory (Sawtooth)",
-            xaxis_title="Month",
-            yaxis_title="Units",
-            template="plotly_white",
-            height=420,
-            margin=dict(l=40, r=30, t=60, b=40),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        )
-
-        def _clean_plot_json(obj: object) -> object:
-            if obj is None:
-                return None
-            if isinstance(obj, (pd.Timestamp, datetime)):
-                return obj.isoformat()
-            if isinstance(obj, float):
-                return float(obj) if _math.isfinite(obj) else None
-            if isinstance(obj, int):
-                return int(obj)
-            if "numpy" in type(obj).__module__:
-                try:
-                    v = obj.item()
-                    if isinstance(v, float):
-                        return float(v) if _math.isfinite(v) else None
-                    return v
-                except Exception:
-                    return str(obj)
-            if isinstance(obj, dict):
-                return {str(k): _clean_plot_json(v) for k, v in obj.items()}
-            if isinstance(obj, (list, tuple)):
-                return [_clean_plot_json(v) for v in obj]
-            return obj
-
-        plot_json = _json.dumps(_clean_plot_json(fig.to_plotly_json()), cls=PlotlyJSONEncoder)
+        hc_saw_config = {
+            "chart": {"type": "line", "height": 420},
+            "title": {"text": "Projected Inventory (Sawtooth)"},
+            "xAxis": {"type": "datetime", "title": {"text": "Month"}, "dateTimeLabelFormats": {"month": "%b %Y"}},
+            "yAxis": {"title": {"text": "Units"}},
+            "tooltip": {"shared": False, "xDateFormat": "%b %Y"},
+            "legend": {"layout": "horizontal", "align": "center", "verticalAlign": "top"},
+            "credits": {"enabled": False},
+            "exporting": {"enabled": False},
+            "series": hc_sawtooth_series,
+        }
+        plot_json = _hc_json(hc_saw_config)
 
         table_df = df.copy()
         table_df = table_df[[c for c in table_df.columns if c != "explanation"]].copy()
@@ -6640,9 +6505,6 @@ async def supply_plan_submit(
         head = plot_df_display[[c for c in plot_df_display.columns if c != "explanation"]].head(horizon_months or 10).to_string(index=False)
 
         # Sawtooth chart: inventory over time with reorder point + safety stock
-        import plotly.graph_objects as go
-        from plotly.utils import PlotlyJSONEncoder
-
         points_x = []
         points_y = []
         hover = []
@@ -6658,7 +6520,6 @@ async def supply_plan_submit(
                 points_y.append(begin_inv)
                 hover.append(f"Month start<br>Begin inv: {begin_inv:.0f}")
             else:
-                # vertical jump at same x
                 points_x.append(m_start)
                 points_y.append(prev_end)
                 hover.append(f"Month start<br>Prev end inv: {prev_end:.0f}")
@@ -6677,95 +6538,51 @@ async def supply_plan_submit(
             )
             prev_end = end_inv
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=points_x,
-            y=points_y,
-            mode="lines+markers",
-            name="Projected On-hand",
-            line=dict(color="#2b6ef2", width=3),
-            marker=dict(size=7),
-            hovertext=hover,
-            hoverinfo="text",
-        ))
-
-        def _month_end(ts: pd.Timestamp) -> pd.Timestamp:
+        def _saw_month_end(ts):
             ts = pd.to_datetime(ts)
             return (ts + pd.offsets.MonthBegin(1)) - pd.Timedelta(days=1)
 
-        def _step_xy(df: pd.DataFrame, col: str) -> tuple[list[pd.Timestamp], list[float]]:
-            xs: list[pd.Timestamp] = []
-            ys: list[float] = []
-            for _, r in df.iterrows():
-                m_start = pd.to_datetime(r["period_start"])
-                m_end = _month_end(m_start)
+        def _saw_step_xy(src_df, col):
+            xs, ys = [], []
+            for _, r in src_df.iterrows():
+                ms = pd.to_datetime(r["period_start"])
+                me = _saw_month_end(ms)
                 v = pd.to_numeric(r.get(col), errors="coerce")
-                v = float(v) if pd.notna(v) else float("nan")
-                xs.extend([m_start, m_end])
+                v = float(v) if pd.notna(v) else None
+                xs.extend([ms, me])
                 ys.extend([v, v])
             return xs, ys
 
-        rp_x, rp_y = _step_xy(plot_df, "reorder_point")
-        ss_x, ss_y = _step_xy(plot_df, "safety_stock")
-        tl_x, tl_y = _step_xy(plot_df, "target_level")
+        saw_pts = [{"x": ts, "y": v, "custom": {"tooltip": hover[i] if i < len(hover) else ""}}
+                   for i, (ts, v) in enumerate(_hc_ts(points_x, points_y))]
 
-        fig.add_trace(go.Scatter(
-            x=rp_x,
-            y=rp_y,
-            mode="lines",
-            name="Reorder Point",
-            line=dict(color="#d34a4a", width=2, dash="dash"),
-        ))
-        fig.add_trace(go.Scatter(
-            x=ss_x,
-            y=ss_y,
-            mode="lines",
-            name="Safety Stock",
-            line=dict(color="#6c757d", width=2, dash="dot"),
-        ))
-        fig.add_trace(go.Scatter(
-            x=tl_x,
-            y=tl_y,
-            mode="lines",
-            name="Order-up-to Target",
-            line=dict(color="#7b2cbf", width=2, dash="dash"),
-        ))
-        fig.update_layout(
-            title="Projected Inventory (Sawtooth)",
-            xaxis_title="Month",
-            yaxis_title="Units",
-            template="plotly_white",
-            height=420,
-            margin=dict(l=40, r=30, t=60, b=40),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        )
+        hc_saw2_series = [{
+            "name": "Projected On-hand",
+            "data": saw_pts,
+            "color": "#2b6ef2",
+            "lineWidth": 3,
+            "marker": {"enabled": True, "radius": 4},
+        }]
 
-        import math as _math
+        rp_x2, rp_y2 = _saw_step_xy(plot_df, "reorder_point")
+        ss_x2, ss_y2 = _saw_step_xy(plot_df, "safety_stock")
+        tl_x2, tl_y2 = _saw_step_xy(plot_df, "target_level")
 
-        def _clean_plot_json(obj: object) -> object:
-            if obj is None:
-                return None
-            if isinstance(obj, (pd.Timestamp, datetime)):
-                return obj.isoformat()
-            if isinstance(obj, float):
-                return float(obj) if _math.isfinite(obj) else None
-            if isinstance(obj, int):
-                return int(obj)
-            if "numpy" in type(obj).__module__:
-                try:
-                    v = obj.item()
-                    if isinstance(v, float):
-                        return float(v) if _math.isfinite(v) else None
-                    return v
-                except Exception:
-                    return str(obj)
-            if isinstance(obj, dict):
-                return {str(k): _clean_plot_json(v) for k, v in obj.items()}
-            if isinstance(obj, (list, tuple)):
-                return [_clean_plot_json(v) for v in obj]
-            return obj
+        hc_saw2_series.append({"name": "Reorder Point", "data": _hc_ts(rp_x2, rp_y2), "color": "#d34a4a", "dashStyle": "Dash", "lineWidth": 2, "marker": {"enabled": False}})
+        hc_saw2_series.append({"name": "Safety Stock", "data": _hc_ts(ss_x2, ss_y2), "color": "#6c757d", "dashStyle": "Dot", "lineWidth": 2, "marker": {"enabled": False}})
+        hc_saw2_series.append({"name": "Order-up-to Target", "data": _hc_ts(tl_x2, tl_y2), "color": "#7b2cbf", "dashStyle": "Dash", "lineWidth": 2, "marker": {"enabled": False}})
 
-        fig_json = json.dumps(_clean_plot_json(fig.to_plotly_json()), cls=PlotlyJSONEncoder)
+        fig_json = _hc_json({
+            "chart": {"type": "line", "height": 420},
+            "title": {"text": "Projected Inventory (Sawtooth)"},
+            "xAxis": {"type": "datetime", "title": {"text": "Month"}, "dateTimeLabelFormats": {"month": "%b %Y"}},
+            "yAxis": {"title": {"text": "Units"}},
+            "tooltip": {"shared": False, "xDateFormat": "%b %Y"},
+            "legend": {"layout": "horizontal", "align": "center", "verticalAlign": "top"},
+            "credits": {"enabled": False},
+            "exporting": {"enabled": False},
+            "series": hc_saw2_series,
+        })
 
         # Build a JSON-serializable table for the UI.
         table_df = plot_df_display[[c for c in plot_df_display.columns if c != "explanation"]].head(min(int(horizon_months or 10), 36)).copy()

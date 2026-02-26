@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block head %}
-<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<script src="https://code.highcharts.com/highcharts.js"></script>
 <style>
   .card-soft {
     border-radius: 16px;
@@ -599,118 +599,72 @@
     URL.revokeObjectURL(url);
   });
 
+  // Highcharts instance reference
+  var _hcMainChart = null;
+
+  function _getHcChart() { return _hcMainChart; }
+
+  function _initMainChart(container) {
+    if (!container) return;
+    var el = container.querySelector('.hc-main-chart') || container;
+    if (!el) return;
+    try {
+      var cfg = JSON.parse(el.getAttribute('data-hc'));
+      if (_hcMainChart) { try { _hcMainChart.destroy(); } catch(e){} }
+      _hcMainChart = Highcharts.chart(el, cfg);
+    } catch(e) { console.warn('Highcharts main chart init error', e); }
+  }
+
   // Quantile toggle functionality
   function toggleQuantileTrace(quantileName, isVisible) {
-    const plotDiv = document.querySelector('#plot-content .js-plotly-plot');
-    if (!plotDiv) {
-      console.warn('Plot div not found for quantile toggle');
-      return false;
-    }
-
-    try {
-      // Find the trace index for this quantile
-      const data = plotDiv.data;
-      if (!data || data.length === 0) {
-        console.warn('Plot data not available yet');
-        return false;
-      }
-
-      const traceIndices = [];
-      data.forEach((trace, index) => {
-        if (trace.name && trace.name === quantileName) {
-          traceIndices.push(index);
-        }
-      });
-
-      if (traceIndices.length > 0) {
-        // Toggle visibility using Plotly.restyle
-        const update = { visible: isVisible };
-        Plotly.restyle(plotDiv, update, traceIndices);
-        console.log(`Toggled ${quantileName} to ${isVisible ? 'visible' : 'hidden'}`);
-        return true;
-      } else {
-        console.warn(`No trace found for quantile: ${quantileName}`);
-        return false;
-      }
-    } catch (err) {
-      console.error('Error toggling quantile:', err);
-      return false;
-    }
+    var chart = _getHcChart();
+    if (!chart) return false;
+    var found = false;
+    chart.series.forEach(function(s) {
+      if (s.name === quantileName) { s.setVisible(isVisible, true); found = true; }
+    });
+    return found;
   }
 
-  // Wait for Plotly plot to be ready and then apply quantile toggles
+  // Initialize quantile + OOS toggles after chart is ready
   function initializeQuantileToggles() {
-    const plotDiv = document.querySelector('#plot-content .js-plotly-plot');
+    var chart = _getHcChart();
+    if (!chart) { setTimeout(initializeQuantileToggles, 100); return; }
 
-    if (!plotDiv || !plotDiv.data || plotDiv.data.length === 0) {
-      // Plot not ready yet, retry in 100ms
-      setTimeout(initializeQuantileToggles, 100);
-      return;
-    }
-
-    console.log('Plotly plot ready, initializing quantile toggles');
-
-    // Load saved preferences from localStorage and apply them
-    const quantileToggles = document.querySelectorAll('.quantile-toggle');
-    quantileToggles.forEach(checkbox => {
-      const quantileName = checkbox.value; // e.g., "P10"
-      const storageKey = `quantile_visible_${quantileName}`;
-      const savedState = localStorage.getItem(storageKey);
-
-      // If saved state exists, use it; otherwise default to checked
-      if (savedState !== null) {
-        checkbox.checked = savedState === 'true';
-      }
-
-      // Apply initial visibility state
+    document.querySelectorAll('.quantile-toggle').forEach(function(checkbox) {
+      var quantileName = checkbox.value;
+      var storageKey = 'quantile_visible_' + quantileName;
+      var savedState = localStorage.getItem(storageKey);
+      if (savedState !== null) checkbox.checked = savedState === 'true';
       toggleQuantileTrace(quantileName, checkbox.checked);
-
-      // Add event listener for future changes
       checkbox.addEventListener('change', function() {
-        const isVisible = this.checked;
-        toggleQuantileTrace(quantileName, isVisible);
-        localStorage.setItem(storageKey, isVisible.toString());
+        toggleQuantileTrace(quantileName, this.checked);
+        localStorage.setItem(storageKey, this.checked.toString());
       });
     });
   }
 
-  // Initialize original sales toggle
   function initializeOriginalSalesToggle() {
-    const toggleCheckbox = document.getElementById('toggle_original_sales');
-    if (!toggleCheckbox) return; // Not shown if OOS imputation wasn't performed
-
-    const plotDiv = document.querySelector('#plot-content .js-plotly-plot');
-    if (!plotDiv || !plotDiv.data || plotDiv.data.length === 0) {
-      setTimeout(initializeOriginalSalesToggle, 100);
-      return;
-    }
-
-    console.log('Initializing original sales toggle');
+    var toggleCheckbox = document.getElementById('toggle_original_sales');
+    if (!toggleCheckbox) return;
+    var chart = _getHcChart();
+    if (!chart) { setTimeout(initializeOriginalSalesToggle, 100); return; }
 
     toggleCheckbox.addEventListener('change', function() {
-      const isVisible = this.checked;
-      const traceName = "Sales (reported)";
-
-      // Find the trace index by name
-      const traceIndices = [];
-      plotDiv.data.forEach((trace, idx) => {
-        if (trace.name === traceName) {
-          traceIndices.push(idx);
-        }
+      var isVisible = this.checked;
+      var traceName = "Sales (reported)";
+      var chart2 = _getHcChart();
+      if (!chart2) return;
+      chart2.series.forEach(function(s) {
+        if (s.name === traceName) s.setVisible(isVisible, true);
       });
-
-      if (traceIndices.length > 0) {
-        const visibility = isVisible ? true : 'legendonly';
-        const update = { visible: visibility };
-        Plotly.restyle(plotDiv, update, traceIndices);
-        console.log(`Toggled ${traceName} to ${isVisible ? 'visible' : 'hidden'}`);
-      }
     });
   }
 
-  // Initialize quantile toggles after DOM is loaded
+  // Initialize main chart + toggles after DOM is loaded
   document.addEventListener('DOMContentLoaded', function() {
-    // Start checking for plot availability
+    var plotContent = document.getElementById('plot-content');
+    if (plotContent) _initMainChart(plotContent);
     initializeQuantileToggles();
     initializeOriginalSalesToggle();
   });
@@ -818,50 +772,37 @@
       const data = await response.json();
 
       if (data.success) {
-        // Update plot using Plotly.react() (same as supply plan page)
+        // Update chart using Highcharts
         if (data.plot_json && plotContent) {
           try {
-            const plotObj = JSON.parse(data.plot_json);
+            const hcConfig = JSON.parse(data.plot_json);
 
-            // Load saved quantile preferences from localStorage and apply to checkboxes
-            const quantileToggles = document.querySelectorAll('.quantile-toggle');
-            quantileToggles.forEach(checkbox => {
-              const quantileName = checkbox.value; // e.g., "P10"
+            // Apply saved quantile visibility preferences to the new config
+            document.querySelectorAll('.quantile-toggle').forEach(checkbox => {
+              const quantileName = checkbox.value;
               const storageKey = `quantile_visible_${quantileName}`;
               const savedState = localStorage.getItem(storageKey);
-
-              // Update checkbox state from localStorage (if exists)
-              if (savedState !== null) {
-                checkbox.checked = savedState === 'true';
-              }
-
+              if (savedState !== null) checkbox.checked = savedState === 'true';
               const isVisible = checkbox.checked;
-
-              // Find matching traces and set visibility
-              if (plotObj.data && Array.isArray(plotObj.data)) {
-                plotObj.data.forEach(trace => {
-                  if (trace.name === quantileName) {
-                    trace.visible = isVisible;
-                  }
-                });
+              if (hcConfig.series && Array.isArray(hcConfig.series)) {
+                hcConfig.series.forEach(s => { if (s.name === quantileName) s.visible = isVisible; });
               }
             });
 
-            // Apply original sales toggle state (if it exists)
+            // Apply original sales toggle state
             const originalSalesToggle = document.getElementById('toggle_original_sales');
-            if (originalSalesToggle && plotObj.data && Array.isArray(plotObj.data)) {
+            if (originalSalesToggle && hcConfig.series) {
               const isVisible = originalSalesToggle.checked;
-              plotObj.data.forEach(trace => {
-                if (trace.name === "Sales (reported)") {
-                  trace.visible = isVisible;
-                }
-              });
+              hcConfig.series.forEach(s => { if (s.name === "Sales (reported)") s.visible = isVisible; });
             }
 
-            Plotly.react('plot-content', plotObj.data || [], plotObj.layout || {}, { responsive: true });
+            // Destroy old chart and render new one inside plot-content
+            if (_hcMainChart) { try { _hcMainChart.destroy(); } catch(e){} _hcMainChart = null; }
+            plotContent.innerHTML = `<div class="hc-main-chart" style="height:450px;"></div>`;
+            _hcMainChart = Highcharts.chart(plotContent.querySelector('.hc-main-chart'), hcConfig);
           } catch (err) {
-            console.error('Error rendering plot:', err);
-            plotContent.innerHTML = '<div class="p-3 text-danger small">Error rendering plot</div>';
+            console.error('Error rendering chart:', err);
+            plotContent.innerHTML = '<div class="p-3 text-danger small">Error rendering chart</div>';
           }
         }
 
