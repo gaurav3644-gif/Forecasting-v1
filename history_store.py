@@ -2009,6 +2009,88 @@ def load_supply_plan(email: str, run_id: int, *, combo_key: Optional[str] = None
             conn.close()
 
 
+def load_all_supply_plans_combined(email: str, run_id: int) -> pd.DataFrame:
+    """
+    Load and concatenate the supply_plan_full_df for EVERY combo saved under
+    this user + forecast_run_id.  Returns a single combined DataFrame so the
+    Decision Engine can analyse across all SKU / Store combinations at once.
+    Returns an empty DataFrame if nothing is found.
+    """
+    init_db()
+    with _LOCK:
+        if _use_postgres():
+            conn = _pg_connect()
+            try:
+                user_id = _get_or_create_user_id_pg(conn, email)
+                cur = _pg_dict_cursor(conn)
+                cur.execute(
+                    """
+                    SELECT sp.supply_full_csv_gz, sp.supply_export_csv_gz
+                    FROM supply_plans sp
+                    INNER JOIN forecast_runs fr ON fr.id = sp.forecast_run_id
+                    WHERE sp.user_id = %s AND fr.id = %s
+                    ORDER BY sp.created_at ASC
+                    """,
+                    (user_id, int(run_id)),
+                )
+                rows = cur.fetchall()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        else:
+            conn = _connect()
+            try:
+                user_id = _get_or_create_user_id(conn, email)
+                rows = conn.execute(
+                    """
+                    SELECT supply_full_csv_gz, supply_export_csv_gz
+                    FROM supply_plans
+                    WHERE user_id = ? AND forecast_run_id = ?
+                    ORDER BY created_at ASC
+                    """,
+                    (int(user_id), int(run_id)),
+                ).fetchall()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    dfs: list[pd.DataFrame] = []
+    seen_keys: set = set()
+    for row in rows:
+        # Prefer the full DataFrame; fall back to export
+        if hasattr(row, "get"):
+            full_blob   = _bytea_to_bytes(row.get("supply_full_csv_gz"))
+            export_blob = _bytea_to_bytes(row.get("supply_export_csv_gz"))
+        else:
+            full_blob   = _bytea_to_bytes(row["supply_full_csv_gz"])
+            export_blob = _bytea_to_bytes(row["supply_export_csv_gz"])
+        blob = full_blob or export_blob
+        if not blob:
+            continue
+        try:
+            df = _csv_gz_to_df(blob)
+        except Exception:
+            continue
+        if df.empty:
+            continue
+        # Deduplicate rows across per-combo saves using a frozenset of the
+        # first row's values as a fingerprint (avoids double-counting when
+        # the same combo appears multiple times because of generate_all).
+        fp = frozenset(df.iloc[0].astype(str).tolist())
+        if fp in seen_keys:
+            continue
+        seen_keys.add(fp)
+        dfs.append(df)
+
+    if not dfs:
+        return pd.DataFrame()
+    return pd.concat(dfs, ignore_index=True)
+
+
 def load_supply_plan_admin(*, run_id: int, combo_key: Optional[str] = None) -> dict[str, Any]:
     """
     Admin-only: load a supply plan by forecast_run_id regardless of owner.

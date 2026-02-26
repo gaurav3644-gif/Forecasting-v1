@@ -314,22 +314,22 @@ def risk_engine(session: dict, filters: dict, *,
 
     Returns {"error": str} if no supply plan is in session.
     """
-    # sp_df = session.get("supply_plan_full_df") or session.get("supply_plan_df")
     sp_df = session.get("supply_plan_full_df")
     sp_df = sp_df if sp_df is not None else session.get("supply_plan_df")
-    if (sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty)) and user_email and forecast_run_id:
+
+    # In-memory plan may only cover the currently selected combo.
+    # Always supplement with the full DB dataset so every SKU+Store is visible.
+    if user_email and forecast_run_id:
         try:
-            from history_store import load_supply_plan
-            # Always try without combo_key first to get the full multi-combo plan.
-            # Only fall back to the specific combo if no combined plan exists.
-            loaded = load_supply_plan(str(user_email), int(forecast_run_id), combo_key=None)
-            sp_df = loaded.get("supply_plan_full_df") or loaded.get("supply_plan_df")
-            if (sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty)) and combo_key:
-                loaded = load_supply_plan(str(user_email), int(forecast_run_id),
-                                          combo_key=combo_key)
-                sp_df = loaded.get("supply_plan_full_df") or loaded.get("supply_plan_df")
+            from history_store import load_all_supply_plans_combined
+            db_combined = load_all_supply_plans_combined(str(user_email), int(forecast_run_id))
+            if isinstance(db_combined, pd.DataFrame) and not db_combined.empty:
+                sp_df = db_combined          # use the full cross-combo dataset
         except Exception:
             pass
+
+    if sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty):
+        return {"error": "No supply plan data available. Generate a supply plan first."}
 
     if sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty):
         return {"error": "No supply plan data available. Generate a supply plan first."}
@@ -390,7 +390,10 @@ def risk_engine(session: dict, filters: dict, *,
     demand       = _col(demand_col)
     stockout_qty = _col(stockout_col)
 
-    stockout_mask  = eoh < ss
+    # Use stockout_qty > 0 as the ground truth for actual stockouts
+    # (matches the CSV output — eoh < ss alone means "below safety buffer",
+    #  not an actual unmet demand event).
+    stockout_mask  = stockout_qty > 0
     overstock_mask = (ss > 0) & (eoh > ss * 3)
 
     # Per-entity risk
@@ -405,7 +408,7 @@ def risk_engine(session: dict, filters: dict, *,
             g_ss       = _to_num(grp[ss_col])       if ss_col       else pd.Series([0])
             g_stockout = _to_num(grp[stockout_col]) if stockout_col else pd.Series([0])
 
-            if g_stockout.sum() > 0 or (g_eoh < g_ss).any():
+            if g_stockout.sum() > 0:
                 high_risk_skus.append(label)
             if g_ss.mean() > 0 and (g_eoh > g_ss * 3).all():
                 overstock_items.append(label)
