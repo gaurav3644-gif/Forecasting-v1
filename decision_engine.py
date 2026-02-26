@@ -60,7 +60,14 @@ def volatility_engine(session: dict, filters: dict, *,
 
     Returns a scored, ranked dict or {"error": str} on failure.
     """
-    raw_df = session.get("df") or session.get("original_sales_df") or session.get("raw_df")
+    # raw_df = session.get("df") or session.get("original_sales_df") or session.get("raw_df")
+    raw_df = session.get("df")
+
+    if raw_df is None:
+        raw_df = session.get("original_sales_df")
+
+    if raw_df is None:
+        raw_df = session.get("raw_df")
 
     if (raw_df is None or (hasattr(raw_df, "empty") and raw_df.empty)) and user_email and dataset_id:
         try:
@@ -307,8 +314,9 @@ def risk_engine(session: dict, filters: dict, *,
 
     Returns {"error": str} if no supply plan is in session.
     """
-    sp_df = session.get("supply_plan_full_df") or session.get("supply_plan_df")
-
+    # sp_df = session.get("supply_plan_full_df") or session.get("supply_plan_df")
+    sp_df = session.get("supply_plan_full_df")
+    sp_df = sp_df if sp_df is not None else session.get("supply_plan_df")
     if (sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty)) and user_email and forecast_run_id:
         try:
             from history_store import load_supply_plan
