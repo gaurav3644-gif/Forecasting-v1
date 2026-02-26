@@ -347,15 +347,26 @@ def risk_engine(session: dict, filters: dict, *,
     if region_filter and loc_col:
         df = df[df[loc_col].astype(str).str.strip() == str(region_filter).strip()]
 
-    # Limit to future periods
+    # Apply date range filter (honour explicit start_date/end_date from the intent router)
     if per_col:
         df[per_col] = pd.to_datetime(df[per_col], errors="coerce")
         df = df.dropna(subset=[per_col])
-        today = pd.Timestamp.today().normalize()
-        future_df = df[df[per_col] >= today].copy()
-        if not future_df.empty:
-            n_entities = max(1, len(df[sku_col].unique()) if sku_col else 1)
-            df = future_df.head(future_periods * n_entities)
+
+        start_date = filters.get("start_date")
+        end_date   = filters.get("end_date")
+
+        if start_date:
+            df = df[df[per_col] >= pd.to_datetime(start_date)]
+        if end_date:
+            df = df[df[per_col] <= pd.to_datetime(end_date)]
+
+        # Only fall back to future-periods window when no explicit date range was given
+        if not start_date and not end_date:
+            today = pd.Timestamp.today().normalize()
+            future_df = df[df[per_col] >= today].copy()
+            if not future_df.empty:
+                n_entities = max(1, len(df[sku_col].unique()) if sku_col else 1)
+                df = future_df.head(future_periods * n_entities)
 
     if df.empty:
         return {"error": "No supply plan rows found after applying filters."}
