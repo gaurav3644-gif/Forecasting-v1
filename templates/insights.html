@@ -145,6 +145,63 @@
         {% endif %}
       </div>
     </div>
+
+    {# ── Price Elasticity ─────────────────────────────────────────────────── #}
+    <div class="col-lg-12">
+      <div class="card-soft pt-card p-3">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <div class="pt-section-title mb-0">Price Elasticity of Demand</div>
+          <span class="badge text-bg-light border small fw-normal ms-1"
+                title="Elasticity = % change in demand ÷ % change in price (median across all months). Requires a price column in the uploaded data.">
+            ℹ️ Median across periods
+          </span>
+        </div>
+        <div class="small text-muted mb-2">
+          Measures how sensitive demand is to price changes per item/store.
+          <strong>|e| &gt; 1</strong> = elastic &nbsp;·&nbsp;
+          <strong>|e| &lt; 1</strong> = inelastic &nbsp;·&nbsp;
+          <strong>e &lt; 0</strong> = normal good (expected).
+        </div>
+
+        {% if chart_price_elasticity %}
+          <div class="chart-wrap mb-3">{{ chart_price_elasticity | safe }}</div>
+
+          {% if elasticity_table %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="font-size:0.82rem;">
+              <thead class="table-light">
+                <tr>
+                  <th>Item / Store</th>
+                  <th class="text-end">Elasticity</th>
+                  <th>Interpretation</th>
+                  <th class="text-end">Avg Price</th>
+                  <th class="text-end">Total Demand</th>
+                  <th class="text-end">Months</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in elasticity_table %}
+                <tr>
+                  <td class="fw-semibold">{{ row.grain }}</td>
+                  <td class="text-end {% if row.elasticity is not none %}{% if row.elasticity | abs > 1 %}text-danger{% else %}text-success{% endif %}{% endif %}">
+                    {% if row.elasticity is not none %}{{ "%.3f" | format(row.elasticity) }}{% else %}&mdash;{% endif %}
+                  </td>
+                  <td class="text-muted">{{ row.interpretation }}</td>
+                  <td class="text-end">{{ "%.2f" | format(row.mean_price) }}</td>
+                  <td class="text-end">{{ "{:,.0f}".format(row.total_sales) }}</td>
+                  <td class="text-end">{{ row.n_periods }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        {% else %}
+          <div class="small text-muted">{{ elasticity_unavailable }}</div>
+        {% endif %}
+      </div>
+    </div>
+
   </div>
 </div>
 {% endblock %}

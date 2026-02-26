@@ -4043,6 +4043,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 "chart_overstock_skus": None,
                 "overstock_unavailable": "Overstock SKUs unavailable (need supply plan columns ending_on_hand + target_level).",
                 "overstock_note": None,
+                "chart_price_elasticity": None,
+                "elasticity_table": [],
+                "elasticity_unavailable": "Price elasticity unavailable (no data loaded).",
             },
         )
 
@@ -4082,6 +4085,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 "chart_overstock_skus": None,
                 "overstock_unavailable": "Overstock SKUs unavailable (need supply plan columns ending_on_hand + target_level).",
                 "overstock_note": None,
+                "chart_price_elasticity": None,
+                "elasticity_table": [],
+                "elasticity_unavailable": "Price elasticity unavailable (no data loaded).",
             },
         )
 
@@ -4284,6 +4290,112 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
         else:
             revenue_unavailable = "Revenue chart unavailable (price column is empty)."
 
+    # ── Price Elasticity ─────────────────────────────────────────────────────────
+    # Elasticity = (% ΔQ) / (% ΔP) per grain element.
+    # Requires: price_col present, at least 3 months of data, price must vary.
+    chart_price_elasticity = None
+    elasticity_table: list[dict] = []
+    elasticity_unavailable = "Price elasticity unavailable (no price column found in raw data)."
+
+    if price_col and date_col and sales_col:
+        try:
+            ep = df.dropna(subset=[date_col, price_col, sales_col]).copy()
+            ep[date_col] = pd.to_datetime(ep[date_col], errors="coerce")
+            ep = ep.dropna(subset=[date_col])
+            ep[price_col] = pd.to_numeric(ep[price_col], errors="coerce")
+            ep[sales_col] = pd.to_numeric(ep[sales_col], errors="coerce")
+            ep = ep.dropna(subset=[price_col, sales_col])
+            ep["_month"] = ep[date_col].dt.to_period("M").dt.to_timestamp()
+
+            # Build grain label column
+            grain_cols_avail = [c for c in (grain or []) if c in ep.columns]
+            if grain_cols_avail:
+                ep["_grain"] = ep[grain_cols_avail].astype(str).agg(" | ".join, axis=1)
+            elif sku_col:
+                ep["_grain"] = ep[sku_col].astype(str)
+            else:
+                ep["_grain"] = "ALL"
+
+            # Monthly aggregation: sum(sales), mean(price) per grain
+            monthly_ep = (
+                ep.groupby(["_grain", "_month"], as_index=False)
+                .agg({sales_col: "sum", price_col: "mean"})
+                .sort_values(["_grain", "_month"])
+            )
+
+            results = []
+            for grain_val, grp in monthly_ep.groupby("_grain"):
+                grp = grp.sort_values("_month").reset_index(drop=True)
+                if len(grp) < 3:
+                    continue
+                pct_q = grp[sales_col].pct_change()
+                pct_p = grp[price_col].pct_change()
+                # Only use periods where price actually changed (> 0.5% to filter noise)
+                mask = pct_p.abs() > 0.005
+                if mask.sum() < 2:
+                    results.append({
+                        "grain": str(grain_val),
+                        "elasticity": None,
+                        "interpretation": "Insufficient price variation",
+                        "n_periods": int(len(grp)),
+                        "mean_price": round(float(grp[price_col].mean()), 2),
+                        "total_sales": round(float(grp[sales_col].sum()), 0),
+                    })
+                    continue
+                point_elasticities = (pct_q[mask] / pct_p[mask]).replace([float("inf"), float("-inf")], float("nan")).dropna()
+                if point_elasticities.empty:
+                    continue
+                median_e = float(point_elasticities.median())
+                if abs(median_e) > 1:
+                    interp = "Elastic (demand sensitive to price)"
+                elif abs(median_e) < 1:
+                    interp = "Inelastic (demand not sensitive to price)"
+                else:
+                    interp = "Unit elastic"
+                if median_e > 0:
+                    interp += " ⚠ Positive (check data)"
+                results.append({
+                    "grain": str(grain_val),
+                    "elasticity": round(median_e, 3),
+                    "interpretation": interp,
+                    "n_periods": int(len(grp)),
+                    "mean_price": round(float(grp[price_col].mean()), 2),
+                    "total_sales": round(float(grp[sales_col].sum()), 0),
+                })
+
+            # Filter only rows with valid elasticity for the chart
+            valid_results = [r for r in results if r["elasticity"] is not None]
+            elasticity_table = sorted(results, key=lambda r: abs(r["elasticity"] or 0), reverse=True)
+
+            if valid_results:
+                # Sort by absolute elasticity descending, take top 15
+                chart_data = sorted(valid_results, key=lambda r: abs(r["elasticity"]), reverse=True)[:15]
+                cats = [r["grain"] for r in chart_data]
+                vals = [r["elasticity"] for r in chart_data]
+                # Colour bars: negative elasticity (normal) = blue; positive = red warning
+                bar_colors = ["#dc3545" if v > 0 else "#4e6cf4" for v in vals]
+
+                chart_price_elasticity = _fig_html({
+                    "chart": {"type": "bar"},
+                    "title": {"text": None},
+                    "xAxis": {"categories": cats[::-1], "title": {"text": ""}},
+                    "yAxis": {"title": {"text": "Price Elasticity (median)"}, "plotLines": [
+                        {"value": -1, "color": "#dc3545", "dashStyle": "Dash", "width": 1, "label": {"text": "Elastic boundary (−1)", "align": "right", "style": {"color": "#dc3545", "fontSize": "11px"}}},
+                        {"value": 1, "color": "#dc3545", "dashStyle": "Dash", "width": 1, "label": {"text": "+1", "align": "right", "style": {"color": "#dc3545", "fontSize": "11px"}}},
+                        {"value": 0, "color": "#adb5bd", "width": 1},
+                    ]},
+                    "tooltip": {"pointFormat": "<b>{point.y:.3f}</b>"},
+                    "plotOptions": {"bar": {"dataLabels": {"enabled": True, "format": "{y:.2f}"}, "colorByPoint": True}},
+                    "colors": bar_colors[::-1],
+                    "series": [{"name": "Elasticity", "data": vals[::-1]}],
+                }, height=_bar_height(len(chart_data), 340), showlegend=False)
+            elif results:
+                elasticity_unavailable = "Price elasticity could not be computed: price does not vary enough across periods."
+            else:
+                elasticity_unavailable = "Price elasticity unavailable (need at least 3 months of data per item)."
+        except Exception as _e:
+            elasticity_unavailable = f"Price elasticity computation error: {_e}"
+
     # Declining SKUs (last month vs previous month)
     chart_declining_skus = None
     decline_unavailable = "Declining SKUs unavailable (need at least 2 months of actuals)."
@@ -4400,6 +4512,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             "chart_overstock_skus": chart_overstock_skus,
             "overstock_unavailable": overstock_unavailable,
             "overstock_note": overstock_note,
+            "chart_price_elasticity": chart_price_elasticity,
+            "elasticity_table": elasticity_table,
+            "elasticity_unavailable": elasticity_unavailable,
         },
     )
 
