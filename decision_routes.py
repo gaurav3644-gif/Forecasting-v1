@@ -543,32 +543,138 @@ _INTENT_KEYWORDS = {
 }
 
 
+async def _decision_llm_call(system_prompt: str, user_message: str, *,
+                             max_tokens: int = 300, temperature: float = 0.0) -> str:
+    """
+    Provider-agnostic LLM call for the Decision Engine.
+    Uses the same provider priority as the main assistant (app.py):
+      explicit AI_ASSISTANT_PROVIDER > OpenAI > Ollama > Gemini > HuggingFace
+    Raises ValueError if no provider is configured.
+    """
+    import httpx as _httpx
+
+    provider = (os.getenv("AI_ASSISTANT_PROVIDER") or "").strip().lower()
+    if not provider:
+        if os.getenv("OPENAI_API_KEY"):
+            provider = "openai"
+        elif os.getenv("OLLAMA_MODEL") or os.getenv("OLLAMA_BASE_URL"):
+            provider = "ollama"
+        elif os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+            provider = "gemini"
+        elif os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_API_KEY") or os.getenv("HF_TOKEN"):
+            provider = "huggingface"
+        else:
+            raise ValueError("No LLM provider configured. Set OPENAI_API_KEY, GEMINI_API_KEY, "
+                             "OLLAMA_MODEL, or HUGGINGFACE_API_KEY.")
+
+    if provider == "openai":
+        api_key  = os.getenv("OPENAI_API_KEY", "")
+        base_url = (os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+        model    = os.getenv("DECISION_AI_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        payload  = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_message},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        async with _httpx.AsyncClient(timeout=45.0) as client:
+            res = await client.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            res.raise_for_status()
+            return str(res.json()["choices"][0]["message"]["content"]).strip()
+
+    elif provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+        model   = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        prompt  = f"{system_prompt}\n\n{user_message}" if user_message else system_prompt
+        url     = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        body    = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+        }
+        async with _httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(url, params={"key": api_key}, json=body)
+            res.raise_for_status()
+            data = res.json()
+            parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+            return str(parts[0].get("text") if parts else "").strip()
+
+    elif provider == "ollama":
+        base_url  = (os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") or "").rstrip("/")
+        model     = (os.getenv("OLLAMA_MODEL", "mistral:latest") or "").strip()
+        timeout_s = float(os.getenv("OLLAMA_TIMEOUT_S", "180"))
+        payload   = {
+            "model": model, "stream": False,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_message},
+            ],
+            "options": {"temperature": temperature, "num_predict": max_tokens},
+        }
+        async with _httpx.AsyncClient(timeout=timeout_s) as client:
+            res = await client.post(f"{base_url}/api/chat", json=payload)
+            res.raise_for_status()
+            return str((res.json().get("message") or {}).get("content") or "").strip()
+
+    elif provider == "huggingface":
+        api_key  = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_API_KEY") or os.getenv("HF_TOKEN", "")
+        model    = (os.getenv("HUGGINGFACE_MODEL") or "mistralai/Mistral-7B-Instruct-v0.2").strip()
+        base_url = (os.getenv("HUGGINGFACE_BASE_URL") or "https://router.huggingface.co").rstrip("/")
+        if "api-inference.huggingface.co" in base_url:
+            base_url = "https://router.huggingface.co"
+        payload = {
+            "model": model, "stream": False,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_message},
+            ],
+            "max_tokens": max_tokens, "temperature": temperature,
+        }
+        candidate_urls = [
+            f"{base_url}/v1/chat/completions",
+            f"{base_url}/hf-inference/v1/chat/completions",
+            f"{base_url}/hf-inference/models/{model}/v1/chat/completions",
+        ]
+        async with _httpx.AsyncClient(timeout=60.0) as client:
+            last_err = None
+            for url in candidate_urls:
+                res = await client.post(
+                    url,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json=payload,
+                )
+                if res.status_code in (404, 405):
+                    last_err = res
+                    continue
+                res.raise_for_status()
+                return str(((res.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+            if last_err is not None:
+                last_err.raise_for_status()
+            raise RuntimeError("HuggingFace: no valid endpoint matched.")
+
+    raise ValueError(f"Unknown LLM provider: {provider!r}")
+
+
 async def _route_intent(message: str) -> dict:
     """
     LLM-based intent classification (classification only — no creativity).
-    Falls back to keyword matching if OpenAI is unavailable.
+    Uses any configured provider; falls back to keyword matching if none available.
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if api_key:
-        try:
-            import openai  # type: ignore
-            client = openai.AsyncOpenAI(api_key=api_key,
-                                        base_url=os.environ.get("OPENAI_BASE_URL") or None)
-            resp = await client.chat.completions.create(
-                model=os.environ.get("DECISION_AI_MODEL", "gpt-4o-mini"),
-                messages=[
-                    {"role": "system", "content": _build_intent_prompt()},
-                    {"role": "user",   "content": message},
-                ],
-                max_tokens=200,
-                temperature=0,
-            )
-            raw = resp.choices[0].message.content.strip()
-            result = json.loads(raw)
-            if result.get("intent") in ("volatility_analysis", "forecast_performance", "inventory_risk"):
-                return result
-        except Exception as e:
-            logging.debug(f"[decision/query] intent LLM failed, using keywords: {e}")
+    try:
+        raw = await _decision_llm_call(
+            _build_intent_prompt(), message, max_tokens=200, temperature=0
+        )
+        result = json.loads(raw)
+        if result.get("intent") in ("volatility_analysis", "forecast_performance", "inventory_risk"):
+            return result
+    except Exception as e:
+        logging.debug(f"[decision/query] intent LLM failed, using keywords: {e}")
 
     # Keyword fallback (also extract explicit month+year dates without LLM)
     msg_lower = message.lower()
@@ -633,21 +739,11 @@ async def _explain_output(question: str, intent: str, engine_output: dict) -> st
         f"- Write in clear business language. Be crisp and decisive."
     )
 
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if api_key:
-        try:
-            import openai  # type: ignore
-            client = openai.AsyncOpenAI(api_key=api_key,
-                                        base_url=os.environ.get("OPENAI_BASE_URL") or None)
-            resp = await client.chat.completions.create(
-                model=os.environ.get("DECISION_AI_MODEL", "gpt-4o-mini"),
-                messages=[{"role": "user", "content": system_prompt}],
-                max_tokens=300,
-                temperature=0.3,
-            )
-            return resp.choices[0].message.content.strip()
-        except Exception as e:
-            logging.debug(f"[decision/query] explanation LLM failed: {e}")
+    try:
+        return await _decision_llm_call(system_prompt, "Provide the explanation.",
+                                        max_tokens=300, temperature=0.3)
+    except Exception as e:
+        logging.debug(f"[decision/query] explanation LLM failed: {e}")
 
     # Plain-text fallback
     rl    = engine_output.get("risk_level", "Unknown")
