@@ -4055,6 +4055,10 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
     date_col = _pick_col_ci(df, ["date", "ds", "timestamp"])
     sales_col = _pick_col_ci(df, ["sales", "actual", "qty", "quantity", "units", "demand"])
     price_col = _pick_col_ci(df, ["price", "unit_price"])
+    # grain from run state; fallback to detected sku/store cols
+    grain: list[str] = run.get("grain") if isinstance(run, dict) else None  # type: ignore[assignment]
+    if not grain:
+        grain = [c for c in [sku_col, store_col] if c]
 
     if not date_col or not sales_col:
         return templates.TemplateResponse(
