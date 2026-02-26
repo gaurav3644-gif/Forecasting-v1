@@ -842,13 +842,9 @@ async def decision_query(request: Request, payload: Dict = Body(...)):
     intent  = str(intent_result.get("intent") or "inventory_risk")
     filters = dict(intent_result.get("filters") or {})
 
-    # Merge combo_key into filters (sku + region)
-    if combo_key:
-        parts = combo_key.split("|||")
-        if len(parts) >= 1 and parts[0] and not filters.get("sku"):
-            filters["sku"] = parts[0]
-        if len(parts) >= 2 and parts[1] and not filters.get("region"):
-            filters["region"] = parts[1]
+    # NOTE: combo_key is intentionally NOT injected into entity filters.
+    # The LLM intent router determines scope from the question itself.
+    # combo_key is only used as a DB lookup hint (not as a data filter).
 
     # Step 2: Deterministic engine (tries in-memory session first, falls back to DB)
     if intent == "volatility_analysis":
@@ -858,9 +854,10 @@ async def decision_query(request: Request, payload: Dict = Body(...)):
         engine_output = forecast_engine(session, filters,
                                         user_email=user_email, forecast_run_id=forecast_run_id)
     else:
+        # Pass combo_key=None so the DB fallback loads the full multi-combo plan
         engine_output = risk_engine(session, filters,
                                     user_email=user_email, forecast_run_id=forecast_run_id,
-                                    combo_key=combo_key)
+                                    combo_key=None)
 
     if "error" in engine_output:
         return {

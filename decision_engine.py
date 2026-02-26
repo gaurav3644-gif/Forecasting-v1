@@ -320,9 +320,14 @@ def risk_engine(session: dict, filters: dict, *,
     if (sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty)) and user_email and forecast_run_id:
         try:
             from history_store import load_supply_plan
-            loaded = load_supply_plan(str(user_email), int(forecast_run_id),
-                                      combo_key=combo_key or None)
+            # Always try without combo_key first to get the full multi-combo plan.
+            # Only fall back to the specific combo if no combined plan exists.
+            loaded = load_supply_plan(str(user_email), int(forecast_run_id), combo_key=None)
             sp_df = loaded.get("supply_plan_full_df") or loaded.get("supply_plan_df")
+            if (sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty)) and combo_key:
+                loaded = load_supply_plan(str(user_email), int(forecast_run_id),
+                                          combo_key=combo_key)
+                sp_df = loaded.get("supply_plan_full_df") or loaded.get("supply_plan_df")
         except Exception:
             pass
 
@@ -360,13 +365,13 @@ def risk_engine(session: dict, filters: dict, *,
         if end_date:
             df = df[df[per_col] <= pd.to_datetime(end_date)]
 
-        # Only fall back to future-periods window when no explicit date range was given
+        # When no explicit date range given, restrict to future periods only
+        # (no row cap — always process the full forward horizon for all entities)
         if not start_date and not end_date:
             today = pd.Timestamp.today().normalize()
             future_df = df[df[per_col] >= today].copy()
             if not future_df.empty:
-                n_entities = max(1, len(df[sku_col].unique()) if sku_col else 1)
-                df = future_df.head(future_periods * n_entities)
+                df = future_df
 
     if df.empty:
         return {"error": "No supply plan rows found after applying filters."}
