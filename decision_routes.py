@@ -493,9 +493,11 @@ _INTENT_SYSTEM_PROMPT_TEMPLATE = """You are a supply chain analytics router.
 Today's date is {today}.
 
 Classify the user question into exactly ONE intent:
-  - volatility_analysis   : instability, variance, erratic patterns, which region/SKU fluctuates
+  - volatility_analysis   : instability, variance, erratic patterns, which region/SKU fluctuates most
   - forecast_performance  : forecast accuracy, MAPE, bias, over/under forecasting, forecast quality
   - inventory_risk        : stockout, overstock, safety stock breach, inventory risk, out-of-stock
+  - sales_summary         : highest/lowest sales, top/bottom items, total demand, sales ranking,
+                            "which item sold most", "compare sales", "best selling", "total revenue"
 
 Extract filters mentioned in the question:
 - dimension: "region" if question mentions regions/stores/locations; "sku" if SKUs/items/products
@@ -511,10 +513,11 @@ Extract filters mentioned in the question:
 - sku: specific SKU name if filtering to one SKU
 - region: specific region/store name if filtering to one
 - future_periods: number of future months to look ahead (default 4; use 1 for "next month")
+- top_n: how many top/bottom entities to return (default 10; use explicit number if mentioned)
 
 Return ONLY valid JSON — no markdown, no explanation:
 {{
-  "intent": "volatility_analysis" | "forecast_performance" | "inventory_risk",
+  "intent": "volatility_analysis" | "forecast_performance" | "inventory_risk" | "sales_summary",
   "filters": {{
     "dimension": "region" | "sku",
     "value": null,
@@ -522,7 +525,8 @@ Return ONLY valid JSON — no markdown, no explanation:
     "end_date": null,
     "sku": null,
     "region": null,
-    "future_periods": 4
+    "future_periods": 4,
+    "top_n": 10
   }}
 }}"""
 
@@ -540,6 +544,11 @@ _INTENT_KEYWORDS = {
     "volatility_analysis":  ["volatil", "varianc", "unstable", "erratic", "fluctuat", "instab", "spike", "spiky"],
     "forecast_performance": ["mape", "accuracy", "accurate", "bias", "over-forecast", "underforecast",
                              "over forecast", "forecast quality", "forecast error", "forecast accuracy"],
+    "sales_summary":        ["highest sale", "lowest sale", "top item", "bottom item", "best sell",
+                             "worst sell", "most sale", "least sale", "total sale", "total demand",
+                             "total revenue", "rank", "highest demand", "lowest demand",
+                             "which item sell", "which sku sell", "compare sale", "compare demand",
+                             "which store sell", "highest forecast", "lowest forecast"],
 }
 
 
@@ -671,7 +680,8 @@ async def _route_intent(message: str) -> dict:
             _build_intent_prompt(), message, max_tokens=200, temperature=0
         )
         result = json.loads(raw)
-        if result.get("intent") in ("volatility_analysis", "forecast_performance", "inventory_risk"):
+        if result.get("intent") in ("volatility_analysis", "forecast_performance",
+                                     "inventory_risk", "sales_summary"):
             return result
     except Exception as e:
         logging.debug(f"[decision/query] intent LLM failed, using keywords: {e}")
@@ -711,6 +721,11 @@ _EXPLAIN_CONTEXT = {
     "inventory_risk": (
         "Explain: why risk exists, what the planner should do immediately, "
         "and the urgency level."
+    ),
+    "sales_summary": (
+        "Directly name the top-selling entity and its exact sales figure. "
+        "State its share of total demand. List the top 3 entities by sales. "
+        "End with one recommendation for the supply planner based on the ranking."
     ),
 }
 
@@ -799,7 +814,7 @@ async def decision_query(request: Request, payload: Dict = Body(...)):
       3. LLM explains the structured output (no number invention)
       4. Returns {intent, filters, engine_output, explanation}
     """
-    from decision_engine import volatility_engine, forecast_engine, risk_engine
+    from decision_engine import volatility_engine, forecast_engine, risk_engine, sales_engine
 
     message        = str(payload.get("message") or "").strip()
     run_session_id = str(payload.get("run_session_id") or "").strip()
@@ -853,6 +868,10 @@ async def decision_query(request: Request, payload: Dict = Body(...)):
     elif intent == "forecast_performance":
         engine_output = forecast_engine(session, filters,
                                         user_email=user_email, forecast_run_id=forecast_run_id)
+    elif intent == "sales_summary":
+        engine_output = sales_engine(session, filters,
+                                     user_email=user_email, dataset_id=dataset_id,
+                                     forecast_run_id=forecast_run_id)
     else:
         # Pass combo_key=None so the DB fallback loads the full multi-combo plan
         engine_output = risk_engine(session, filters,

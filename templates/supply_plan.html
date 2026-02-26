@@ -132,6 +132,8 @@
                                 data-q="How accurate is my forecast and is there systematic bias?">🎯 Forecast Accuracy</button>
                         <button type="button" class="btn btn-sm border rounded-pill de-chip"
                                 data-q="Which SKUs are at risk of stockout in the next 4 months?">⚠️ Inventory Risk</button>
+                        <button type="button" class="btn btn-sm border rounded-pill de-chip"
+                                data-q="Which item has the highest sales demand?">🏆 Top Items</button>
                     </div>
 
                     <!-- NL question input -->
@@ -368,6 +370,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (at === 'volatility')          intentLabel = '📊 Volatility Analysis';
         if (at === 'forecast_performance') intentLabel = '🎯 Forecast Performance';
         if (at === 'inventory_risk')       intentLabel = '⚠️ Inventory Risk';
+        if (at === 'sales_summary')        intentLabel = '🏆 Sales Ranking';
 
         // Build engine-specific metrics
         let metricsHtml = '';
@@ -431,6 +434,38 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="col-sm-7">
                         <div class="text-muted small mb-1">MAPE by ${esc(data.dimension || 'entity')}</div>
                         ${rankRows ? `<table class="table table-sm mb-0"><tbody>${rankRows}</tbody></table>` : '<div class="text-muted small">No per-entity breakdown.</div>'}
+                    </div>
+                </div>`;
+        }
+
+        if (at === 'sales_summary') {
+            const top      = esc(data.top_entity || '—');
+            const topVal   = data.top_value != null ? Number(data.top_value).toLocaleString(undefined, {maximumFractionDigits:0}) : '—';
+            const topShare = data.top_share_pct != null ? data.top_share_pct.toFixed(1) + '%' : '—';
+            const total    = data.total_demand != null ? Number(data.total_demand).toLocaleString(undefined, {maximumFractionDigits:0}) : '—';
+            const period   = data.period ? `<div class="text-muted small mt-1">Period: ${esc(data.period)}</div>` : '';
+            const rankEntries = Object.entries(data.ranking || {}).slice(0, 8);
+            const rankRows = rankEntries.map(([k, v], i) =>
+                `<tr>
+                    <td class="text-truncate" style="max-width:160px;">
+                        ${i === 0 ? '<span class="badge text-bg-warning me-1">1st</span>' : `<span class="text-muted me-1">${i+1}.</span>`}${esc(k)}
+                    </td>
+                    <td class="text-end fw-semibold">${Number(v).toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                 </tr>`
+            ).join('');
+            metricsHtml = `
+                <div class="row g-3">
+                    <div class="col-sm-5">
+                        <div class="text-muted small mb-1">Top ${esc(data.dimension || 'entity')}</div>
+                        <div class="fs-4 fw-bold text-truncate">${top}</div>
+                        <div class="fw-semibold mt-1">${topVal} units</div>
+                        <div class="text-muted small">${topShare} of total demand</div>
+                        ${period}
+                        <div class="text-muted small mt-2">Total demand: ${total}</div>
+                    </div>
+                    <div class="col-sm-7">
+                        <div class="text-muted small mb-1">Demand Ranking (${esc(data.dimension || 'entity')})</div>
+                        ${rankRows ? `<table class="table table-sm mb-0"><tbody>${rankRows}</tbody></table>` : '<div class="text-muted small">No ranking data.</div>'}
                     </div>
                 </div>`;
         }

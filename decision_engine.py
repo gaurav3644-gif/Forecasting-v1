@@ -440,3 +440,153 @@ def risk_engine(session: dict, filters: dict, *,
         "periods_analyzed":    future_periods,
         "rows_analyzed":       int(len(df)),
     }
+
+
+# ── Engine 4: Sales / Demand Ranking ──────────────────────────────────────────
+
+def sales_engine(session: dict, filters: dict, *,
+                 user_email: Optional[str] = None,
+                 dataset_id: Optional[int] = None,
+                 forecast_run_id: Optional[int] = None) -> dict:
+    """
+    Answer questions like "which item has highest sales in October 2025?".
+
+    Data source priority:
+      1. forecast_df  — has both actuals (historical) and forecasts (future)
+      2. raw_df       — raw uploaded sales file (actuals only)
+
+    Uses `actual` column values where > 0; falls back to `forecast` column
+    for future periods.  Returns entities ranked by total demand for the
+    requested period.
+
+    Filters accepted:
+        dimension  : "sku" | "region"
+        value      : specific entity (optional)
+        start_date : ISO date string (optional)
+        end_date   : ISO date string (optional)
+        top_n      : how many top entities to return (default 10)
+    """
+    # ── 1. Load data ────────────────────────────────────────────────────────
+    forecast_df = session.get("forecast_df")
+
+    if (forecast_df is None or (hasattr(forecast_df, "empty") and forecast_df.empty)) \
+            and user_email and forecast_run_id:
+        try:
+            from history_store import load_forecast_run
+            loaded = load_forecast_run(str(user_email), int(forecast_run_id))
+            forecast_df = loaded.get("forecast_df")
+        except Exception:
+            pass
+
+    raw_df = session.get("df") or session.get("original_sales_df") or session.get("raw_df")
+    if (raw_df is None or (hasattr(raw_df, "empty") and raw_df.empty)) \
+            and user_email and dataset_id:
+        try:
+            from history_store import load_dataset_raw
+            raw_df = load_dataset_raw(str(user_email), int(dataset_id))
+        except Exception:
+            pass
+
+    # Prefer forecast_df (has both actuals + forecasts in one place)
+    if isinstance(forecast_df, pd.DataFrame) and not forecast_df.empty:
+        df = forecast_df.copy()
+        use_source = "forecast"
+    elif isinstance(raw_df, pd.DataFrame) and not raw_df.empty:
+        df = raw_df.copy()
+        use_source = "raw"
+    else:
+        return {"error": "No sales or forecast data available in this session."}
+
+    # ── 2. Detect columns ───────────────────────────────────────────────────
+    dimension  = str(filters.get("dimension") or "sku").lower()
+    value      = filters.get("value")
+    start_date = filters.get("start_date")
+    end_date   = filters.get("end_date")
+    try:
+        top_n = int(filters.get("top_n") or 10)
+    except (TypeError, ValueError):
+        top_n = 10
+
+    date_col = _pick_col(df, ["date", "ds", "period_start", "timestamp"])
+    sku_col  = _pick_col(df, ["sku_id", "item", "sku", "product"])
+    loc_col  = _pick_col(df, ["location", "store", "site", "region"])
+    fc_col   = _pick_col(df, ["forecast", "yhat", "prediction", "forecast_p50", "forecast_demand"])
+    act_col  = _pick_col(df, ["actual", "y", "sales", "qty", "quantity", "units", "demand"])
+
+    dim_col = loc_col if dimension == "region" else sku_col
+    if not dim_col:
+        dim_col = sku_col or loc_col
+    if not dim_col:
+        return {"error": f"No SKU or location column found for dimension '{dimension}'."}
+
+    # ── 3. Date filtering ───────────────────────────────────────────────────
+    if date_col:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df = df.dropna(subset=[date_col])
+        if start_date:
+            df = df[df[date_col] >= pd.to_datetime(start_date)]
+        if end_date:
+            df = df[df[date_col] <= pd.to_datetime(end_date)]
+
+    # Optional single-entity filter
+    if value and dim_col in df.columns:
+        df = df[df[dim_col].astype(str).str.strip() == str(value).strip()]
+
+    if df.empty:
+        return {"error": "No data rows found after applying filters."}
+
+    # ── 4. Build demand series ──────────────────────────────────────────────
+    # Use actuals where available; fall back to forecast for future rows.
+    if act_col and fc_col:
+        act_vals = _to_num(df[act_col])
+        fc_vals  = _to_num(df[fc_col])
+        demand   = act_vals.where(act_vals > 0, fc_vals)
+    elif act_col:
+        demand = _to_num(df[act_col])
+    elif fc_col:
+        demand = _to_num(df[fc_col])
+    else:
+        return {"error": "No sales or forecast demand column found in the data."}
+
+    df = df.copy()
+    df["_demand"] = demand
+
+    # ── 5. Aggregate and rank by entity ─────────────────────────────────────
+    ranked = (
+        df.groupby(dim_col)["_demand"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+
+    if ranked.empty:
+        return {"error": "No data to rank after aggregation."}
+
+    top_entity = str(ranked.index[0])
+    top_value  = float(ranked.iloc[0])
+    total      = float(ranked.sum())
+
+    ranking_dict = {
+        str(k): round(float(v), 2)
+        for k, v in ranked.head(top_n).items()
+    }
+
+    period_label = ""
+    if start_date and end_date:
+        period_label = f"{start_date} to {end_date}"
+    elif start_date:
+        period_label = f"from {start_date}"
+    elif end_date:
+        period_label = f"up to {end_date}"
+
+    return {
+        "analysis_type":  "sales_summary",
+        "dimension":      dimension,
+        "top_entity":     top_entity,
+        "top_value":      round(top_value, 2),
+        "top_share_pct":  round(top_value / max(total, 1) * 100, 1),
+        "total_demand":   round(total, 2),
+        "ranking":        ranking_dict,
+        "period":         period_label,
+        "data_source":    use_source,
+        "num_entities":   int(len(ranked)),
+    }
