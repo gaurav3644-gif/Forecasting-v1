@@ -19,6 +19,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+from requests import session
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -282,7 +283,9 @@ def risk_engine(session: dict, filters: dict) -> dict:
 
     Returns {"error": str} if no supply plan is in session.
     """
-    sp_df = session.get("supply_plan_full_df") or session.get("supply_plan_df")
+    # sp_df = session.get("supply_plan_full_df") or session.get("supply_plan_df")
+    sp_df = session.get("supply_plan_full_df")
+    sp_df = sp_df if sp_df is not None else session.get("supply_plan_df")
     if sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty):
         return {"error": "No supply plan data available. Generate a supply plan first."}
 
