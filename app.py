@@ -7156,6 +7156,7 @@ async def supply_plan_generate_all(
                         params=_plan_params,
                         supply_export_df=sp_export,
                         supply_full_df=sp_combo,
+                        skip_if_exists=True,  # never overwrite manual user saves
                     )
                     saved_count += 1
                 except Exception as _e:

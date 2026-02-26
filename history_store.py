@@ -964,7 +964,15 @@ def save_supply_plan(
     params: dict[str, Any],
     supply_export_df: pd.DataFrame,
     supply_full_df: Optional[pd.DataFrame] = None,
+    skip_if_exists: bool = False,
 ) -> int:
+    """Save a supply plan.
+
+    Args:
+        skip_if_exists: When True, uses INSERT ... ON CONFLICT DO NOTHING so an
+            existing plan (e.g. one the user manually edited and saved) is never
+            overwritten by an automatic background generation.
+    """
     init_db()
     with _LOCK:
         if _use_postgres():
@@ -977,32 +985,63 @@ def save_supply_plan(
                 export_blob = _df_to_csv_gz(supply_export_df)
                 full_blob = _df_to_csv_gz(supply_full_df) if isinstance(supply_full_df, pd.DataFrame) else None
                 cur = conn.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO supply_plans(
-                        user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                if skip_if_exists:
+                    cur.execute(
+                        """
+                        INSERT INTO supply_plans(
+                            user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                        )
+                        VALUES(%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT(user_id, forecast_run_id, combo_key) DO NOTHING
+                        RETURNING id
+                        """,
+                        (
+                            user_id,
+                            int(forecast_run_id),
+                            combo_key,
+                            created_at,
+                            params_json,
+                            _pg_binary(export_blob),
+                            _pg_binary(full_blob) if full_blob is not None else None,
+                        ),
                     )
-                    VALUES(%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT(user_id, forecast_run_id, combo_key) DO UPDATE SET
-                        created_at=excluded.created_at,
-                        params_json=excluded.params_json,
-                        supply_export_csv_gz=excluded.supply_export_csv_gz,
-                        supply_full_csv_gz=excluded.supply_full_csv_gz
-                    RETURNING id
-                    """,
-                    (
-                        user_id,
-                        int(forecast_run_id),
-                        combo_key,
-                        created_at,
-                        params_json,
-                        _pg_binary(export_blob),
-                        _pg_binary(full_blob) if full_blob is not None else None,
-                    ),
-                )
-                new_id = cur.fetchone()[0]
-                conn.commit()
-                return int(new_id)
+                    row = cur.fetchone()
+                    conn.commit()
+                    if row:
+                        return int(row[0])
+                    # Plan already existed — fetch its id
+                    cur.execute(
+                        "SELECT id FROM supply_plans WHERE user_id = %s AND forecast_run_id = %s AND combo_key = %s",
+                        (user_id, int(forecast_run_id), combo_key),
+                    )
+                    return int(cur.fetchone()[0])
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO supply_plans(
+                            user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                        )
+                        VALUES(%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT(user_id, forecast_run_id, combo_key) DO UPDATE SET
+                            created_at=excluded.created_at,
+                            params_json=excluded.params_json,
+                            supply_export_csv_gz=excluded.supply_export_csv_gz,
+                            supply_full_csv_gz=excluded.supply_full_csv_gz
+                        RETURNING id
+                        """,
+                        (
+                            user_id,
+                            int(forecast_run_id),
+                            combo_key,
+                            created_at,
+                            params_json,
+                            _pg_binary(export_blob),
+                            _pg_binary(full_blob) if full_blob is not None else None,
+                        ),
+                    )
+                    new_id = cur.fetchone()[0]
+                    conn.commit()
+                    return int(new_id)
             finally:
                 try:
                     conn.close()
@@ -1017,20 +1056,31 @@ def save_supply_plan(
             combo_key = str((params or {}).get("combo_key") or "")
             export_blob = _df_to_csv_gz(supply_export_df)
             full_blob = _df_to_csv_gz(supply_full_df) if isinstance(supply_full_df, pd.DataFrame) else None
-            conn.execute(
-                """
-                INSERT INTO supply_plans(
-                    user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+            if skip_if_exists:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO supply_plans(
+                        user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                    )
+                    VALUES(?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (user_id, int(forecast_run_id), combo_key, created_at, params_json, export_blob, full_blob),
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, forecast_run_id, combo_key) DO UPDATE SET
-                    created_at=excluded.created_at,
-                    params_json=excluded.params_json,
-                    supply_export_csv_gz=excluded.supply_export_csv_gz,
-                    supply_full_csv_gz=excluded.supply_full_csv_gz
-                """,
-                (user_id, int(forecast_run_id), combo_key, created_at, params_json, export_blob, full_blob),
-            )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO supply_plans(
+                        user_id, forecast_run_id, combo_key, created_at, params_json, supply_export_csv_gz, supply_full_csv_gz
+                    )
+                    VALUES(?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, forecast_run_id, combo_key) DO UPDATE SET
+                        created_at=excluded.created_at,
+                        params_json=excluded.params_json,
+                        supply_export_csv_gz=excluded.supply_export_csv_gz,
+                        supply_full_csv_gz=excluded.supply_full_csv_gz
+                    """,
+                    (user_id, int(forecast_run_id), combo_key, created_at, params_json, export_blob, full_blob),
+                )
             conn.commit()
             row = conn.execute(
                 "SELECT id FROM supply_plans WHERE user_id = ? AND forecast_run_id = ? AND combo_key = ?",
