@@ -399,6 +399,7 @@ def risk_engine(session: dict, filters: dict, *,
     # Per-entity risk
     high_risk_skus: list[str] = []
     overstock_items: list[str] = []
+    safe_items: list[str] = []
     group_cols = [c for c in [sku_col, loc_col] if c]
 
     if group_cols:
@@ -408,10 +409,15 @@ def risk_engine(session: dict, filters: dict, *,
             g_ss       = _to_num(grp[ss_col])       if ss_col       else pd.Series([0])
             g_stockout = _to_num(grp[stockout_col]) if stockout_col else pd.Series([0])
 
-            if g_stockout.sum() > 0:
+            is_stockout  = g_stockout.sum() > 0
+            is_overstock = bool(g_ss.mean() > 0 and (g_eoh > g_ss * 3).all())
+
+            if is_stockout:
                 high_risk_skus.append(label)
-            if g_ss.mean() > 0 and (g_eoh > g_ss * 3).all():
+            if is_overstock:
                 overstock_items.append(label)
+            if not is_stockout and not is_overstock:
+                safe_items.append(label)
 
     total_rows            = max(len(df), 1)
     stockout_probability  = float(stockout_mask.sum() / total_rows)
@@ -432,6 +438,7 @@ def risk_engine(session: dict, filters: dict, *,
         "analysis_type":       "inventory_risk",
         "high_risk_skus":      high_risk_skus[:10],
         "overstock_items":     overstock_items[:10],
+        "safe_items":          safe_items[:20],
         "stockout_probability": round(stockout_probability, 3),
         "total_stockout_units": round(total_stockout_units, 0),
         "overstock_ratio":     round(overstock_ratio, 3),

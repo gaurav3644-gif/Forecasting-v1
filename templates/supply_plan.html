@@ -476,6 +476,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const score = data.risk_score != null ? data.risk_score : '—';
             const highRisk = (data.high_risk_skus || []).map(s => `<span class="badge text-bg-danger me-1 mb-1">${esc(s)}</span>`).join('');
             const overstock = (data.overstock_items || []).map(s => `<span class="badge text-bg-warning me-1 mb-1">${esc(s)}</span>`).join('');
+            const safeItems = (data.safe_items || []).map(s => `<span class="badge text-bg-success me-1 mb-1">${esc(s)}</span>`).join('');
             const probPct = data.stockout_probability != null ? Math.round(data.stockout_probability * 100) : 0;
             metricsHtml = `
                 <div class="row g-3">
@@ -494,8 +495,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="col-sm-7">
                         ${highRisk ? `<div class="text-muted small mb-1">High-risk SKUs</div><div class="mb-2">${highRisk}</div>` : ''}
-                        ${overstock ? `<div class="text-muted small mb-1">Overstock items</div><div>${overstock}</div>` : ''}
-                        ${!highRisk && !overstock ? '<div class="text-muted small">No high-risk or overstock items detected.</div>' : ''}
+                        ${overstock ? `<div class="text-muted small mb-1">Overstock items</div><div class="mb-2">${overstock}</div>` : ''}
+                        ${safeItems ? `<div class="text-muted small mb-1">Safe items (no stockout)</div><div>${safeItems}</div>` : ''}
+                        ${!highRisk && !overstock && !safeItems ? '<div class="text-muted small">No items detected in analysis window.</div>' : ''}
                     </div>
                 </div>`;
         }

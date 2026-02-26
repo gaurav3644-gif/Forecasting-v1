@@ -719,8 +719,10 @@ _EXPLAIN_CONTEXT = {
         "and what planning correction is needed."
     ),
     "inventory_risk": (
-        "Explain: why risk exists, what the planner should do immediately, "
-        "and the urgency level."
+        "If the question asks for 'safe' or 'no stockout' items, list the entities "
+        "in the 'safe_items' field and state there are zero stockout units for each. "
+        "Otherwise explain: why risk exists, which SKUs are at risk (high_risk_skus), "
+        "what the planner should do immediately, and the urgency level."
     ),
     "sales_summary": (
         "Directly name the top-selling entity and its exact sales figure. "
