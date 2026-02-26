@@ -46,7 +46,9 @@ def _to_num(series: pd.Series) -> pd.Series:
 
 # ── Engine 1: Volatility ───────────────────────────────────────────────────────
 
-def volatility_engine(session: dict, filters: dict) -> dict:
+def volatility_engine(session: dict, filters: dict, *,
+                      user_email: Optional[str] = None,
+                      dataset_id: Optional[int] = None) -> dict:
     """
     Identify demand instability and its contribution per region or SKU.
 
@@ -58,9 +60,15 @@ def volatility_engine(session: dict, filters: dict) -> dict:
 
     Returns a scored, ranked dict or {"error": str} on failure.
     """
-    # raw_df = session.get("df") or session.get("original_sales_df")
-    raw_df = session.get("df")
-    raw_df = raw_df if raw_df is not None else session.get("original_sales_df")
+    raw_df = session.get("df") or session.get("original_sales_df") or session.get("raw_df")
+
+    if (raw_df is None or (hasattr(raw_df, "empty") and raw_df.empty)) and user_email and dataset_id:
+        try:
+            from history_store import load_dataset_raw
+            raw_df = load_dataset_raw(str(user_email), int(dataset_id))
+        except Exception:
+            pass
+
     if raw_df is None or (hasattr(raw_df, "empty") and raw_df.empty):
         return {"error": "No raw sales data available in this session."}
 
@@ -153,7 +161,9 @@ def volatility_engine(session: dict, filters: dict) -> dict:
 
 # ── Engine 2: Forecast Performance ────────────────────────────────────────────
 
-def forecast_engine(session: dict, filters: dict) -> dict:
+def forecast_engine(session: dict, filters: dict, *,
+                    user_email: Optional[str] = None,
+                    forecast_run_id: Optional[int] = None) -> dict:
     """
     Measure forecast quality: MAPE, bias, over/under-forecast ratio.
 
@@ -166,6 +176,15 @@ def forecast_engine(session: dict, filters: dict) -> dict:
     Returns scored accuracy metrics or {"error": str} on failure.
     """
     forecast_df = session.get("forecast_df")
+
+    if (forecast_df is None or (hasattr(forecast_df, "empty") and forecast_df.empty)) and user_email and forecast_run_id:
+        try:
+            from history_store import load_forecast_run
+            loaded = load_forecast_run(str(user_email), int(forecast_run_id))
+            forecast_df = loaded.get("forecast_df")
+        except Exception:
+            pass
+
     if forecast_df is None or (hasattr(forecast_df, "empty") and forecast_df.empty):
         return {"error": "No forecast data available. Run a forecast first."}
 
@@ -274,7 +293,10 @@ def forecast_engine(session: dict, filters: dict) -> dict:
 
 # ── Engine 3: Inventory Risk ───────────────────────────────────────────────────
 
-def risk_engine(session: dict, filters: dict) -> dict:
+def risk_engine(session: dict, filters: dict, *,
+                user_email: Optional[str] = None,
+                forecast_run_id: Optional[int] = None,
+                combo_key: Optional[str] = None) -> dict:
     """
     Identify projected stockout / overstock risk from the supply plan.
 
@@ -285,9 +307,17 @@ def risk_engine(session: dict, filters: dict) -> dict:
 
     Returns {"error": str} if no supply plan is in session.
     """
-    # sp_df = session.get("supply_plan_full_df") or session.get("supply_plan_df")
-    sp_df = session.get("supply_plan_full_df")
-    sp_df = sp_df if sp_df is not None else session.get("supply_plan_df")
+    sp_df = session.get("supply_plan_full_df") or session.get("supply_plan_df")
+
+    if (sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty)) and user_email and forecast_run_id:
+        try:
+            from history_store import load_supply_plan
+            loaded = load_supply_plan(str(user_email), int(forecast_run_id),
+                                      combo_key=combo_key or None)
+            sp_df = loaded.get("supply_plan_full_df") or loaded.get("supply_plan_df")
+        except Exception:
+            pass
+
     if sp_df is None or (hasattr(sp_df, "empty") and sp_df.empty):
         return {"error": "No supply plan data available. Generate a supply plan first."}
 

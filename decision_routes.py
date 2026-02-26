@@ -495,7 +495,15 @@ Classify the user question into exactly ONE intent:
   - forecast_performance  : forecast accuracy, MAPE, bias, over/under forecasting, forecast quality
   - inventory_risk        : stockout, overstock, safety stock breach, inventory risk, out-of-stock
 
-Also extract filters if mentioned.
+Extract filters mentioned in the question:
+- dimension: "region" if question mentions regions/stores/locations; "sku" if SKUs/items/products
+- value: specific entity name if one is mentioned (e.g. "South", "SKU_102"); null = across all
+- start_date / end_date: convert relative references to ISO dates
+  ("this year" -> current year Jan 1 / Dec 31, "last year" -> previous year,
+   "next month" -> first/last day of next calendar month, "last quarter" -> prev quarter)
+- sku: specific SKU name if filtering to one SKU
+- region: specific region/store name if filtering to one
+- future_periods: number of future months to look ahead (default 4; use 1 for "next month")
 
 Return ONLY valid JSON — no markdown, no explanation:
 {
@@ -578,15 +586,19 @@ async def _explain_output(question: str, intent: str, engine_output: dict) -> st
     context_instruction = _EXPLAIN_CONTEXT.get(intent, "Provide a concise business explanation.")
 
     system_prompt = (
-        f"You are a supply chain decision assistant.\n"
-        f"The user asked: \"{question}\"\n\n"
-        f"The analytics engine returned:\n{output_json}\n\n"
-        f"{context_instruction}\n\n"
-        f"Rules:\n"
-        f"- Use ONLY numbers from the engine output above. Do NOT invent figures.\n"
-        f"- 3–5 sentences maximum.\n"
-        f"- End with a concrete, actionable recommendation.\n"
-        f"- Be direct and business-focused."
+        f"You are a supply chain decision intelligence assistant.\n\n"
+        f"The analyst asked: \"{question}\"\n\n"
+        f"The analytics engine returned this structured result:\n{output_json}\n\n"
+        f"Your task: {context_instruction}\n\n"
+        f"Writing rules:\n"
+        f"- START by directly answering the question — lead with the key finding "
+        f"(e.g. 'The North region drives 48% of variance.' or "
+        f"'Yes, the South forecast is systematically overestimating by 14%.').\n"
+        f"- Use ONLY the exact numbers and entity names from the engine output above. "
+        f"Never invent figures, SKU names, or region names.\n"
+        f"- Maximum 4 sentences total.\n"
+        f"- End with ONE specific, actionable recommendation for the supply planner.\n"
+        f"- Write in clear business language. Be crisp and decisive."
     )
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -685,6 +697,18 @@ async def decision_query(request: Request, payload: Dict = Body(...)):
     if not session:
         return {"error": "No forecast session found. Run a forecast first."}
 
+    # Extract DB identifiers for engine DB fallback
+    user_email = getattr(getattr(request, "state", None), "user_email", None)
+    dataset_id = forecast_run_id = None
+    try:
+        dataset_id = int(session["dataset_id"]) if session.get("dataset_id") is not None else None
+    except (TypeError, ValueError):
+        pass
+    try:
+        forecast_run_id = int(session["forecast_run_id"]) if session.get("forecast_run_id") is not None else None
+    except (TypeError, ValueError):
+        pass
+
     # Step 1: Intent routing (LLM classification only)
     intent_result = await _route_intent(message)
     intent  = str(intent_result.get("intent") or "inventory_risk")
@@ -698,13 +722,17 @@ async def decision_query(request: Request, payload: Dict = Body(...)):
         if len(parts) >= 2 and parts[1] and not filters.get("region"):
             filters["region"] = parts[1]
 
-    # Step 2: Deterministic engine
+    # Step 2: Deterministic engine (tries in-memory session first, falls back to DB)
     if intent == "volatility_analysis":
-        engine_output = volatility_engine(session, filters)
+        engine_output = volatility_engine(session, filters,
+                                          user_email=user_email, dataset_id=dataset_id)
     elif intent == "forecast_performance":
-        engine_output = forecast_engine(session, filters)
+        engine_output = forecast_engine(session, filters,
+                                        user_email=user_email, forecast_run_id=forecast_run_id)
     else:
-        engine_output = risk_engine(session, filters)
+        engine_output = risk_engine(session, filters,
+                                    user_email=user_email, forecast_run_id=forecast_run_id,
+                                    combo_key=combo_key)
 
     if "error" in engine_output:
         return {
