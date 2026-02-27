@@ -2637,48 +2637,25 @@
             const errBox = document.getElementById('upload-error');
             const errText = document.getElementById('upload-error-text');
 
-            function showUploadError(msg) {
-                if (errText) errText.textContent = msg;
-                if (errBox) errBox.style.removeProperty('display');
-                if (errBox) errBox.style.display = 'flex';
-                btn.disabled = false;
-                if (progress) progress.style.display = 'none';
-                if (errBox) errBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Show inline error from server redirect (?upload_error=...)
+            const _uErr = new URLSearchParams(window.location.search).get('upload_error');
+            if (_uErr && errBox && errText) {
+                errText.textContent = _uErr;
+                errBox.style.display = 'flex';
+                document.getElementById('upload')?.scrollIntoView({ behavior: 'smooth' });
+                history.replaceState({}, '', window.location.pathname);
             }
 
-            function hideUploadError() {
-                if (errBox) errBox.style.display = 'none';
-            }
-
-            if (form && btn) {
-                form.addEventListener('submit', async function (e) {
-                    e.preventDefault();
-                    hideUploadError();
+            if (form && progress && btn) {
+                form.addEventListener('submit', function () {
+                    if (errBox) errBox.style.display = 'none';
                     btn.disabled = true;
-                    if (progress) progress.style.display = 'block';
-
-                    try {
-                        const resp = await fetch('/upload', { method: 'POST', body: new FormData(form) });
-                        if (resp.redirected) {
-                            window.location.href = resp.url;
-                        } else if (resp.ok) {
-                            window.location.href = resp.url || '/forecast';
-                        } else {
-                            let msg = 'Upload failed. Please check your file.';
-                            try {
-                                const data = await resp.json();
-                                if (data && data.detail) msg = data.detail;
-                            } catch (_) {}
-                            showUploadError(msg);
-                        }
-                    } catch (err) {
-                        showUploadError('Network error: ' + (err && err.message ? err.message : 'Could not connect.'));
-                    }
+                    progress.style.display = 'block';
                 });
-
-                // Clear error when a new file is chosen
                 const fileInput = form.querySelector('input[type="file"]');
-                if (fileInput) fileInput.addEventListener('change', hideUploadError);
+                if (fileInput) fileInput.addEventListener('change', function () {
+                    if (errBox) errBox.style.display = 'none';
+                });
             }
         });
     </script>

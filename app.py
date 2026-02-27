@@ -2995,14 +2995,17 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
     # Create a new run slot per upload so users can run multiple forecasts concurrently.
     session_id = _session_id_from_request(request)
 
+    def _upload_err(msg: str):
+        return RedirectResponse(f"/?upload_error={quote(msg)}#upload", status_code=303)
+
     if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be CSV")
+        return _upload_err("Please upload a .csv file.")
     contents = await file.read()
-    
+
     # Try different delimiters to handle various CSV formats
     possible_delimiters = [',', '\t', ';', '|']
     df = None
-    
+
     for delimiter in possible_delimiters:
         try:
             df = pd.read_csv(io.StringIO(contents.decode('utf-8')), sep=delimiter)
@@ -3012,24 +3015,28 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
                 break
         except:
             continue
-    
+
     if df is None or not {'date', 'item', 'store', 'sales'}.issubset(set(df.columns)):
-        raise HTTPException(status_code=400, detail="Could not parse CSV file or missing required columns: date, item, store, sales")
-    
+        found = ", ".join(df.columns.tolist()[:8]) if df is not None and not df.empty else "none detected"
+        return _upload_err(
+            f"Missing required columns. Your CSV must include: date, item, store, sales. "
+            f"Columns found: {found}."
+        )
+
     # Debug logging
     logging.debug(f"Uploaded file: {file.filename}")
     logging.debug(f"DataFrame shape: {df.shape}")
     logging.debug(f"Columns found: {df.columns.tolist()}")
     logging.debug("First few rows:\n%s", df.head(3))
-    
+
     # Additional validation
     if df.empty:
-        raise HTTPException(status_code=400, detail="CSV file is empty")
-    
+        return _upload_err("The CSV file is empty.")
+
     try:
         df["date"] = pd.to_datetime(df["date"])
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid date format in 'date' column: {str(e)}")
+        return _upload_err(f"Invalid date format in the 'date' column: {e}")
     
     # session_id already computed above
     stored_df = df.copy()
