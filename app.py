@@ -4046,6 +4046,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 "chart_price_elasticity": None,
                 "elasticity_table": [],
                 "elasticity_unavailable": "Price elasticity unavailable (no data loaded).",
+                "chart_entropy_stability": None,
+                "entropy_table": [],
+                "entropy_unavailable": "Volatility entropy unavailable (no data loaded).",
             },
         )
 
@@ -4092,6 +4095,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 "chart_price_elasticity": None,
                 "elasticity_table": [],
                 "elasticity_unavailable": "Price elasticity unavailable (no data loaded).",
+                "chart_entropy_stability": None,
+                "entropy_table": [],
+                "entropy_unavailable": "Volatility entropy unavailable (missing required columns).",
             },
         )
 
@@ -4488,6 +4494,145 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             else:
                 overstock_unavailable = "No overstock detected using ending_on_hand vs target_level."
 
+    # ── SKU Volatility Entropy ──────────────────────────────────────────────────
+    # Per-SKU Shannon entropy over last N_WEEKS of weekly sales.
+    # Stability score = 100 * (1 − normalised_entropy). Low score → erratic.
+    _ENT_WEEKS = 12
+    chart_entropy_stability = None
+    entropy_table: list[dict] = []
+    entropy_unavailable = "Volatility entropy unavailable (need at least 4 weeks of weekly data per SKU)."
+
+    def _sparkline_html(data: list, color: str) -> str:
+        """Tiny 120×40 Highcharts sparkline div for embedding in a table cell."""
+        cfg = {
+            "chart": {"type": "line", "height": 40, "width": 130, "margin": [2, 2, 2, 2], "backgroundColor": "transparent"},
+            "title": {"text": None},
+            "xAxis": {"visible": False},
+            "yAxis": {"visible": False, "min": 0},
+            "legend": {"enabled": False},
+            "credits": {"enabled": False},
+            "exporting": {"enabled": False},
+            "tooltip": {"enabled": False},
+            "plotOptions": {"line": {"marker": {"enabled": False}, "enableMouseTracking": False}},
+            "series": [{"data": data, "color": color, "lineWidth": 1.5}],
+        }
+        safe = _hc_json(cfg).replace("'", "&#39;")
+        return f"<div class='hc-auto' style='width:130px;height:40px;display:inline-block;' data-hc='{safe}'></div>"
+
+    if sku_col and date_col and sales_col:
+        try:
+            ent_df = df.dropna(subset=[date_col, sales_col]).copy()
+            ent_df[date_col] = pd.to_datetime(ent_df[date_col], errors="coerce")
+            ent_df = ent_df.dropna(subset=[date_col])
+            ent_df[sales_col] = pd.to_numeric(ent_df[sales_col], errors="coerce").fillna(0.0)
+            ent_df["_week"] = ent_df[date_col].dt.to_period("W").dt.to_timestamp()
+
+            # Limit to last _ENT_WEEKS weeks
+            max_date_ent = ent_df["_week"].max()
+            cutoff_ent = max_date_ent - pd.Timedelta(weeks=_ENT_WEEKS)
+            ent_df = ent_df[ent_df["_week"] >= cutoff_ent]
+
+            weekly_ent = (
+                ent_df.groupby([sku_col, "_week"], as_index=False)[sales_col].sum()
+                .sort_values([sku_col, "_week"])
+            )
+
+            results_ent: list[dict] = []
+            for sku_val, grp_e in weekly_ent.groupby(sku_col):
+                grp_e = grp_e.sort_values("_week").reset_index(drop=True)
+                if len(grp_e) < 4:
+                    continue
+                vals_e = grp_e[sales_col].values.tolist()
+                total_e = sum(vals_e)
+                if total_e <= 0:
+                    continue
+
+                # Shannon entropy
+                p_vec = [v / total_e for v in vals_e if v > 0]
+                H = -sum(pi * _math_hc.log2(pi) for pi in p_vec)
+                max_H = _math_hc.log2(len(vals_e))
+                norm_H = H / max_H if max_H > 0 else 0.0
+                stability_score = round(100.0 * (1.0 - norm_H), 1)
+
+                if stability_score >= 67:
+                    regime = "Stable"
+                    regime_class = "success"
+                    spark_color = "#198754"
+                elif stability_score >= 33:
+                    regime = "Variable"
+                    regime_class = "warning"
+                    spark_color = "#ffc107"
+                else:
+                    regime = "Chaotic"
+                    regime_class = "danger"
+                    spark_color = "#dc3545"
+
+                mean_w = total_e / len(vals_e)
+                var_w = sum((v - mean_w) ** 2 for v in vals_e) / len(vals_e)
+                std_w = var_w ** 0.5
+                cv_pct = round(std_w / mean_w * 100.0, 1) if mean_w > 0 else 0.0
+
+                sparkline_data = [[i, float(v)] for i, v in enumerate(vals_e)]
+
+                results_ent.append({
+                    "sku": str(sku_val),
+                    "stability_score": stability_score,
+                    "regime": regime,
+                    "regime_class": regime_class,
+                    "cv_pct": cv_pct,
+                    "mean_weekly_sales": round(mean_w, 1),
+                    "n_weeks": len(grp_e),
+                    "sparkline_html": _sparkline_html(sparkline_data, spark_color),
+                })
+
+            if results_ent:
+                # Full table sorted most stable → least stable
+                entropy_table = sorted(results_ent, key=lambda r: r["stability_score"], reverse=True)
+
+                # Bar chart: show most at-risk SKUs (lowest stability) for planners
+                chart_data_ent = sorted(results_ent, key=lambda r: r["stability_score"])[:20]
+                cats_ent = [r["sku"] for r in chart_data_ent]
+                vals_ent = [r["stability_score"] for r in chart_data_ent]
+                colors_ent = [
+                    "#dc3545" if r["regime"] == "Chaotic"
+                    else "#ffc107" if r["regime"] == "Variable"
+                    else "#198754"
+                    for r in chart_data_ent
+                ]
+                chart_entropy_stability = _fig_html({
+                    "chart": {"type": "bar"},
+                    "title": {"text": None},
+                    "xAxis": {"categories": cats_ent[::-1], "title": {"text": ""}},
+                    "yAxis": {
+                        "title": {"text": "Stability Score"},
+                        "min": 0, "max": 100,
+                        "plotBands": [
+                            {"from": 0, "to": 33, "color": "rgba(220,53,69,0.08)", "label": {"text": "Chaotic", "align": "right", "style": {"color": "#dc3545", "fontSize": "10px"}}},
+                            {"from": 33, "to": 67, "color": "rgba(255,193,7,0.08)", "label": {"text": "Variable", "align": "right", "style": {"color": "#856404", "fontSize": "10px"}}},
+                            {"from": 67, "to": 100, "color": "rgba(25,135,84,0.08)", "label": {"text": "Stable", "align": "right", "style": {"color": "#198754", "fontSize": "10px"}}},
+                        ],
+                        "plotLines": [
+                            {"value": 33, "color": "#ffc107", "dashStyle": "Dot", "width": 1},
+                            {"value": 67, "color": "#198754", "dashStyle": "Dot", "width": 1},
+                        ],
+                    },
+                    "tooltip": {"pointFormat": "Stability: <b>{point.y:.1f}</b> / 100"},
+                    "plotOptions": {
+                        "bar": {
+                            "dataLabels": {"enabled": True, "format": "{y:.0f}"},
+                            "colorByPoint": True,
+                            "pointPadding": 0.1,
+                            "groupPadding": 0.05,
+                        }
+                    },
+                    "colors": colors_ent[::-1],
+                    "series": [{"name": "Stability Score", "data": vals_ent[::-1]}],
+                }, height=_bar_height(len(chart_data_ent), 380), showlegend=False)
+            else:
+                entropy_unavailable = "Volatility entropy unavailable (need at least 4 weeks of weekly data per SKU)."
+        except Exception as _e_ent:
+            entropy_unavailable = f"Entropy computation error: {_e_ent}"
+
     return templates.TemplateResponse(
         "insights.html",
         {
@@ -4519,6 +4664,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
             "chart_price_elasticity": chart_price_elasticity,
             "elasticity_table": elasticity_table,
             "elasticity_unavailable": elasticity_unavailable,
+            "chart_entropy_stability": chart_entropy_stability,
+            "entropy_table": entropy_table,
+            "entropy_unavailable": entropy_unavailable,
         },
     )
 

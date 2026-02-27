@@ -202,6 +202,72 @@
       </div>
     </div>
 
+    {# ── SKU Volatility Entropy ───────────────────────────────────────────── #}
+    <div class="col-lg-12">
+      <div class="card-soft pt-card p-3">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <div class="pt-section-title mb-0">SKU Volatility Entropy</div>
+          <span class="badge text-bg-light border small fw-normal ms-1"
+                title="Shannon entropy of weekly sales distribution over last 12 weeks. Low entropy = predictable; high entropy = erratic.">
+            ℹ️ Last 12 weeks
+          </span>
+        </div>
+        <div class="small text-muted mb-3">
+          Stability score (0–100) derived from Shannon entropy of weekly demand.
+          <strong class="text-success">Stable ≥ 67</strong> &nbsp;·&nbsp;
+          <strong class="text-warning">Variable 33–66</strong> &nbsp;·&nbsp;
+          <strong class="text-danger">Chaotic &lt; 33</strong> &nbsp;→&nbsp;
+          <em>Low-stability SKUs need higher buffer stock.</em>
+        </div>
+
+        {% if chart_entropy_stability %}
+          <div class="chart-wrap mb-4">{{ chart_entropy_stability | safe }}</div>
+
+          {% if entropy_table %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
+              <thead class="table-light">
+                <tr>
+                  <th>SKU</th>
+                  <th>Regime</th>
+                  <th class="text-end" style="min-width:80px;">Stability</th>
+                  <th class="text-end">CV %</th>
+                  <th class="text-end">Avg Wkly Sales</th>
+                  <th class="text-end">Weeks</th>
+                  <th>Weekly Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in entropy_table %}
+                <tr>
+                  <td class="fw-semibold">{{ row.sku }}</td>
+                  <td>
+                    <span class="badge text-bg-{{ row.regime_class }}">{{ row.regime }}</span>
+                  </td>
+                  <td class="text-end">
+                    <div class="d-flex align-items-center justify-content-end gap-2">
+                      <div style="width:60px; height:6px; border-radius:3px; background:#e9ecef; overflow:hidden;">
+                        <div style="width:{{ row.stability_score }}%; height:100%; background:{% if row.regime == 'Stable' %}#198754{% elif row.regime == 'Variable' %}#ffc107{% else %}#dc3545{% endif %}; border-radius:3px;"></div>
+                      </div>
+                      <span class="text-{% if row.regime == 'Stable' %}success{% elif row.regime == 'Variable' %}warning{% else %}danger{% endif %} fw-semibold">{{ row.stability_score }}</span>
+                    </div>
+                  </td>
+                  <td class="text-end text-muted">{{ row.cv_pct }}%</td>
+                  <td class="text-end">{{ "{:,.1f}".format(row.mean_weekly_sales) }}</td>
+                  <td class="text-end text-muted">{{ row.n_weeks }}</td>
+                  <td>{{ row.sparkline_html | safe }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        {% else %}
+          <div class="small text-muted">{{ entropy_unavailable }}</div>
+        {% endif %}
+      </div>
+    </div>
+
   </div>
 </div>
 {% endblock %}
