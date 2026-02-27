@@ -2637,21 +2637,35 @@
             const errBox = document.getElementById('upload-error');
             const errText = document.getElementById('upload-error-text');
 
-            // Show inline error from server redirect (?upload_error=...)
-            const _uErr = new URLSearchParams(window.location.search).get('upload_error');
-            if (_uErr && errBox && errText) {
-                errText.textContent = _uErr;
-                errBox.style.display = 'flex';
-                document.getElementById('upload')?.scrollIntoView({ behavior: 'smooth' });
-                history.replaceState({}, '', window.location.pathname);
+            function _showErr(msg) {
+                if (errText) errText.textContent = msg;
+                if (errBox) { errBox.style.display = 'flex'; errBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                btn.disabled = false;
+                if (progress) progress.style.display = 'none';
             }
 
-            if (form && progress && btn) {
-                form.addEventListener('submit', function () {
+            if (form && btn) {
+                form.addEventListener('submit', async function (e) {
+                    e.preventDefault();
                     if (errBox) errBox.style.display = 'none';
                     btn.disabled = true;
-                    progress.style.display = 'block';
+                    if (progress) progress.style.display = 'block';
+
+                    try {
+                        const resp = await fetch('/upload', { method: 'POST', body: new FormData(form) });
+                        if (resp.ok) {
+                            // Follow the redirect to /forecast
+                            window.location.href = resp.url;
+                            return;
+                        }
+                        let msg = 'Upload failed — please check your file.';
+                        try { const d = await resp.json(); if (d && d.detail) msg = d.detail; } catch (_) {}
+                        _showErr(msg);
+                    } catch (err) {
+                        _showErr('Network error: ' + (err && err.message ? err.message : 'could not connect.'));
+                    }
                 });
+
                 const fileInput = form.querySelector('input[type="file"]');
                 if (fileInput) fileInput.addEventListener('change', function () {
                     if (errBox) errBox.style.display = 'none';

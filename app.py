@@ -2995,11 +2995,8 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
     # Create a new run slot per upload so users can run multiple forecasts concurrently.
     session_id = _session_id_from_request(request)
 
-    def _upload_err(msg: str):
-        return RedirectResponse(f"/?upload_error={quote(msg)}#upload", status_code=303)
-
     if not file.filename.endswith('.csv'):
-        return _upload_err("Please upload a .csv file.")
+        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
     contents = await file.read()
 
     # Try different delimiters to handle various CSV formats
@@ -3018,9 +3015,9 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 
     if df is None or not {'date', 'item', 'store', 'sales'}.issubset(set(df.columns)):
         found = ", ".join(df.columns.tolist()[:8]) if df is not None and not df.empty else "none detected"
-        return _upload_err(
-            f"Missing required columns. Your CSV must include: date, item, store, sales. "
-            f"Columns found: {found}."
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns. Your CSV must include: date, item, store, sales. Columns found: {found}."
         )
 
     # Debug logging
@@ -3031,12 +3028,12 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 
     # Additional validation
     if df.empty:
-        return _upload_err("The CSV file is empty.")
+        raise HTTPException(status_code=400, detail="The CSV file is empty.")
 
     try:
         df["date"] = pd.to_datetime(df["date"])
     except Exception as e:
-        return _upload_err(f"Invalid date format in the 'date' column: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid date format in the 'date' column: {e}")
     
     # session_id already computed above
     stored_df = df.copy()
