@@ -1447,6 +1447,10 @@
                                             <i class="fa-solid fa-download me-2"></i><span data-i18n="upload_sample_btn">Sample CSV</span>
                                         </button>
                                     </div>
+                                    <div id="upload-error" class="alert alert-danger d-flex align-items-start gap-2 mt-3 mb-0 py-2 px-3 small" role="alert" style="display:none !important; border-radius:10px;">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="flex-shrink-0 mt-1" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/><path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z"/></svg>
+                                        <span id="upload-error-text"></span>
+                                    </div>
                                 </form>
 
                                 <div class="mt-3 text-muted small">
@@ -2630,11 +2634,51 @@
             const form = document.querySelector('form[action="/upload"]');
             const progress = document.getElementById('forecast-progress');
             const btn = document.getElementById('forecast-btn');
-            if (form && progress && btn) {
-                form.addEventListener('submit', function () {
+            const errBox = document.getElementById('upload-error');
+            const errText = document.getElementById('upload-error-text');
+
+            function showUploadError(msg) {
+                if (errText) errText.textContent = msg;
+                if (errBox) errBox.style.removeProperty('display');
+                if (errBox) errBox.style.display = 'flex';
+                btn.disabled = false;
+                if (progress) progress.style.display = 'none';
+                if (errBox) errBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            function hideUploadError() {
+                if (errBox) errBox.style.display = 'none';
+            }
+
+            if (form && btn) {
+                form.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    hideUploadError();
                     btn.disabled = true;
-                    progress.style.display = 'block';
+                    if (progress) progress.style.display = 'block';
+
+                    try {
+                        const resp = await fetch('/upload', { method: 'POST', body: new FormData(form) });
+                        if (resp.redirected) {
+                            window.location.href = resp.url;
+                        } else if (resp.ok) {
+                            window.location.href = resp.url || '/forecast';
+                        } else {
+                            let msg = 'Upload failed. Please check your file.';
+                            try {
+                                const data = await resp.json();
+                                if (data && data.detail) msg = data.detail;
+                            } catch (_) {}
+                            showUploadError(msg);
+                        }
+                    } catch (err) {
+                        showUploadError('Network error: ' + (err && err.message ? err.message : 'Could not connect.'));
+                    }
                 });
+
+                // Clear error when a new file is chosen
+                const fileInput = form.querySelector('input[type="file"]');
+                if (fileInput) fileInput.addEventListener('change', hideUploadError);
             }
         });
     </script>
