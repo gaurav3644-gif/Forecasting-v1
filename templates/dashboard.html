@@ -394,10 +394,14 @@
 
                   <div class="p-3 dashboard-upload" id="dashboard-upload-box">
                     <div class="dashboard-section-title mb-2">Upload CSV</div>
-                    <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
+                    <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off" class="js-upload-form">
                       <input type="file" class="form-control" name="file" accept=".csv" required>
                       <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
-                      <button type="submit" class="btn btn-primary w-100 mt-2">Continue to Forecast</button>
+                      <button type="submit" class="btn btn-primary w-100 mt-2 js-upload-btn">Continue to Forecast</button>
+                      <div class="js-upload-error alert alert-danger d-flex align-items-start gap-2 mt-2 mb-0 py-2 px-3 small" role="alert" style="display:none !important; border-radius:10px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" class="flex-shrink-0 mt-1" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/><path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z"/></svg>
+                        <span class="js-upload-error-text"></span>
+                      </div>
                     </form>
                   </div>
 
@@ -689,10 +693,14 @@
 
                   <div class="p-3 dashboard-upload" id="dashboard-upload-box">
                     <div class="dashboard-section-title mb-2">Upload CSV</div>
-                    <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off">
+                    <form action="/upload" method="post" enctype="multipart/form-data" autocomplete="off" class="js-upload-form">
                       <input type="file" class="form-control" name="file" accept=".csv" required>
                       <div class="form-text">Required columns: <code>date</code>, <code>item</code>, <code>store</code>, <code>sales</code></div>
-                      <button type="submit" class="btn btn-primary w-100 mt-2">Continue to Forecast</button>
+                      <button type="submit" class="btn btn-primary w-100 mt-2 js-upload-btn">Continue to Forecast</button>
+                      <div class="js-upload-error alert alert-danger d-flex align-items-start gap-2 mt-2 mb-0 py-2 px-3 small" role="alert" style="display:none !important; border-radius:10px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" class="flex-shrink-0 mt-1" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/><path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z"/></svg>
+                        <span class="js-upload-error-text"></span>
+                      </div>
                     </form>
                   </div>
 
@@ -914,6 +922,42 @@
         showConnectorForm(connector, (schema && schema.fields) ? schema.fields : [], label);
       })
       .catch(() => alert('Failed to load connector schema.'));
+  });
+
+  // ── Upload form: AJAX + inline error (no raw JSON page) ──────────────────
+  document.querySelectorAll('form.js-upload-form').forEach(function (form) {
+    var btn = form.querySelector('.js-upload-btn');
+    var errBox = form.querySelector('.js-upload-error');
+    var errText = form.querySelector('.js-upload-error-text');
+
+    function showErr(msg) {
+      if (errText) errText.textContent = msg;
+      if (errBox) errBox.style.display = 'flex';
+      if (btn) btn.disabled = false;
+    }
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      if (errBox) errBox.style.display = 'none';
+      if (btn) btn.disabled = true;
+      try {
+        var resp = await fetch('/upload', { method: 'POST', body: new FormData(form) });
+        if (resp.ok) {
+          window.location.href = resp.url;
+          return;
+        }
+        var msg = 'Upload failed — please check your file.';
+        try { var d = await resp.json(); if (d && d.detail) msg = d.detail; } catch (_) {}
+        showErr(msg);
+      } catch (err) {
+        showErr('Network error: ' + (err && err.message ? err.message : 'could not connect.'));
+      }
+    });
+
+    var fileInput = form.querySelector('input[type="file"]');
+    if (fileInput) fileInput.addEventListener('change', function () {
+      if (errBox) errBox.style.display = 'none';
+    });
   });
 </script>
 {% endblock %}
