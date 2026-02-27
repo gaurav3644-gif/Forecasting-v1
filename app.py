@@ -4541,6 +4541,18 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 .sort_values([sku_col, "_week"])
             )
 
+            # Pre-compute avg price per SKU for bubble size (revenue proxy)
+            _sku_avg_price: dict = {}
+            if price_col and price_col in df.columns:
+                try:
+                    _pg = df.dropna(subset=[price_col]).copy()
+                    _pg[price_col] = pd.to_numeric(_pg[price_col], errors="coerce")
+                    _pg = _pg.dropna(subset=[price_col])
+                    if not _pg.empty and sku_col in _pg.columns:
+                        _sku_avg_price = _pg.groupby(sku_col)[price_col].mean().to_dict()
+                except Exception:
+                    pass
+
             results_ent: list[dict] = []
             for sku_val, grp_e in weekly_ent.groupby(sku_col):
                 grp_e = grp_e.sort_values("_week").reset_index(drop=True)
@@ -4576,6 +4588,9 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 std_w = var_w ** 0.5
                 cv_pct = round(std_w / mean_w * 100.0, 1) if mean_w > 0 else 0.0
 
+                avg_p = float(_sku_avg_price.get(str(sku_val), 0.0))
+                revenue = round(total_e * avg_p, 1) if avg_p > 0 else round(total_e, 1)
+
                 sparkline_data = [[i, float(v)] for i, v in enumerate(vals_e)]
 
                 results_ent.append({
@@ -4585,6 +4600,8 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                     "regime_class": regime_class,
                     "cv_pct": cv_pct,
                     "mean_weekly_sales": round(mean_w, 1),
+                    "total_sales": round(total_e, 1),
+                    "revenue": revenue,
                     "n_weeks": len(grp_e),
                     "sparkline_html": _sparkline_html(sparkline_data, spark_color),
                 })
@@ -4593,45 +4610,67 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 # Full table sorted most stable → least stable
                 entropy_table = sorted(results_ent, key=lambda r: r["stability_score"], reverse=True)
 
-                # Bar chart: show most at-risk SKUs (lowest stability) for planners
-                chart_data_ent = sorted(results_ent, key=lambda r: r["stability_score"])[:20]
-                cats_ent = [r["sku"] for r in chart_data_ent]
-                vals_ent = [r["stability_score"] for r in chart_data_ent]
-                colors_ent = [
-                    "#dc3545" if r["regime"] == "Chaotic"
-                    else "#ffc107" if r["regime"] == "Variable"
-                    else "#198754"
-                    for r in chart_data_ent
+                # Bubble chart: X=Stability, Y=Avg Weekly Sales, Z=Revenue, color=Regime
+                _regime_cfg = [
+                    ("Stable",   "rgba(25,135,84,0.75)"),
+                    ("Variable", "rgba(255,193,7,0.85)"),
+                    ("Chaotic",  "rgba(220,53,69,0.75)"),
                 ]
+                _has_revenue = any(r["revenue"] != r["total_sales"] for r in results_ent)
+                _bubble_series = []
+                for _rname, _rcolor in _regime_cfg:
+                    _pts = [
+                        {
+                            "x": r["stability_score"],
+                            "y": round(r["mean_weekly_sales"], 1),
+                            "z": max(r["revenue"], 1.0),
+                            "name": r["sku"],
+                            "cv": r["cv_pct"],
+                        }
+                        for r in results_ent if r["regime"] == _rname
+                    ]
+                    if _pts:
+                        _bubble_series.append({"name": _rname, "color": _rcolor, "data": _pts})
+
+                _z_label = "Revenue" if _has_revenue else "Total Sales (12 wk)"
                 chart_entropy_stability = _fig_html({
-                    "chart": {"type": "bar"},
+                    "chart": {"type": "bubble", "zoomType": "xy"},
                     "title": {"text": None},
-                    "xAxis": {"categories": cats_ent[::-1], "title": {"text": ""}},
-                    "yAxis": {
-                        "title": {"text": "Stability Score"},
+                    "xAxis": {
+                        "title": {"text": "Stability Score (0 = Chaotic → 100 = Stable)"},
                         "min": 0, "max": 100,
                         "plotBands": [
-                            {"from": 0, "to": 33, "color": "rgba(220,53,69,0.08)", "label": {"text": "Chaotic", "align": "right", "style": {"color": "#dc3545", "fontSize": "10px"}}},
-                            {"from": 33, "to": 67, "color": "rgba(255,193,7,0.08)", "label": {"text": "Variable", "align": "right", "style": {"color": "#856404", "fontSize": "10px"}}},
-                            {"from": 67, "to": 100, "color": "rgba(25,135,84,0.08)", "label": {"text": "Stable", "align": "right", "style": {"color": "#198754", "fontSize": "10px"}}},
+                            {"from": 0,  "to": 33,  "color": "rgba(220,53,69,0.06)"},
+                            {"from": 33, "to": 67,  "color": "rgba(255,193,7,0.06)"},
+                            {"from": 67, "to": 100, "color": "rgba(25,135,84,0.06)"},
                         ],
                         "plotLines": [
-                            {"value": 33, "color": "#ffc107", "dashStyle": "Dot", "width": 1},
-                            {"value": 67, "color": "#198754", "dashStyle": "Dot", "width": 1},
+                            {"value": 33, "color": "#ffc107", "dashStyle": "Dot", "width": 1,
+                             "label": {"text": "Variable", "style": {"color": "#856404", "fontSize": "10px"}}},
+                            {"value": 67, "color": "#198754", "dashStyle": "Dot", "width": 1,
+                             "label": {"text": "Stable",   "style": {"color": "#198754", "fontSize": "10px"}}},
                         ],
                     },
-                    "tooltip": {"pointFormat": "Stability: <b>{point.y:.1f}</b> / 100"},
-                    "plotOptions": {
-                        "bar": {
-                            "dataLabels": {"enabled": True, "format": "{y:.0f}"},
-                            "colorByPoint": True,
-                            "pointPadding": 0.1,
-                            "groupPadding": 0.05,
-                        }
+                    "yAxis": {
+                        "title": {"text": "Avg Weekly Sales (units)"},
+                        "labels": {"format": "{value:,.0f}"},
                     },
-                    "colors": colors_ent[::-1],
-                    "series": [{"name": "Stability Score", "data": vals_ent[::-1]}],
-                }, height=_bar_height(len(chart_data_ent), 380), showlegend=False)
+                    "tooltip": {
+                        "useHTML": True,
+                        "headerFormat": "",
+                        "pointFormat": (
+                            "<b>{point.name}</b><br>"
+                            "Stability: <b>{point.x}</b> / 100<br>"
+                            "Avg Weekly Sales: <b>{point.y:,.0f}</b> units<br>"
+                            f"{_z_label}: <b>{{point.z:,.0f}}</b><br>"
+                            "CV: <b>{point.cv}%</b>"
+                        ),
+                    },
+                    "plotOptions": {
+                        "bubble": {"minSize": 10, "maxSize": 60, "opacity": 0.88},
+                    },
+                    "series": _bubble_series,
+                }, height=440, showlegend=True)
             else:
                 entropy_unavailable = "Volatility entropy unavailable (need at least 4 weeks of weekly data per SKU)."
         except Exception as _e_ent:
