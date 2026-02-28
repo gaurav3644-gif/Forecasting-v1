@@ -4500,7 +4500,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
 
     # ── SKU Volatility Entropy ──────────────────────────────────────────────────
     # Per-SKU Shannon entropy over last N_WEEKS of weekly sales.
-    # Stability score = 100 * normalised_entropy. High entropy = uniform = Stable.
+    # Stability score = 40% entropy (lumpiness) + 60% CV factor (week-to-week variance).
     _ENT_WEEKS = 12
     chart_entropy_stability = None
     entropy_table: list[dict] = []
@@ -4563,12 +4563,23 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 if total_e <= 0:
                     continue
 
-                # Shannon entropy
+                # CV (week-to-week variance) — computed first so it feeds the stability score
+                mean_w = total_e / len(vals_e)
+                var_w = sum((v - mean_w) ** 2 for v in vals_e) / len(vals_e)
+                std_w = var_w ** 0.5
+                cv_pct = round(std_w / mean_w * 100.0, 1) if mean_w > 0 else 0.0
+
+                # Shannon entropy (catches lumpy/concentrated demand)
                 p_vec = [v / total_e for v in vals_e if v > 0]
                 H = -sum(pi * _math_hc.log2(pi) for pi in p_vec)
                 max_H = _math_hc.log2(len(vals_e))
                 norm_H = H / max_H if max_H > 0 else 0.0
-                stability_score = round(100.0 * norm_H, 1)
+
+                # CV factor: CV=0% → 1.0 (stable), CV=75%+ → 0.0 (chaotic)
+                cv_factor = max(0.0, 1.0 - cv_pct / 75.0)
+
+                # Blended score: 40% entropy (lumpiness) + 60% CV (variance)
+                stability_score = round(100.0 * (0.4 * norm_H + 0.6 * cv_factor), 1)
 
                 if stability_score >= 67:
                     regime = "Stable"
@@ -4582,11 +4593,6 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                     regime = "Chaotic"
                     regime_class = "danger"
                     spark_color = "#dc3545"
-
-                mean_w = total_e / len(vals_e)
-                var_w = sum((v - mean_w) ** 2 for v in vals_e) / len(vals_e)
-                std_w = var_w ** 0.5
-                cv_pct = round(std_w / mean_w * 100.0, 1) if mean_w > 0 else 0.0
 
                 avg_p = float(_sku_avg_price.get(str(sku_val), 0.0))
                 revenue = round(total_e * avg_p, 1) if avg_p > 0 else round(total_e, 1)
