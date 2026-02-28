@@ -1,0 +1,17 @@
+# Nixpacks build configuration for Railway
+# Adds Node.js so the React frontend can be built before uvicorn starts.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "cd frontend && npm ci"
+]
+
+[phases.build]
+cmds = ["cd frontend && npm run build"]
+
+[start]
+cmd = "uvicorn app:app --host 0.0.0.0 --port $PORT"
