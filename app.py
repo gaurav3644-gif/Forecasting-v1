@@ -4500,7 +4500,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
 
     # ── SKU Volatility Entropy ──────────────────────────────────────────────────
     # Per-SKU Shannon entropy over last N_WEEKS of weekly sales.
-    # Stability score = 100 * (1 − normalised_entropy). Low score → erratic.
+    # Stability score = 100 * normalised_entropy. High entropy = uniform = Stable.
     _ENT_WEEKS = 12
     chart_entropy_stability = None
     entropy_table: list[dict] = []
@@ -4568,7 +4568,7 @@ async def insights_dashboard(request: Request, run_session_id: Optional[str] = N
                 H = -sum(pi * _math_hc.log2(pi) for pi in p_vec)
                 max_H = _math_hc.log2(len(vals_e))
                 norm_H = H / max_H if max_H > 0 else 0.0
-                stability_score = round(100.0 * (1.0-norm_H), 1)
+                stability_score = round(100.0 * norm_H, 1)
 
                 if stability_score >= 67:
                     regime = "Stable"
