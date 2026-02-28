@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover - optional; legacy assistant remains avail
 import retriever
 import hashlib
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from urllib.parse import quote, urlparse, urlencode
@@ -692,6 +692,24 @@ def _auth_mode() -> str:
 def _otp_hash(otp_id: str, code: str) -> str:
     val = f"{(otp_id or '').strip()}:{(code or '').strip()}".encode("utf-8")
     return hmac.new(_auth_cookie_secret_b, val, digestmod=_hashlib.sha256).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# React SPA — JSON API endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/auth/me")
+async def api_auth_me(request: Request):
+    user_email = _get_user_email(request)
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {
+        "email": user_email,
+        "is_admin": _is_admin_email(user_email),
+        "is_authenticated": True,
+        "require_approval": _require_admin_approval(),
+        "auth_mode": _auth_mode(),
+    }
 
 
 def _client_ip(request: Request) -> str:
@@ -4808,6 +4826,72 @@ async def dashboard_page(request: Request):
         },
     )
 
+@app.get("/api/dashboard")
+async def api_dashboard(request: Request):
+    user_email = _get_user_email(request)
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    is_admin = _is_admin_email(user_email)
+    try:
+        import history_store
+        if is_admin:
+            runs = history_store.list_forecast_runs_admin(limit=100)
+        else:
+            runs = history_store.list_forecast_runs(user_email, limit=100)
+        history_backend = history_store.history_backend()
+        history_info = history_store.history_connection_info()
+        pending_users = history_store.list_pending_user_access(limit=200) if is_admin else []
+        current_users = history_store.list_current_users_admin(limit=500) if is_admin else []
+        revoked_users = history_store.list_user_access(limit=500, status="revoked") if is_admin else []
+    except Exception as e:
+        logging.warning(f"[HISTORY] api_dashboard failed for {user_email}: {e}")
+        runs = []
+        history_backend = "unknown"
+        history_info = {"backend": "unknown"}
+        pending_users = []
+        current_users = []
+        revoked_users = []
+    session_id = _session_id_from_request(request)
+    running_forecasts: list[dict[str, Any]] = []
+    try:
+        sess = _ensure_session_container(session_id)
+        session_runs = sess.get("runs") or {}
+        for rid, r in session_runs.items():
+            if not isinstance(r, dict):
+                continue
+            prog = r.get("forecast_progress") or None
+            if not (isinstance(prog, dict) and prog):
+                continue
+            if bool(prog.get("done", False)) or bool(prog.get("cancelled", False)) or bool(prog.get("error")):
+                continue
+            running_forecasts.append(
+                {
+                    "run_session_id": rid,
+                    "progress": prog,
+                    "meta": {
+                        "uploaded_filename": r.get("uploaded_filename"),
+                        "start_month": r.get("start_month"),
+                        "months": r.get("months"),
+                        "grain": r.get("grain"),
+                        "created_at": r.get("created_at"),
+                    },
+                }
+            )
+    except Exception:
+        running_forecasts = []
+    return {
+        "email": user_email,
+        "is_admin": is_admin,
+        "runs": runs,
+        "pending_users": pending_users,
+        "current_users": current_users,
+        "revoked_users": revoked_users,
+        "history_backend": history_backend,
+        "history_info": history_info,
+        "running_forecasts": running_forecasts,
+    }
+
+
 @app.get("/data", response_class=HTMLResponse)
 async def data_page(request: Request):
     user_email = _get_user_email(request)
@@ -8142,3 +8226,18 @@ async def chat_endpoint(request: Request, payload: Dict = Body(...)):
                 return {"answer": local, "provider": "local", "llm_provider": provider, "llm_error": msg, "cached": False}
             except Exception:
                 return {"answer": f"Assistant error: {e}", "provider": "local", "cached": False}
+
+
+# ---------------------------------------------------------------------------
+# React SPA catch-all — MUST be last (all Jinja2 routes above take priority)
+# ---------------------------------------------------------------------------
+
+_FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
+if _FRONTEND_DIST.exists():
+    _spa_assets = _FRONTEND_DIST / "assets"
+    if _spa_assets.exists():
+        app.mount("/assets", StaticFiles(directory=str(_spa_assets)), name="spa_assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(request: Request, full_path: str):
+        return FileResponse(str(_FRONTEND_DIST / "index.html"))
