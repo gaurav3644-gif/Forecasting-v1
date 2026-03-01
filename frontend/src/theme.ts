@@ -2,7 +2,7 @@ import { createTheme } from '@mui/material/styles'
 
 const BRAND_GREEN = '#43e97b'
 const BRAND_CYAN = '#38f9d7'
-const NAVBAR_BG = '#0a0f0d'
+const NAVBAR_BG = 'rgba(255,255,255,0.90)'
 
 export const pitensorTheme = createTheme({
   palette: {
@@ -61,8 +61,11 @@ export const pitensorTheme = createTheme({
       styleOverrides: {
         root: {
           backgroundColor: NAVBAR_BG,
-          borderBottom: '1px solid rgba(67,233,123,0.13)',
-          boxShadow: 'none',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderBottom: '1px solid rgba(67,233,123,0.22)',
+          boxShadow: '0 1px 16px rgba(18,24,39,0.06)',
+          color: 'rgba(18,24,39,0.88)',
         },
       },
     },

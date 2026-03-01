@@ -26,10 +26,11 @@ export default function TopAppBar() {
               color="inherit"
               onClick={() => navigate('/dashboard')}
               sx={{
-                color: 'rgba(255,255,255,0.82)',
+                color: 'rgba(18,24,39,0.78)',
                 fontWeight: 700,
                 fontSize: '0.85rem',
                 px: 1.5,
+                '&:hover': { background: 'rgba(67,233,123,0.08)' },
               }}
             >
               Dashboard
@@ -40,9 +41,9 @@ export default function TopAppBar() {
                 label="Admin"
                 size="small"
                 sx={{
-                  background: 'rgba(245,158,11,0.18)',
-                  border: '1px solid rgba(245,158,11,0.35)',
-                  color: 'rgba(245,200,60,0.95)',
+                  background: 'rgba(245,158,11,0.12)',
+                  border: '1px solid rgba(245,158,11,0.30)',
+                  color: 'rgba(161,99,0,0.95)',
                   fontWeight: 700,
                   fontSize: '0.72rem',
                 }}
@@ -52,7 +53,7 @@ export default function TopAppBar() {
             <Typography
               variant="caption"
               sx={{
-                color: 'rgba(255,255,255,0.45)',
+                color: 'rgba(18,24,39,0.42)',
                 display: { xs: 'none', sm: 'block' },
                 maxWidth: 180,
                 overflow: 'hidden',
@@ -68,14 +69,14 @@ export default function TopAppBar() {
               size="small"
               onClick={() => { window.location.href = '/signout' }}
               sx={{
-                color: 'rgba(255,255,255,0.75)',
-                borderColor: 'rgba(255,255,255,0.28)',
+                color: 'rgba(18,24,39,0.65)',
+                borderColor: 'rgba(18,24,39,0.20)',
                 borderRadius: '999px',
                 fontSize: '0.78rem',
                 px: 1.5,
                 '&:hover': {
-                  borderColor: 'rgba(255,255,255,0.55)',
-                  background: 'rgba(255,255,255,0.08)',
+                  borderColor: 'rgba(18,24,39,0.40)',
+                  background: 'rgba(18,24,39,0.04)',
                 },
               }}
             >
@@ -88,11 +89,12 @@ export default function TopAppBar() {
             size="small"
             onClick={() => { window.location.href = '/signin' }}
             sx={{
-              color: '#43e97b',
+              color: '#15803d',
               borderColor: 'rgba(67,233,123,0.55)',
               borderRadius: '999px',
               fontWeight: 700,
               fontSize: '0.82rem',
+              '&:hover': { background: 'rgba(67,233,123,0.08)', borderColor: '#43e97b' },
             }}
           >
             Sign in
