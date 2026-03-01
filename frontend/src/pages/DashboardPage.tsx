@@ -7,6 +7,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  IconButton,
   LinearProgress,
   Stack,
   Tab,
@@ -16,10 +17,14 @@ import {
   TableHead,
   TableRow,
   Tabs,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded'
+import LightbulbRoundedIcon from '@mui/icons-material/LightbulbRounded'
+import LocalShippingRoundedIcon from '@mui/icons-material/LocalShippingRounded'
 import { useNavigate } from 'react-router-dom'
 import api from '@/api/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -146,14 +151,51 @@ function RunsTable({ runs }: { runs: ForecastRun[] }) {
               </TableCell>
               <TableCell>
                 <Stack direction="row" spacing={0.5}>
-                  <Button size="small" variant="outlined"
-                    onClick={() => { window.location.href = `/results?run_session_id=${run.run_id}` }}>
-                    Results
-                  </Button>
-                  <Button size="small" variant="outlined"
-                    onClick={() => { window.location.href = `/insights?run_session_id=${run.run_id}` }}>
-                    Insights
-                  </Button>
+                  <Tooltip title="Results" arrow>
+                    <IconButton
+                      size="small"
+                      onClick={() => { window.location.href = `/results?run_session_id=${run.run_id}` }}
+                      sx={{
+                        color: '#43e97b',
+                        background: 'rgba(67,233,123,0.10)',
+                        borderRadius: '8px',
+                        '&:hover': { background: 'rgba(67,233,123,0.22)', transform: 'translateY(-1px)' },
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <AssessmentRoundedIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Insights" arrow>
+                    <IconButton
+                      size="small"
+                      onClick={() => { window.location.href = `/insights?run_session_id=${run.run_id}` }}
+                      sx={{
+                        color: '#f59e0b',
+                        background: 'rgba(245,158,11,0.10)',
+                        borderRadius: '8px',
+                        '&:hover': { background: 'rgba(245,158,11,0.22)', transform: 'translateY(-1px)' },
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <LightbulbRoundedIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Supply Plan" arrow>
+                    <IconButton
+                      size="small"
+                      onClick={() => { window.location.href = `/supply_plan?run_session_id=${run.run_id}` }}
+                      sx={{
+                        color: '#6366f1',
+                        background: 'rgba(99,102,241,0.10)',
+                        borderRadius: '8px',
+                        '&:hover': { background: 'rgba(99,102,241,0.22)', transform: 'translateY(-1px)' },
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <LocalShippingRoundedIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
                 </Stack>
               </TableCell>
             </TableRow>
