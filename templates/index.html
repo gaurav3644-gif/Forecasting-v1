@@ -137,6 +137,12 @@
                 .lang-picker[data-lang="fr"] .lang-flag {
                     background: linear-gradient(to right, #0055A4 0 33.33%, #ffffff 33.33% 66.66%, #EF4135 66.66% 100%);
                 }
+                .lang-picker[data-lang="nl"] .lang-flag {
+                    background: linear-gradient(#AE1C28 0 33.33%, #ffffff 33.33% 66.66%, #21468B 66.66% 100%);
+                }
+                .lang-picker[data-lang="ru"] .lang-flag {
+                    background: linear-gradient(#ffffff 0 33.33%, #0039A6 33.33% 66.66%, #D52B1E 66.66% 100%);
+                }
                 .section[style*="#f8f9fa"] h2,
                 .section[style*="#f8f9fa"] h3,
                 .section[style*="#f8f9fa"] h4,
@@ -1022,6 +1028,8 @@
                                 <option value="en" data-i18n="lang_en">EN</option>
                                 <option value="id" data-i18n="lang_id">ID</option>
                                 <option value="fr" data-i18n="lang_fr">FR</option>
+                                <option value="nl" data-i18n="lang_nl">NL</option>
+                                <option value="ru" data-i18n="lang_ru">RU</option>
                             </select>
                         </div>
                     </li>
@@ -1670,6 +1678,8 @@
                     lang_en: 'EN',
                     lang_id: 'ID',
                     lang_fr: 'FR',
+                    lang_nl: 'NL',
+                    lang_ru: 'RU',
                     nav_sign_in: 'Sign in',
                     nav_dashboard: 'Dashboard',
                     nav_sign_out: 'Sign out',
@@ -1813,6 +1823,8 @@
                     lang_en: 'EN',
                     lang_id: 'ID',
                     lang_fr: 'FR',
+                    lang_nl: 'NL',
+                    lang_ru: 'RU',
                     nav_sign_in: 'Masuk',
                     nav_dashboard: 'Dasbor',
                     nav_sign_out: 'Keluar',
@@ -1956,6 +1968,8 @@
                     lang_en: 'EN',
                     lang_id: 'ID',
                     lang_fr: 'FR',
+                    lang_nl: 'NL',
+                    lang_ru: 'RU',
                     nav_sign_in: 'Se connecter',
                     nav_dashboard: 'Tableau de bord',
                     nav_sign_out: 'Se déconnecter',
@@ -2084,8 +2098,124 @@
                     footer_copyright: '© 2026 PiTensor. Tous droits réservés.',
                     pricing_title: 'Tarifs',
                     pricing_contact_info: 'Contact pour les tarifs',
-                    pricing_reach_out: 'Contactez-nous et nous partagerons les offres adaptées.',
+                    pricing_reach_out: 'Contactez-nous et nous partagerons les offres adapt\u00e9es.',
                     pricing_close: 'Fermer'
+                },
+                nl: {
+                    lang_en: 'EN', lang_id: 'ID', lang_fr: 'FR', lang_nl: 'NL', lang_ru: 'RU',
+                    nav_sign_in: 'Inloggen', nav_dashboard: 'Dashboard', nav_sign_out: 'Uitloggen', nav_request_demo: 'Demo aanvragen',
+                    demo_modal_title: 'Demo aanvragen', demo_name_label: 'Volledige naam', demo_email_label: 'Zakelijk e-mail',
+                    demo_company_label: 'Bedrijf', demo_role_label: 'Functie', demo_phone_label: 'Telefoon / WhatsApp',
+                    demo_message_label: 'Wat wilt u zien? (optioneel)', demo_submit: 'Aanvraag indienen', demo_close: 'Sluiten',
+                    demo_success_title: 'Aanvraag ontvangen', demo_success_body: 'Bedankt \u2014 we nemen binnenkort contact op.',
+                    demo_error_invalid: 'Voer uw naam en een geldig e-mailadres in.',
+                    landing_features: 'Functies', landing_connectors: 'Koppelingen', landing_insights: 'Inzichten',
+                    landing_how: 'Hoe het werkt', landing_pricing: 'Prijzen', landing_contact: 'Contact',
+                    hero_badge_ai: 'AI Prognose', hero_badge_supply: 'Leveringsplanning', hero_badge_enterprise: 'Enterprise-klaar',
+                    hero_title_prefix: "De AI Prognose", hero_title_accent: 'Partner', hero_title_suffix: 'voor Retail',
+                    hero_subtitle: 'Upload verkoopdata, genereer nauwkeurige prognoses en zet ze snel om in duidelijke besteladviezen. Gebouwd voor echte retailoperaties: artikelen, winkels, doorlooptijden, MOQ en serviceniveaus.',
+                    hero_btn_start: 'Beginnen met prognoses', hero_btn_explore: 'Functies verkennen',
+                    hero_kpi1_value: 'Minuten', hero_kpi1_label: 'tot eerste prognose', hero_kpi2_label: 'geen configuratie nodig',
+                    hero_kpi3_label: 'MVP supply-engine', hero_media_badge: 'Upload \u2192 Prognose \u2192 Plan',
+                    trust_title: 'Gebouwd voor retailoperators en analisten die beslissingen nodig hebben, geen dashboards.',
+                    trust_multi_store: 'Multi-winkel', trust_sku: 'SKU-niveau', trust_csv: 'CSV-first',
+                    value_heading: 'Gebouwd voor retailoperaties.',
+                    value_title1: 'Geavanceerde ML-prognosemodellen', value_desc1: 'Eigen algoritmen getraind op miljoenen retailgegevenspunten voor onge\u00ebvenaarde nauwkeurigheid.',
+                    value_title2: 'Real-time vraagdetectie', value_desc2: 'Continu leren van verkooppatronen, seizoensgebondenheid en markttrends.',
+                    value_title3: 'Naadloze systeemintegratie', value_desc3: 'Directe verbinding met uw POS, ERP en e-commerceplatforms voor geautomatiseerde inzichten.',
+                    stat_accuracy_label: 'Prognose nauwkeurigheid', stat_cost_label: 'Voorraadkostenreductie', stat_updates_label: 'Geautomatiseerde updates',
+                    features_title: 'Waarom PiTensor?', features_subtitle: 'Geavanceerde AI-technologie ontmoet intu\u00eftief ontwerp',
+                    feature1_title: 'Geavanceerde AI-modellen', feature1_desc: 'State-of-the-art machine learning getraind op miljoenen datapunten voor onge\u00ebvenaarde nauwkeurigheid.',
+                    feature2_title: 'Real-time analyse', feature2_desc: 'Interactieve dashboards met live datavisualisatie en voorspellende inzichten.',
+                    feature3_title: 'Enterprise beveiliging', feature3_desc: 'Bankniveau versleuteling en GDPR-naleving zodat uw gegevens altijd beschermd zijn.',
+                    demo_title: 'Zie PiTensor in actie', demo_subtitle: 'Onze AI-modellen analyseren historische data om toekomstige verkopen nauwkeurig te voorspellen.',
+                    demo_accuracy: 'Nauwkeurigheid', demo_faster: 'Snellere inzichten', demo_automated: 'Geautomatiseerd',
+                    how_title: 'Hoe het werkt', how_subtitle: 'Nauwkeurige prognoses in drie eenvoudige stappen',
+                    step1_title: 'Verbind uw data', step1_desc: 'Verbind met bestaande systemen of upload CSV-bestanden.',
+                    step2_title: 'Configureer prognose', step2_desc: 'Stel horizon en parameters in. Het systeem optimaliseert automatisch.',
+                    step3_title: 'Krijg inzichten', step3_desc: 'Ontvang gedetailleerde prognoses, visualisaties en bruikbare inzichten direct.',
+                    conn_title: 'Verbind met uw retailsystemen', conn_subtitle: 'Naadloze integratie met de tools die uw bedrijf al gebruikt',
+                    conn_databases: 'Databases', conn_cloud: 'Cloudopslagplaatsen', conn_ecommerce: 'E-commerce',
+                    conn_pos: 'Kassasystemen', conn_erp: 'ERP-systemen', conn_file: 'Bestandsupload',
+                    conn_file_desc: 'CSV, Excel, JSON bestanden', conn_available: 'Beschikbaar',
+                    upload_pill: 'CSV snel starten', upload_title: 'Snel starten met CSV',
+                    upload_subtitle: 'Upload verkoopdata en ontvang prognoses in minuten. Zet daarna prognoses om in besteladviezen.',
+                    upload_label: 'Verkoop-CSV uploaden', upload_required_cols: 'Vereiste kolommen:', upload_btn: 'Prognose genereren',
+                    upload_sample_btn: 'Voorbeeld CSV', upload_format: 'CSV-formaat', upload_minimal: 'minimaal', upload_copy: 'Kopi\u00ebren',
+                    upload_supply_link: 'Leveringsplanning', upload_after_info: 'Na het uploaden kunt u resultaten filteren en prognoses downloaden.',
+                    upload_connectors_link: 'Verbinding nodig met bestaande systemen?', upload_view_connectors: 'Alle koppelingen bekijken',
+                    upload_progress: 'Prognose genereren, even geduld...',
+                    insights_title: 'Uit het PiTensor Lab', insights_subtitle: 'Laatste inzichten over retailprognoses en AI-trends',
+                    insight1_type: 'WHITEPAPER', insight1_title: 'Seizoensprognose: Versla de vakantiedrukte',
+                    insight1_desc: 'Hoe AI-modellen seizoensgebonden pieken voorspellen met 94% nauwkeurigheid.',
+                    insight2_type: 'CASESTUDY', insight2_title: '$2,3 miljoen bespaard: Succesverhaal modebedrijf',
+                    insight2_desc: 'Hoe een groot modebedrijf voorraadkosten met 45% reduceerde met ons platform.',
+                    insight3_type: 'ARTIKEL', insight3_title: 'De toekomst van retail: AI-gestuurde inventaris',
+                    insight3_desc: 'Waarom 78% van retaildirecteuren gelooft dat AI-prognoses cruciaal zijn voor succes in 2026.',
+                    insight_read_more: 'Meer lezen',
+                    newsletter_title: 'Blijf voorop in retailtrends', newsletter_subtitle: 'Wekelijkse inzichten over AI-prognoses en best practices.',
+                    newsletter_placeholder: 'Voer uw e-mail in', newsletter_subscribe: 'Abonneren', newsletter_disclaimer: 'Geen spam, altijd opzegbaar.',
+                    cta_title: 'Klaar om uw verkoopstrategie te revolutioneren?', cta_subtitle: 'Sluit u aan bij duizenden bedrijven die AI gebruiken om de toekomst te voorspellen',
+                    cta_btn: 'Gratis proefperiode starten',
+                    footer_desc: 'Bedrijven versterken met AI-gestuurde verkoopprognoses since 2026', footer_quick_links: 'Snelle links',
+                    footer_contact: 'Contact', footer_copyright: '\u00a9 2026 PiTensor. Alle rechten voorbehouden.',
+                    pricing_title: 'Prijzen', pricing_contact_info: 'Contactinformatie voor prijzen',
+                    pricing_reach_out: 'Neem contact op en wij delen plannen en een op maat gemaakt aanbod.', pricing_close: 'Sluiten'
+                },
+                ru: {
+                    lang_en: 'EN', lang_id: 'ID', lang_fr: 'FR', lang_nl: 'NL', lang_ru: 'RU',
+                    nav_sign_in: '\u0412\u043e\u0439\u0442\u0438', nav_dashboard: '\u041f\u0430\u043d\u0435\u043b\u044c \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f', nav_sign_out: '\u0412\u044b\u0439\u0442\u0438', nav_request_demo: '\u0417\u0430\u043f\u0440\u043e\u0441\u0438\u0442\u044c \u0434\u0435\u043c\u043e',
+                    demo_modal_title: '\u0417\u0430\u043f\u0440\u043e\u0441\u0438\u0442\u044c \u0434\u0435\u043c\u043e', demo_name_label: '\u041f\u043e\u043b\u043d\u043e\u0435 \u0438\u043c\u044f', demo_email_label: '\u0420\u0430\u0431\u043e\u0447\u0438\u0439 e-mail',
+                    demo_company_label: '\u041a\u043e\u043c\u043f\u0430\u043d\u0438\u044f', demo_role_label: '\u0414\u043e\u043b\u0436\u043d\u043e\u0441\u0442\u044c', demo_phone_label: '\u0422\u0435\u043b\u0435\u0444\u043e\u043d / WhatsApp',
+                    demo_message_label: '\u0427\u0442\u043e \u0432\u044b \u0445\u043e\u0442\u0438\u0442\u0435 \u0443\u0432\u0438\u0434\u0435\u0442\u044c? (\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e)', demo_submit: '\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443', demo_close: '\u0417\u0430\u043a\u0440\u044b\u0442\u044c',
+                    demo_success_title: '\u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0430', demo_success_body: '\u0421\u043f\u0430\u0441\u0438\u0431\u043e \u2014 \u043c\u044b \u0441\u0432\u044f\u0436\u0435\u043c\u0441\u044f \u0441 \u0432\u0430\u043c\u0438 \u0432 \u0431\u043b\u0438\u0436\u0430\u0439\u0448\u0435\u0435 \u0432\u0440\u0435\u043c\u044f.',
+                    demo_error_invalid: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0438\u043c\u044f \u0438 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0439 e-mail.',
+                    landing_features: '\u0424\u0443\u043d\u043a\u0446\u0438\u0438', landing_connectors: '\u041a\u043e\u043d\u043d\u0435\u043a\u0442\u043e\u0440\u044b', landing_insights: '\u0410\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430',
+                    landing_how: '\u041a\u0430\u043a \u044d\u0442\u043e \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442', landing_pricing: '\u0426\u0435\u043d\u044b', landing_contact: '\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u044b',
+                    hero_badge_ai: '\u0418\u0418 \u041f\u0440\u043e\u0433\u043d\u043e\u0437', hero_badge_supply: '\u041f\u043b\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u043f\u043e\u0441\u0442\u0430\u0432\u043e\u043a', hero_badge_enterprise: '\u0413\u043e\u0442\u043e\u0432 \u043a Enterprise',
+                    hero_title_prefix: '\u041f\u0430\u0440\u0442\u043d\u0451\u0440 \u043f\u043e', hero_title_accent: '\u0418\u0418-\u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044e', hero_title_suffix: '\u0432 \u0440\u0438\u0442\u0435\u0439\u043b\u0435',
+                    hero_subtitle: '\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u0430\u043d\u043d\u044b\u0435 \u043e \u043f\u0440\u043e\u0434\u0430\u0436\u0430\u0445, \u0441\u043e\u0437\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u0442\u043e\u0447\u043d\u044b\u0435 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u044b \u0438 \u043f\u0440\u0435\u043e\u0431\u0440\u0430\u0437\u0443\u0439\u0442\u0435 \u0438\u0445 \u0432 \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0430\u043c. \u0421\u043e\u0437\u0434\u0430\u043d\u043e \u0434\u043b\u044f \u0440\u0435\u0430\u043b\u044c\u043d\u044b\u0445 \u0440\u0438\u0442\u0435\u0439\u043b\u044c\u043d\u044b\u0445 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439: \u0430\u0440\u0442\u0438\u043a\u0443\u043b\u044b, \u043c\u0430\u0433\u0430\u0437\u0438\u043d\u044b, \u0441\u0440\u043e\u043a\u0438 \u043f\u043e\u0441\u0442\u0430\u0432\u043a\u0438, MOQ \u0438 \u0443\u0440\u043e\u0432\u043d\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u0430.',
+                    hero_btn_start: '\u041d\u0430\u0447\u0430\u0442\u044c \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435', hero_btn_explore: '\u0418\u0437\u0443\u0447\u0438\u0442\u044c \u0444\u0443\u043d\u043a\u0446\u0438\u0438',
+                    hero_kpi1_value: '\u041c\u0438\u043d\u0443\u0442\u044b', hero_kpi1_label: '\u0434\u043e \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0430', hero_kpi2_label: '\u043d\u0435\u0442 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438', hero_kpi3_label: 'MVP supply-\u0434\u0432\u0438\u0436\u043e\u043a',
+                    hero_media_badge: '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u2192 \u041f\u0440\u043e\u0433\u043d\u043e\u0437 \u2192 \u041f\u043b\u0430\u043d',
+                    trust_title: '\u0421\u043e\u0437\u0434\u0430\u043d\u043e \u0434\u043b\u044f \u0440\u0438\u0442\u0435\u0439\u043b\u044c\u043d\u044b\u0445 \u043e\u043f\u0435\u0440\u0430\u0442\u043e\u0440\u043e\u0432 \u0438 \u0430\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u043e\u0432, \u043a\u043e\u0442\u043e\u0440\u044b\u043c \u043d\u0443\u0436\u043d\u044b \u0440\u0435\u0448\u0435\u043d\u0438\u044f, \u0430 \u043d\u0435 \u0434\u0430\u0448\u0431\u043e\u0440\u0434\u044b.',
+                    trust_multi_store: '\u041c\u043d\u043e\u0433\u043e\u043c\u0430\u0433\u0430\u0437\u0438\u043d\u043d\u043e\u0441\u0442\u044c', trust_sku: '\u0423\u0440\u043e\u0432\u0435\u043d\u044c SKU', trust_csv: 'CSV-first',
+                    value_heading: '\u0421\u043e\u0437\u0434\u0430\u043d\u043e \u0434\u043b\u044f \u0440\u0438\u0442\u0435\u0439\u043b\u044c\u043d\u044b\u0445 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439.',
+                    value_title1: '\u041f\u0440\u043e\u0434\u0432\u0438\u043d\u0443\u0442\u044b\u0435 \u043c\u043e\u0434\u0435\u043b\u0438 ML-\u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f', value_desc1: '\u0421\u043e\u0431\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u0430\u043b\u0433\u043e\u0440\u0438\u0442\u043c\u044b, \u043e\u0431\u0443\u0447\u0435\u043d\u043d\u044b\u0435 \u043d\u0430 \u043c\u0438\u043b\u043b\u0438\u043e\u043d\u0430\u0445 \u0442\u043e\u0447\u0435\u043a \u0440\u0438\u0442\u0435\u0439\u043b\u044c\u043d\u044b\u0445 \u0434\u0430\u043d\u043d\u044b\u0445.',
+                    value_title2: '\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0435 \u0441\u043f\u0440\u043e\u0441\u0430 \u0432 \u0440\u0435\u0430\u043b\u044c\u043d\u043e\u043c \u0432\u0440\u0435\u043c\u0435\u043d\u0438', value_desc2: '\u041d\u0435\u043f\u0440\u0435\u0440\u044b\u0432\u043d\u043e\u0435 \u043e\u0431\u0443\u0447\u0435\u043d\u0438\u0435 \u043d\u0430 \u043e\u0441\u043d\u043e\u0432\u0435 \u043f\u0430\u0442\u0442\u0435\u0440\u043d\u043e\u0432 \u043f\u0440\u043e\u0434\u0430\u0436 \u0438 \u0442\u0440\u0435\u043d\u0434\u043e\u0432.',
+                    value_title3: '\u0411\u0435\u0441\u0448\u043e\u0432\u043d\u0430\u044f \u0438\u043d\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u044f \u0441\u0438\u0441\u0442\u0435\u043c', value_desc3: '\u041f\u0440\u044f\u043c\u043e\u0435 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a POS, ERP \u0438 e-commerce \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u0430\u043c.',
+                    stat_accuracy_label: '\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0430', stat_cost_label: '\u0421\u043d\u0438\u0436\u0435\u043d\u0438\u0435 \u0437\u0430\u0442\u0440\u0430\u0442 \u043d\u0430 \u0437\u0430\u043f\u0430\u0441\u044b', stat_updates_label: '\u0410\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f',
+                    features_title: '\u041f\u043e\u0447\u0435\u043c\u0443 PiTensor?', features_subtitle: '\u041f\u0435\u0440\u0435\u0434\u043e\u0432\u044b\u0435 \u0442\u0435\u0445\u043d\u043e\u043b\u043e\u0433\u0438\u0438 \u0418\u0418 \u0438 \u0438\u043d\u0442\u0443\u0438\u0442\u0438\u0432\u043d\u044b\u0439 \u0434\u0438\u0437\u0430\u0439\u043d',
+                    feature1_title: '\u041f\u0440\u043e\u0434\u0432\u0438\u043d\u0443\u0442\u044b\u0435 \u043c\u043e\u0434\u0435\u043b\u0438 \u0418\u0418', feature1_desc: '\u0410\u043b\u0433\u043e\u0440\u0438\u0442\u043c\u044b ML, \u043e\u0431\u0443\u0447\u0435\u043d\u043d\u044b\u0435 \u043d\u0430 \u043c\u0438\u043b\u043b\u0438\u043e\u043d\u0430\u0445 \u0442\u043e\u0447\u0435\u043a \u0434\u0430\u043d\u043d\u044b\u0445.',
+                    feature2_title: '\u0410\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430 \u0432 \u0440\u0435\u0430\u043b\u044c\u043d\u043e\u043c \u0432\u0440\u0435\u043c\u0435\u043d\u0438', feature2_desc: '\u0418\u043d\u0442\u0435\u0440\u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0435 \u0434\u0430\u0448\u0431\u043e\u0440\u0434\u044b \u0441 \u0436\u0438\u0432\u043e\u0439 \u0432\u0438\u0437\u0443\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0435\u0439 \u0434\u0430\u043d\u043d\u044b\u0445.',
+                    feature3_title: '\u0411\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u044c \u0443\u0440\u043e\u0432\u043d\u044f Enterprise', feature3_desc: '\u0428\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0431\u0430\u043d\u043a\u043e\u0432\u0441\u043a\u043e\u0433\u043e \u0443\u0440\u043e\u0432\u043d\u044f \u0438 \u0441\u043e\u043e\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435 GDPR.',
+                    demo_title: '\u0423\u0432\u0438\u0434\u044c\u0442\u0435 PiTensor \u0432 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0438', demo_subtitle: '\u041d\u0430\u0448\u0438 \u043c\u043e\u0434\u0435\u043b\u0438 \u0418\u0418 \u0430\u043d\u0430\u043b\u0438\u0437\u0438\u0440\u0443\u044e\u0442 \u0438\u0441\u0442\u043e\u0440\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u0434\u0430\u043d\u043d\u044b\u0435 \u0434\u043b\u044f \u0442\u043e\u0447\u043d\u043e\u0433\u043e \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0430.',
+                    demo_accuracy: '\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c', demo_faster: '\u0411\u044b\u0441\u0442\u0440\u044b\u0435 \u0438\u043d\u0441\u0430\u0439\u0442\u044b', demo_automated: '\u0410\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0437\u0430\u0446\u0438\u044f',
+                    how_title: '\u041a\u0430\u043a \u044d\u0442\u043e \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442', how_subtitle: '\u0422\u043e\u0447\u043d\u044b\u0435 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u044b \u0437\u0430 \u0442\u0440\u0438 \u043f\u0440\u043e\u0441\u0442\u044b\u0445 \u0448\u0430\u0433\u0430',
+                    step1_title: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u0434\u0430\u043d\u043d\u044b\u0435', step1_desc: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u043c \u0441\u0438\u0441\u0442\u0435\u043c\u0430\u043c \u0438\u043b\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 CSV.',
+                    step2_title: '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u043f\u0440\u043e\u0433\u043d\u043e\u0437', step2_desc: '\u0417\u0430\u0434\u0430\u0439\u0442\u0435 \u0433\u043e\u0440\u0438\u0437\u043e\u043d\u0442 \u0438 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b. \u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u043e\u043f\u0442\u0438\u043c\u0438\u0437\u0438\u0440\u0443\u0435\u0442 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438.',
+                    step3_title: '\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u0435 \u0438\u043d\u0441\u0430\u0439\u0442\u044b', step3_desc: '\u041f\u043e\u043b\u0443\u0447\u0430\u0439\u0442\u0435 \u0434\u0435\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u044b, \u0432\u0438\u0437\u0443\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0438 \u0438 \u0434\u0435\u0439\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u0438\u043d\u0441\u0430\u0439\u0442\u044b.',
+                    conn_title: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u0441\u044c \u043a \u0440\u0438\u0442\u0435\u0439\u043b\u044c\u043d\u044b\u043c \u0441\u0438\u0441\u0442\u0435\u043c\u0430\u043c', conn_subtitle: '\u0411\u0435\u0441\u0448\u043e\u0432\u043d\u0430\u044f \u0438\u043d\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u044f \u0441 \u0443\u0436\u0435 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u043c\u044b\u043c\u0438 \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u0430\u043c\u0438',
+                    conn_databases: '\u0411\u0430\u0437\u044b \u0434\u0430\u043d\u043d\u044b\u0445', conn_cloud: '\u041e\u0431\u043b\u0430\u0447\u043d\u044b\u0435 \u0445\u0440\u0430\u043d\u0438\u043b\u0438\u0449\u0430', conn_ecommerce: 'E-commerce', conn_pos: '\u041f\u041e\u0421-\u0441\u0438\u0441\u0442\u0435\u043c\u044b', conn_erp: 'ERP-\u0441\u0438\u0441\u0442\u0435\u043c\u044b',
+                    conn_file: '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0444\u0430\u0439\u043b\u043e\u0432', conn_file_desc: '\u0424\u0430\u0439\u043b\u044b CSV, Excel, JSON', conn_available: '\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e',
+                    upload_pill: '\u0411\u044b\u0441\u0442\u0440\u044b\u0439 \u0441\u0442\u0430\u0440\u0442 \u0441 CSV', upload_title: '\u0411\u044b\u0441\u0442\u0440\u044b\u0439 \u0441\u0442\u0430\u0440\u0442 \u0441 CSV',
+                    upload_subtitle: '\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u0430\u043d\u043d\u044b\u0435 \u043e \u043f\u0440\u043e\u0434\u0430\u0436\u0430\u0445 \u0438 \u043f\u043e\u043b\u0443\u0447\u0430\u0439\u0442\u0435 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u044b \u0437\u0430 \u043c\u0438\u043d\u0443\u0442\u044b.',
+                    upload_label: '\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c CSV \u043f\u0440\u043e\u0434\u0430\u0436', upload_required_cols: '\u041e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u044b\u0435 \u0441\u0442\u043e\u043b\u0431\u0446\u044b:', upload_btn: '\u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u0440\u043e\u0433\u043d\u043e\u0437',
+                    upload_sample_btn: '\u041f\u0440\u0438\u043c\u0435\u0440 CSV', upload_format: '\u0424\u043e\u0440\u043c\u0430\u0442 CSV', upload_minimal: '\u043c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u044b\u0439', upload_copy: '\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c',
+                    upload_supply_link: '\u041f\u043b\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u043f\u043e\u0441\u0442\u0430\u0432\u043e\u043a', upload_after_info: '\u041f\u043e\u0441\u043b\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u043c\u043e\u0436\u043d\u043e \u0444\u0438\u043b\u044c\u0442\u0440\u043e\u0432\u0430\u0442\u044c \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u044b \u0438 \u0441\u043a\u0430\u0447\u0430\u0442\u044c \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u044b.',
+                    upload_connectors_link: '\u041d\u0443\u0436\u043d\u043e \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f \u043a \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u043c \u0441\u0438\u0441\u0442\u0435\u043c\u0430\u043c?', upload_view_connectors: '\u0412\u0441\u0435 \u043a\u043e\u043d\u043d\u0435\u043a\u0442\u043e\u0440\u044b',
+                    upload_progress: '\u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0430, \u043f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435...',
+                    insights_title: '\u0418\u0437 \u043b\u0430\u0431\u043e\u0440\u0430\u0442\u043e\u0440\u0438\u0438 PiTensor', insights_subtitle: '\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0438\u043d\u0441\u0430\u0439\u0442\u044b \u043e \u0440\u0438\u0442\u0435\u0439\u043b\u044c\u043d\u043e\u043c \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0438',
+                    insight1_type: 'WHITE PAPER', insight1_title: '\u0421\u0435\u0437\u043e\u043d\u043d\u043e\u0435 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435', insight1_desc: '\u041a\u0430\u043a \u043c\u043e\u0434\u0435\u043b\u0438 \u0418\u0418 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u0443\u044e\u0442 \u0441\u0435\u0437\u043e\u043d\u043d\u044b\u0439 \u0441\u043f\u0440\u043e\u0441 \u0441 \u0442\u043e\u0447\u043d\u043e\u0441\u0442\u044c\u044e 94%.',
+                    insight2_type: '\u041a\u0415\u0419\u0421-\u0421\u0422\u0410\u0414\u0418', insight2_title: '$2,3 \u043c\u043b\u043d \u0441\u044d\u043a\u043e\u043d\u043e\u043c\u043b\u0435\u043d\u043e', insight2_desc: '\u041a\u0430\u043a \u043a\u0440\u0443\u043f\u043d\u044b\u0439 \u043c\u043e\u0434\u043d\u044b\u0439 \u0431\u0440\u0435\u043d\u0434 \u0441\u043d\u0438\u0437\u0438\u043b \u0437\u0430\u0442\u0440\u0430\u0442\u044b \u043d\u0430 \u0437\u0430\u043f\u0430\u0441\u044b \u043d\u0430 45%.',
+                    insight3_type: '\u0421\u0422\u0410\u0422\u042c\u042f', insight3_title: '\u0411\u0443\u0434\u0443\u0449\u0435\u0435 \u0440\u0438\u0442\u0435\u0439\u043b\u0430: \u0418\u0418-\u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0437\u0430\u043f\u0430\u0441\u0430\u043c\u0438', insight3_desc: '\u041f\u043e\u0447\u0435\u043c\u0443 78% \u0440\u0443\u043a\u043e\u0432\u043e\u0434\u0438\u0442\u0435\u043b\u0435\u0439 \u0440\u0438\u0442\u0435\u0439\u043b\u0430 \u0441\u0447\u0438\u0442\u0430\u044e\u0442 \u0418\u0418-\u043f\u0440\u043e\u0433\u043d\u043e\u0437 \u043a\u043b\u044e\u0447\u0435\u0432\u044b\u043c \u0432 2026 \u0433.',
+                    insight_read_more: '\u0427\u0438\u0442\u0430\u0442\u044c \u0434\u0430\u043b\u0435\u0435',
+                    newsletter_title: '\u0411\u0443\u0434\u044c\u0442\u0435 \u0432 \u043a\u0443\u0440\u0441\u0435 \u0442\u0440\u0435\u043d\u0434\u043e\u0432 \u0440\u0438\u0442\u0435\u0439\u043b\u0430', newsletter_subtitle: '\u0415\u0436\u0435\u043d\u0435\u0434\u0435\u043b\u044c\u043d\u044b\u0435 \u0438\u043d\u0441\u0430\u0439\u0442\u044b \u043e\u0431 \u0418\u0418-\u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0438.',
+                    newsletter_placeholder: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 ваш e-mail', newsletter_subscribe: '\u041f\u043e\u0434\u043f\u0438\u0441\u0430\u0442\u044c\u0441\u044f', newsletter_disclaimer: '\u0411\u0435\u0437 \u0441\u043f\u0430\u043c\u0430, \u043e\u0442\u043f\u0438\u0441\u043a\u0430 \u0432 \u043b\u044e\u0431\u043e\u0435 \u0432\u0440\u0435\u043c\u044f.',
+                    cta_title: '\u0413\u043e\u0442\u043e\u0432\u044b \u0440\u0435\u0432\u043e\u043b\u044e\u0446\u0438\u043e\u043d\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0442\u0440\u0430\u0442\u0435\u0433\u0438\u044e \u043f\u0440\u043e\u0434\u0430\u0436?', cta_subtitle: '\u041f\u0440\u0438\u0441\u043e\u0435\u0434\u0438\u043d\u044f\u0439\u0442\u0435\u0441\u044c \u043a \u0442\u044b\u0441\u044f\u0447\u0430\u043c \u043f\u0440\u0435\u0434\u043f\u0440\u0438\u044f\u0442\u0438\u0439, \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e\u0449\u0438\u0445 \u0418\u0418', cta_btn: '\u041d\u0430\u0447\u0430\u0442\u044c \u0431\u0435\u0441\u043f\u043b\u0430\u0442\u043d\u044b\u0439 \u043f\u0440\u043e\u0431\u043d\u044b\u0439 \u043f\u0435\u0440\u0438\u043e\u0434',
+                    footer_desc: '\u041f\u043e\u043c\u043e\u0433\u0430\u0435\u043c \u043f\u0440\u0435\u0434\u043f\u0440\u0438\u044f\u0442\u0438\u044f\u043c \u0441 \u043f\u0440\u043e\u0433\u043d\u043e\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435\u043c \u043f\u0440\u043e\u0434\u0430\u0436 \u043d\u0430 \u043e\u0441\u043d\u043e\u0432\u0435 \u0418\u0418 \u0441 2026 \u0433.', footer_quick_links: '\u0411\u044b\u0441\u0442\u0440\u044b\u0435 \u0441\u0441\u044b\u043b\u043a\u0438',
+                    footer_contact: '\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u044b', footer_copyright: '\u00a9 2026 PiTensor. \u0412\u0441\u0435 \u043f\u0440\u0430\u0432\u0430 \u0437\u0430\u0449\u0438\u0449\u0435\u043d\u044b.',
+                    pricing_title: '\u0426\u0435\u043d\u044b', pricing_contact_info: '\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u043d\u0430\u044f \u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u044f \u043f\u043e \u0446\u0435\u043d\u0430\u043c', pricing_reach_out: '\u0421\u0432\u044f\u0436\u0438\u0442\u0435\u0441\u044c \u0441 \u043d\u0430\u043c\u0438 \u0434\u043b\u044f \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f \u043f\u043b\u0430\u043d\u043e\u0432 \u0438 \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u043f\u0440\u0435\u0434\u043b\u043e\u0436\u0435\u043d\u0438\u044f.', pricing_close: '\u0417\u0430\u043a\u0440\u044b\u0442\u044c'
                 }
             };
 
@@ -2106,7 +2236,7 @@
             function storageSet(key, value) { try { localStorage.setItem(key, value); return true; } catch (e) { return false; } }
             function getLang() {
                 const saved = (storageGet(STORAGE_KEY) || getCookie(STORAGE_KEY) || (window.__pitensor_lang || '')).toLowerCase();
-                return (saved === 'id' || saved === 'en' || saved === 'fr') ? saved : 'en';
+                return (saved === 'id' || saved === 'en' || saved === 'fr' || saved === 'nl' || saved === 'ru') ? saved : 'en';
             }
             function t(key) {
                 const lang = getLang();
@@ -2130,7 +2260,7 @@
             }
             function setLang(lang) {
                 const next = (lang || '').toLowerCase();
-                if (next !== 'en' && next !== 'id' && next !== 'fr') return;
+                if (next !== 'en' && next !== 'id' && next !== 'fr' && next !== 'nl' && next !== 'ru') return;
                 window.__pitensor_lang = next;
                 storageSet(STORAGE_KEY, next);
                 setCookie(STORAGE_KEY, next);
