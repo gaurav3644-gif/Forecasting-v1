@@ -308,7 +308,7 @@
         <div class="col-md-4">
           <div class="card card-soft pt-card">
             <div class="card-body">
-              <div class="text-muted small">Actual Sales{% if latest_sales_month %} ({{ latest_sales_month }}){% endif %}</div>
+              <div class="text-muted small"><span data-i18n="results_actual_sales">Actual Sales</span>{% if latest_sales_month %} ({{ latest_sales_month }}){% endif %}</div>
               <div class="h5 mb-0">{{ "{:,.0f}".format(latest_sales_value) if latest_sales_value is not none else "0" }}</div>
             </div>
           </div>
@@ -316,7 +316,7 @@
         <div class="col-md-4">
           <div class="card card-soft pt-card">
             <div class="card-body">
-              <div class="text-muted small">Forecast ({{ forecast_month_label or "same month" }})</div>
+              <div class="text-muted small"><span data-i18n="results_forecast_kpi">Forecast</span> ({{ forecast_month_label or "same month" }})</div>
               <div class="h5 mb-0">{{ "{:,.0f}".format(latest_forecast_value) if latest_forecast_value is not none else "0" }}</div>
             </div>
           </div>
@@ -324,7 +324,7 @@
         <div class="col-md-4">
           <div class="card card-soft pt-card">
             <div class="card-body">
-              <div class="text-muted small">Forecast accuracy</div>
+              <div class="text-muted small" data-i18n="results_accuracy">Forecast accuracy</div>
               <div class="h5 mb-0">
                 {% if latest_accuracy is not none %}
                   {{ latest_accuracy | round(1) }}%
@@ -340,7 +340,7 @@
       <div class="card card-soft pt-card mb-3">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <div class="fw-semibold">Forecast Chart</div>
+            <div class="fw-semibold" data-i18n="results_forecast_chart">Forecast Chart</div>
             <div class="d-flex align-items-center gap-2">
               <span id="oos-badge" class="badge text-bg-light border" {% if not oos_imputed %}style="display:none;"{% endif %}>
                 {% if oos_imputed %}OOS imputation applied{% endif %}
@@ -351,7 +351,7 @@
 
           <!-- Quantile Toggle Checkboxes -->
           <div class="mb-3 p-2 bg-light rounded d-flex flex-wrap align-items-center gap-3" style="border: 1px solid rgba(18,24,39,0.08);">
-            <div class="small fw-semibold text-muted">Show Quantiles:</div>
+            <div class="small fw-semibold text-muted" data-i18n="results_show_quantiles">Show Quantiles:</div>
             <div class="form-check form-check-inline mb-0">
               <input class="form-check-input quantile-toggle" type="checkbox" id="toggle_p10" value="P10" checked>
               <label class="form-check-label small" for="toggle_p10">P10</label>
@@ -389,12 +389,12 @@
       <div class="card card-soft pt-card mb-3">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-1">
-            <div class="fw-semibold">Local drivers</div>
+            <div class="fw-semibold" data-i18n="results_local_drivers">Local drivers</div>
             {% if local_driver_meta %}
             <span class="text-muted small">{{ local_driver_meta.date }}</span>
             {% endif %}
           </div>
-          <div class="text-muted small mb-2">What drove this specific forecast point (SHAP contributions).</div>
+          <div class="text-muted small mb-2" data-i18n="results_local_drivers_desc">What drove this specific forecast point (SHAP contributions).</div>
 
           {% if local_driver_error %}
             <div class="text-muted small">{{ local_driver_error }}</div>
@@ -412,9 +412,9 @@
               <table class="table table-sm align-middle mb-0">
                 <thead>
                   <tr class="text-muted small">
-                    <th>Driver</th>
-                    <th class="text-end">Contribution</th>
-                    <th class="text-end">Direction</th>
+                    <th data-i18n="results_driver">Driver</th>
+                    <th class="text-end" data-i18n="results_contribution">Contribution</th>
+                    <th class="text-end" data-i18n="results_direction">Direction</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -432,11 +432,11 @@
                     </td>
                     <td class="text-end">
                       {% if d.direction == '↑' %}
-                        <span class="driver-pill pill-up">↑ Positive</span>
+                        <span class="driver-pill pill-up">↑ <span data-i18n="results_positive">Positive</span></span>
                       {% elif d.direction == '↓' %}
-                        <span class="driver-pill pill-down">↓ Negative</span>
+                        <span class="driver-pill pill-down">↓ <span data-i18n="results_negative">Negative</span></span>
                       {% else %}
-                        <span class="driver-pill pill-mixed">— Neutral</span>
+                        <span class="driver-pill pill-mixed">— <span data-i18n="results_neutral">Neutral</span></span>
                       {% endif %}
                     </td>
                   </tr>
@@ -450,17 +450,17 @@
 
       <div class="card card-soft pt-card mb-3">
         <div class="card-body">
-          <div class="fw-semibold mb-1">Directional impact</div>
-          <div class="text-muted small mb-2">High/Medium/Low strength + whether a feature tends to push forecasts up or down.</div>
+          <div class="fw-semibold mb-1" data-i18n="results_directional">Directional impact</div>
+          <div class="text-muted small mb-2" data-i18n="results_directional_desc">High/Medium/Low strength + whether a feature tends to push forecasts up or down.</div>
 
           {% if directional_view and directional_view|length > 0 %}
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
               <thead>
                 <tr class="text-muted small">
-                  <th>Feature</th>
-                  <th style="width: 42%;">Effect</th>
-                  <th class="text-end">Direction</th>
+                  <th data-i18n="results_feature">Feature</th>
+                  <th style="width: 42%;" data-i18n="results_effect">Effect</th>
+                  <th class="text-end" data-i18n="results_direction">Direction</th>
                 </tr>
               </thead>
               <tbody>
@@ -502,10 +502,10 @@
         <div class="card-body">
           <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
-              <div class="fw-semibold">Export</div>
-              <div class="text-muted small">Download the filtered dataset as CSV.</div>
+              <div class="fw-semibold" data-i18n="results_export">Export</div>
+              <div class="text-muted small" data-i18n="results_export_desc">Download the filtered dataset as CSV.</div>
             </div>
-            <button type="button" class="btn btn-outline-success btn-sm" id="downloadCsvBtn">Download CSV</button>
+            <button type="button" class="btn btn-outline-success btn-sm" id="downloadCsvBtn" data-i18n="results_download_csv">Download CSV</button>
           </div>
         </div>
       </div>
@@ -849,7 +849,8 @@
     rowsCount.textContent = fmt(t('results_rows_count'), { n });
   }
   window.addEventListener('pitensor:lang', refreshRowsCountLabel);
-  document.addEventListener('DOMContentLoaded', refreshRowsCountLabel);
+  if (document.readyState !== 'loading') { refreshRowsCountLabel(); }
+  else { document.addEventListener('DOMContentLoaded', refreshRowsCountLabel); }
 
   // Chat assistant
   let chatInFlight = false;
