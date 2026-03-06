@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>{% block title %}Forecasting App{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     {% block head %}{% endblock %}
@@ -286,42 +289,51 @@
             color: rgba(18,24,39,0.88);
         }
 
+        /* ── Global font */
+        body, .zoom-wrapper, button, input, select, textarea {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        }
+
         /* ── Page-level tab navigation (Demand Planning / Supply Plan / Insights) */
         .pt-page-tabs {
             display: inline-flex;
-            align-items: center;
-            gap: 2px;
-            background: rgba(18,24,39,0.04);
-            border-radius: 10px;
-            padding: 3px;
-            border: 1px solid rgba(18,24,39,0.08);
+            align-items: flex-end;
+            gap: 0;
+            background: transparent;
+            border-bottom: 2px solid rgba(18,24,39,0.10);
+            padding: 0;
+            border-radius: 0;
+            border-top: none;
+            border-left: none;
+            border-right: none;
         }
         .pt-page-tab {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 6px 14px;
-            border-radius: 7px;
-            font-size: 0.80rem;
-            font-weight: 600;
-            color: rgba(18,24,39,0.52);
+            padding: 7px 16px;
+            border-radius: 0;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: rgba(18,24,39,0.48);
             text-decoration: none;
             cursor: pointer;
-            transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+            transition: color 0.15s, border-color 0.15s;
             border: none;
+            border-bottom: 2px solid transparent;
             background: transparent;
             white-space: nowrap;
             line-height: 1.3;
+            margin-bottom: -2px;
         }
-        .pt-page-tab:hover { color: rgba(18,24,39,0.80); background: rgba(18,24,39,0.05); text-decoration: none; }
+        .pt-page-tab:hover { color: rgba(18,24,39,0.80); border-bottom-color: rgba(18,24,39,0.22); text-decoration: none; }
         .pt-page-tab.active {
-            background: #fff;
-            color: rgba(18,24,39,0.90);
-            box-shadow: 0 1px 5px rgba(18,24,39,0.10);
-            font-weight: 700;
+            color: #1d4ed8;
+            border-bottom-color: #1d4ed8;
+            font-weight: 600;
             pointer-events: none;
         }
-        .pt-page-tab.disabled { opacity: 0.35; pointer-events: none; }
+        .pt-page-tab.disabled { opacity: 0.32; pointer-events: none; }
 
         /* Connector modal is appended to <body> (outside .zoom-wrapper).
            Apply the same zoom as the wrapper so it matches the page scale. */
