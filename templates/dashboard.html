@@ -167,6 +167,62 @@
   }
   .connector-card h6 { margin-bottom: 6px; font-weight: 700; letter-spacing: -0.01em; }
   .connector-card p { margin-bottom: 0; color: rgba(18,24,39,0.62); font-size: 0.9rem; }
+  /* Provider visual selector inside connector modal */
+  .provider-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .provider-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 12px;
+    border: 2px solid rgba(18,24,39,0.10);
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    min-width: 76px;
+    font-size: 0.72rem;
+    color: rgba(18,24,39,0.65);
+    line-height: 1;
+  }
+  .provider-tile:hover {
+    border-color: #43e97b;
+    box-shadow: 0 2px 10px rgba(67,233,123,0.18);
+  }
+  .provider-tile.active {
+    border-color: #43e97b;
+    background: rgba(67,233,123,0.07);
+    color: rgba(18,24,39,0.88);
+    font-weight: 600;
+  }
+  .provider-initial {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    color: #fff;
+    font-weight: 800;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .provider-name {
+    text-align: center;
+    max-width: 88px;
+    word-break: break-word;
+    white-space: normal;
+  }
+  .connector-modal-icon {
+    font-size: 1.1rem;
+    margin-right: 8px;
+    color: rgba(18,24,39,0.45);
+  }
 </style>
 {% endblock %}
 
@@ -822,6 +878,41 @@
     tick();
   })();
 
+  const CONNECTOR_ICONS = {
+    database:  'fas fa-database',
+    warehouse: 'fas fa-cloud',
+    ecommerce: 'fas fa-shopping-cart',
+    pos:       'fas fa-cash-register',
+    erp:       'fas fa-building',
+  };
+  const PROVIDER_STYLES = {
+    // E-commerce
+    'Shopify':            { color: '#96bf48', icon: 'fab fa-shopify' },
+    'WooCommerce':        { color: '#7f54b3', icon: 'fab fa-woocommerce' },
+    'Magento':            { color: '#f46f25', icon: 'fab fa-magento' },
+    'BigCommerce':        { color: '#34313f', icon: null },
+    // POS
+    'Square':             { color: '#3e4348', icon: null },
+    'Toast':              { color: '#ff4c00', icon: null },
+    'Clover':             { color: '#54b848', icon: null },
+    'Lightspeed':         { color: '#de1818', icon: null },
+    // ERP
+    'SAP':                { color: '#0070f2', icon: null },
+    'Oracle ERP':         { color: '#c74634', icon: null },
+    'Oracle':             { color: '#c74634', icon: null },
+    'Microsoft Dynamics': { color: '#0067b8', icon: 'fab fa-microsoft' },
+    // Warehouse
+    'BigQuery':           { color: '#4285f4', icon: 'fab fa-google' },
+    'Snowflake':          { color: '#29b5e8', icon: null },
+    'Redshift':           { color: '#ff9900', icon: 'fab fa-aws' },
+    'Azure Synapse':      { color: '#0078d4', icon: 'fab fa-microsoft' },
+    // Database
+    'MySQL':              { color: '#4479a1', icon: 'fab fa-mysql' },
+    'PostgreSQL':         { color: '#336791', icon: null },
+    'SQL Server':         { color: '#0078d4', icon: 'fab fa-microsoft' },
+    'Other':              { color: '#6c757d', icon: 'fas fa-database' },
+  };
+
   function ensureConnectorBackdrop() {
     let bd = document.getElementById('connector-backdrop');
     if (!bd) {
@@ -845,21 +936,28 @@
       modal.tabIndex = -1;
       document.body.appendChild(modal);
     }
+    const catIconCls = CONNECTOR_ICONS[connector] || 'fas fa-plug';
     const body = fields.map(f => {
       const name = String(f.name || '');
       const type = String(f.type || 'text');
       const label = String(f.label || name);
       const defv = (f.default !== undefined && f.default !== null) ? String(f.default) : '';
       if (type === 'select' && Array.isArray(f.options)) {
-        const opts = f.options.map(o => {
+        // Visual provider tile grid instead of plain <select>
+        const tiles = f.options.map(o => {
           const ov = String(o);
-          const sel = (defv && ov === defv) ? 'selected' : '';
-          return `<option value="${ov.replace(/\"/g,'&quot;')}" ${sel}>${ov}</option>`;
+          const ps = PROVIDER_STYLES[ov] || { color: '#6c757d', icon: null };
+          const isActive = defv && ov === defv;
+          const iconHtml = ps.icon
+            ? `<i class="${ps.icon}" style="font-size:1.4rem;color:${ps.color};"></i>`
+            : `<span class="provider-initial" style="background:${ps.color};">${ov.charAt(0)}</span>`;
+          return `<button type="button" class="provider-tile${isActive ? ' active' : ''}" data-value="${ov.replace(/\"/g,'&quot;')}">${iconHtml}<span class="provider-name">${ov}</span></button>`;
         }).join('');
         return `
           <div class="mb-3">
-            <label class="form-label">${label}</label>
-            <select class="form-select" name="${name}">${opts}</select>
+            <label class="form-label fw-semibold">${label}</label>
+            <div class="provider-grid">${tiles}</div>
+            <input type="hidden" name="${name}" value="${defv.replace(/\"/g,'&quot;')}">
           </div>`;
       }
       return `
@@ -873,7 +971,7 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Connect: ${connectorLabel}</h5>
+            <h5 class="modal-title"><i class="${catIconCls} connector-modal-icon"></i>Connect: ${connectorLabel}</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
@@ -888,6 +986,18 @@
           </div>
         </div>
       </div>`;
+
+    // Wire up provider tile selection
+    modal.querySelectorAll('.provider-grid').forEach(grid => {
+      const hidden = grid.nextElementSibling;
+      grid.querySelectorAll('.provider-tile').forEach(btn => {
+        btn.addEventListener('click', function () {
+          grid.querySelectorAll('.provider-tile').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          if (hidden) hidden.value = btn.dataset.value;
+        });
+      });
+    });
 
     const modalInstance = new bootstrap.Modal(modal, { backdrop: false, keyboard: true, focus: true });
     const bd = ensureConnectorBackdrop();
