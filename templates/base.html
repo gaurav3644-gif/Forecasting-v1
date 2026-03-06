@@ -124,10 +124,20 @@
             width: auto;
             display: block;
         }
+        .pt-logo-text {
+            font-size: 1.45rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            background: linear-gradient(90deg, #4DCCF0 0%, #38C8B0 25%, #43E97B 58%, #85E86A 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            color: transparent;
+        }
         @media (max-width: 576px) {
-            .pt-navbar-logo {
-                height: 24px;
-            }
+            .pt-navbar-logo { height: 24px; }
+            .pt-logo-text { font-size: 1.25rem; }
         }
 
         /* Shared "modern" UI primitives (opt-in via classes). */
@@ -912,7 +922,7 @@
     <nav class="navbar navbar-expand-lg navbar-light pt-app-navbar mb-4">
         <div class="container-fluid">
             <a class="navbar-brand pt-navbar-brand" href="/" aria-label="PiTensor Home">
-                <img class="pt-navbar-logo" src="/static/pitensor-logo-cropped.png" alt="PiTensor">
+                <span class="pt-logo-text">PiTensor</span>
             </a>
             <div class="ms-auto d-flex align-items-center gap-2">
                 <div class="lang-picker" data-lang="en" aria-label="Language">
