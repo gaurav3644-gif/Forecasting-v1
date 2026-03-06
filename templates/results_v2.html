@@ -194,8 +194,11 @@
         <span class="pt-dot" aria-hidden="true"></span>
         Grain: {% for g in grain %}{{ g }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
       </span>
-      <a href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener"><span data-i18n="results_supply_plan">Supply Plan</span></a>
-      <a href="/insights{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></a>
+      <nav class="pt-page-tabs">
+        <span class="pt-page-tab active"><i class="fa-solid fa-chart-line" style="font-size:0.75rem;"></i> <span data-i18n="nav_results">Demand Planning</span></span>
+        <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-layer-group" style="font-size:0.75rem;"></i> <span data-i18n="results_supply_plan">Supply Plan</span></a>
+        <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/insights{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-lightbulb" style="font-size:0.75rem;"></i> <span data-i18n="nav_insights">Insights</span></a>
+      </nav>
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal"><span data-i18n="results_ai_assistant">AI Assistant</span></button>
     </div>
   </div>

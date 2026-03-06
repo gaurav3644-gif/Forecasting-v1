@@ -257,18 +257,18 @@
     .pt-use-btn {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 16px;
-        border-radius: 999px;
-        background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%);
-        border: none;
-        color: #0b1410;
-        font-size: 0.82rem;
-        font-weight: 700;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: rgba(67,233,123,0.08);
+        border: 1px solid rgba(67,233,123,0.40);
+        color: #16a34a;
+        font-size: 0.88rem;
         cursor: pointer;
-        transition: transform 0.13s, box-shadow 0.13s;
-        box-shadow: 0 4px 14px rgba(67,233,123,0.20);
-        white-space: nowrap;
+        transition: background 0.13s, border-color 0.13s, transform 0.12s, box-shadow 0.12s;
+        flex-shrink: 0;
+        padding: 0;
     }
     .pt-del-btn {
         display: inline-flex;
@@ -296,14 +296,12 @@
         gap: 8px;
     }
     .pt-use-btn:hover {
+        background: rgba(67,233,123,0.18);
+        border-color: rgba(67,233,123,0.65);
         transform: translateY(-1px);
-        box-shadow: 0 8px 20px rgba(67,233,123,0.28);
+        box-shadow: 0 3px 10px rgba(67,233,123,0.18);
     }
-    .pt-use-btn:active {
-        transform: translateY(0);
-        box-shadow: 0 4px 10px rgba(67,233,123,0.18);
-    }
-    .pt-use-btn svg { flex-shrink: 0; }
+    .pt-use-btn:active { transform: translateY(0); }
 
     /* Empty state */
     .pt-empty-state {
@@ -563,11 +561,10 @@
                         <div class="pt-row-actions">
                             <form method="POST" action="/data/use" style="display:contents;">
                                 <input type="hidden" name="dataset_id" value="{{ ds.dataset_id }}">
-                                <button type="submit" class="pt-use-btn">
-                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                                        <path d="M8 1v14M1 8l7-7 7 7" stroke="#0b1410" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <button type="submit" class="pt-use-btn" title="Use for Forecast">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                                        <path d="M8 1v14M1 8l7-7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                     </svg>
-                                    Use for Forecast
                                 </button>
                             </form>
                             <form method="POST" action="/data/delete" style="display:contents;" class="pt-delete-form">
@@ -597,10 +594,10 @@
             <p class="pt-empty-title">No datasets yet</p>
             <p class="pt-empty-hint">Upload a CSV or connect a data source to get started.</p>
             <div class="pt-empty-actions">
-                <a href="/" class="pt-use-btn" style="text-decoration:none;">
+                <a href="/" class="pt-upload-btn" style="text-decoration:none;">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                        <path d="M8 11V1M4 5l4-4 4 4" stroke="#0b1410" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M1.5 11v2.5A1.5 1.5 0 0 0 3 15h10a1.5 1.5 0 0 0 1.5-1.5V11" stroke="#0b1410" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M8 11V1M4 5l4-4 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M1.5 11v2.5A1.5 1.5 0 0 0 3 15h10a1.5 1.5 0 0 0 1.5-1.5V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
                     Upload CSV
                 </a>
