@@ -346,10 +346,67 @@
                 {% endif %}
               </div>
 
-              <button type="submit" class="btn btn-primary"><span data-i18n="results_apply">Apply</span></button>
-              <div class="text-muted small">Tip: clicking “All” removes that filter.</div>
+              <button type=”submit” class=”btn btn-primary”><span data-i18n=”results_apply”>Apply</span></button>
+              <div class=”text-muted small”>Tip: clicking “All” removes that filter.</div>
             </form>
           </div>
+        </div>
+      </div>
+
+      <!-- ── Promotion Simulator ───────────────────────── -->
+      <div class=”card card-soft pt-card mt-3”>
+        <div class=”card-body p-3”>
+          <div class=”promo-panel-label mb-3”>
+            <i class=”fa-solid fa-tags me-1”></i>Promotion Simulator
+          </div>
+
+          <div class=”mb-2”>
+            <label class=”form-label small fw-semibold mb-1”>Promotion type</label>
+            <select class=”form-select form-select-sm” id=”promo-type”>
+              <option value=”discount”>Discount</option>
+            </select>
+          </div>
+
+          <div class=”mb-2”>
+            <label class=”form-label small fw-semibold mb-1”>Discount</label>
+            <div class=”input-group input-group-sm”>
+              <input type=”number” class=”form-control” id=”promo-discount” value=”10” min=”1” max=”99” step=”1”>
+              <span class=”input-group-text”>%</span>
+            </div>
+          </div>
+
+          <div class=”mb-2”>
+            <label class=”form-label small fw-semibold mb-1”>Promo start</label>
+            <input type=”month” class=”form-control form-control-sm” id=”promo-start” value=”2025-11”>
+          </div>
+
+          <div class=”mb-2”>
+            <label class=”form-label small fw-semibold mb-1”>Promo end</label>
+            <input type=”month” class=”form-control form-control-sm” id=”promo-end” value=”2025-12”>
+          </div>
+
+          <div class=”mb-3”>
+            <label class=”form-label small fw-semibold mb-1”>Elasticity</label>
+            <input type=”number” class=”form-control form-control-sm” id=”promo-elasticity” value=”-1.8” step=”0.1”>
+            <div class=”mt-1” style=”font-size:0.70rem; color:rgba(18,24,39,0.45);”>
+              Demand sensitivity to price. Negative for normal goods (e.g. −1.8).<br>
+              See Insights → Price Elasticity for item-level values.
+            </div>
+          </div>
+
+          <div class=”d-grid gap-2”>
+            <button type=”button” class=”btn btn-sm btn-primary” id=”promo-run-btn”>
+              <i class=”fa-solid fa-play me-1” style=”font-size:0.72rem;”></i>Run Simulation
+            </button>
+            <div class=”d-flex gap-2”>
+              <button type=”button” class=”btn btn-sm btn-outline-success flex-grow-1” id=”promo-save-btn” disabled>
+                <i class=”fa-solid fa-floppy-disk me-1” style=”font-size:0.72rem;”></i>Save Scenario
+              </button>
+              <button type=”button” class=”btn btn-sm btn-outline-secondary” id=”promo-reset-btn”>Reset</button>
+            </div>
+          </div>
+
+          <div id=”promo-scenarios” class=”mt-3”></div>
         </div>
       </div>
     </div>
@@ -387,9 +444,6 @@
           </div>
         </div>
       </div>
-
-      <div class="row g-3 align-items-start">
-        <div class="col-xl-8">
 
       <div class="card card-soft pt-card mb-3">
         <div class="card-body">
@@ -585,68 +639,6 @@
         </div>
       </div>
 
-        </div><!-- /.col-xl-8 chart-content -->
-
-        <!-- ── Promo Simulator Panel ─────────────────────── -->
-        <div class="col-xl-4">
-          <div class="card card-soft pt-card" style="position:sticky; top:1rem;">
-            <div class="card-body p-3">
-              <div class="promo-panel-label mb-3">
-                <i class="fa-solid fa-tags me-1"></i>Promotion Simulator
-              </div>
-
-              <div class="mb-2">
-                <label class="form-label small fw-semibold mb-1">Promotion type</label>
-                <select class="form-select form-select-sm" id="promo-type">
-                  <option value="discount">Discount</option>
-                </select>
-              </div>
-
-              <div class="mb-2">
-                <label class="form-label small fw-semibold mb-1">Discount</label>
-                <div class="input-group input-group-sm">
-                  <input type="number" class="form-control" id="promo-discount" value="10" min="1" max="99" step="1">
-                  <span class="input-group-text">%</span>
-                </div>
-              </div>
-
-              <div class="mb-2">
-                <label class="form-label small fw-semibold mb-1">Promo start</label>
-                <input type="month" class="form-control form-control-sm" id="promo-start" value="2025-11">
-              </div>
-
-              <div class="mb-2">
-                <label class="form-label small fw-semibold mb-1">Promo end</label>
-                <input type="month" class="form-control form-control-sm" id="promo-end" value="2025-12">
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label small fw-semibold mb-1">Elasticity</label>
-                <input type="number" class="form-control form-control-sm" id="promo-elasticity" value="-1.8" step="0.1">
-                <div class="mt-1" style="font-size:0.70rem; color:rgba(18,24,39,0.45);">
-                  Demand sensitivity to price. Negative for normal goods (e.g. −1.8).<br>
-                  See Insights → Price Elasticity for item-level values.
-                </div>
-              </div>
-
-              <div class="d-grid gap-2">
-                <button type="button" class="btn btn-sm btn-primary" id="promo-run-btn">
-                  <i class="fa-solid fa-play me-1" style="font-size:0.72rem;"></i>Run Simulation
-                </button>
-                <div class="d-flex gap-2">
-                  <button type="button" class="btn btn-sm btn-outline-success flex-grow-1" id="promo-save-btn" disabled>
-                    <i class="fa-solid fa-floppy-disk me-1" style="font-size:0.72rem;"></i>Save Scenario
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" id="promo-reset-btn">Reset</button>
-                </div>
-              </div>
-
-              <div id="promo-scenarios" class="mt-3"></div>
-            </div>
-          </div>
-        </div><!-- /.col-xl-4 promo -->
-
-      </div><!-- /.row promo sub-row -->
     </div>
   </div>
 </div>
