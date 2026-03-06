@@ -165,6 +165,54 @@
     font-weight: 500;
     font-size: 0.95rem;
   }
+
+  /* ── Promotion Simulator ───────────────────────────────── */
+  .promo-panel-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: rgba(18,24,39,0.42);
+  }
+  .promo-scenario-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    background: rgba(18,24,39,0.03);
+    border: 1px solid rgba(18,24,39,0.07);
+    font-size: 0.75rem;
+  }
+  /* ── Planning Grid ─────────────────────────────────────── */
+  .planning-grid { font-size: 0.78rem; }
+  .planning-grid thead th {
+    font-size: 0.71rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(18,24,39,0.50);
+    white-space: nowrap;
+    padding: 8px 10px;
+    border-bottom: 2px solid rgba(18,24,39,0.09);
+  }
+  .planning-grid tbody td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(18,24,39,0.05);
+    white-space: nowrap;
+  }
+  .planning-grid td[contenteditable="true"] {
+    background: rgba(67,233,123,0.04);
+    cursor: text;
+  }
+  .planning-grid td[contenteditable="true"]:focus {
+    outline: 2px solid rgba(67,233,123,0.55);
+    outline-offset: -1px;
+    background: rgba(67,233,123,0.09);
+  }
+  .planning-grid tr.promo-row { background: rgba(249,115,22,0.03); }
+  .promo-lift-pos { color: #16a34a; font-weight: 600; }
+  .promo-lift-zero { color: rgba(18,24,39,0.30); }
 </style>
 {% endblock %}
 
@@ -340,6 +388,9 @@
         </div>
       </div>
 
+      <div class="row g-3 align-items-start">
+        <div class="col-xl-8">
+
       <div class="card card-soft pt-card mb-3">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center mb-2">
@@ -386,6 +437,27 @@
           {% endif %}
 
           <div id="plot-content">{{ plot_html | safe }}</div>
+        </div>
+      </div>
+
+      <!-- ── Editable Planning Grid ──────────────────────── -->
+      <div class="card card-soft pt-card mb-3" id="planning-grid-card" style="display:none;">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+              <div class="fw-semibold">Editable Planning Grid</div>
+              <div class="small text-muted">Consensus Planning — edit any cell to adjust your final forecast.</div>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" id="grid-export-btn">
+              <i class="fa-solid fa-download me-1" style="font-size:0.72rem;"></i>Export
+            </button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 planning-grid" id="planning-grid-table">
+              <thead id="planning-grid-head"></thead>
+              <tbody id="planning-grid-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -512,6 +584,69 @@
           </div>
         </div>
       </div>
+
+        </div><!-- /.col-xl-8 chart-content -->
+
+        <!-- ── Promo Simulator Panel ─────────────────────── -->
+        <div class="col-xl-4">
+          <div class="card card-soft pt-card" style="position:sticky; top:1rem;">
+            <div class="card-body p-3">
+              <div class="promo-panel-label mb-3">
+                <i class="fa-solid fa-tags me-1"></i>Promotion Simulator
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small fw-semibold mb-1">Promotion type</label>
+                <select class="form-select form-select-sm" id="promo-type">
+                  <option value="discount">Discount</option>
+                </select>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small fw-semibold mb-1">Discount</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" class="form-control" id="promo-discount" value="10" min="1" max="99" step="1">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small fw-semibold mb-1">Promo start</label>
+                <input type="month" class="form-control form-control-sm" id="promo-start" value="2025-11">
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label small fw-semibold mb-1">Promo end</label>
+                <input type="month" class="form-control form-control-sm" id="promo-end" value="2025-12">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label small fw-semibold mb-1">Elasticity</label>
+                <input type="number" class="form-control form-control-sm" id="promo-elasticity" value="-1.8" step="0.1">
+                <div class="mt-1" style="font-size:0.70rem; color:rgba(18,24,39,0.45);">
+                  Demand sensitivity to price. Negative for normal goods (e.g. −1.8).<br>
+                  See Insights → Price Elasticity for item-level values.
+                </div>
+              </div>
+
+              <div class="d-grid gap-2">
+                <button type="button" class="btn btn-sm btn-primary" id="promo-run-btn">
+                  <i class="fa-solid fa-play me-1" style="font-size:0.72rem;"></i>Run Simulation
+                </button>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-success flex-grow-1" id="promo-save-btn" disabled>
+                    <i class="fa-solid fa-floppy-disk me-1" style="font-size:0.72rem;"></i>Save Scenario
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="promo-reset-btn">Reset</button>
+                </div>
+              </div>
+
+              <div id="promo-scenarios" class="mt-3"></div>
+            </div>
+          </div>
+        </div><!-- /.col-xl-4 promo -->
+
+      </div><!-- /.row promo sub-row -->
     </div>
   </div>
 </div>
@@ -879,6 +1014,228 @@
     box.scrollTop = box.scrollHeight;
   }
 
+  // ────────────────────────────────────────────────────────
+  // PROMOTION SIMULATOR
+  // ────────────────────────────────────────────────────────
+
+  var _promoScenarios = [];   // saved scenarios [{discount,startYM,endYM,elasticity,color,label,data}]
+  var _pendingPromo   = null; // preview scenario (unsaved)
+  var _promoColors    = ['#f97316','#a855f7','#ef4444','#14b8a6','#eab308','#0ea5e9'];
+
+  // Find the P50 / Forecast series as the baseline
+  function _getBaselineSeries() {
+    var chart = _getHcChart();
+    if (!chart) return null;
+    var s = chart.series.find(function(s) { return s.name && /P50|Forecast\s*\(P50\)/i.test(s.name); });
+    if (!s) s = chart.series.find(function(s) { return s.name && /forecast/i.test(s.name) && !/P10|P30|P60|P90/.test(s.name); });
+    if (!s) s = chart.series.find(function(s) { return s.name && !/Sales|sales|P10|P30|P60|P90/i.test(s.name); });
+    return s || null;
+  }
+
+  // Chart x-axis categories
+  function _getChartMonths() {
+    var chart = _getHcChart();
+    if (!chart) return [];
+    return (chart.xAxis && chart.xAxis[0] && chart.xAxis[0].categories) ? chart.xAxis[0].categories : [];
+  }
+
+  // Convert "Nov 2025", "2025-11", "2025-11-01" → "YYYY-MM"
+  function _toYM(s) {
+    if (!s) return '';
+    s = String(s).trim();
+    if (/^\d{4}-\d{2}$/.test(s)) return s;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,7);
+    var MON = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+    var m = s.match(/^([A-Za-z]{3})\s+(\d{4})$/);
+    if (m) return m[2] + '-' + (MON[m[1]] || '01');
+    return '';
+  }
+
+  // Compute promo forecast data array
+  function _computePromo(baseline, startYM, endYM, discount, elasticity) {
+    var months = _getChartMonths();
+    return baseline.data.map(function(pt, i) {
+      var y = (pt && pt.y !== undefined) ? pt.y : pt;
+      if (y === null || y === undefined) return null;
+      var ym = _toYM(months[i] || '');
+      var inPeriod = ym && ym >= startYM && ym <= endYM;
+      if (inPeriod) {
+        // % change in demand = |e| × discount%
+        return Math.round(y * (1 + Math.abs(elasticity) * discount / 100));
+      }
+      return y;
+    });
+  }
+
+  // Add/update a series on the chart
+  function _addPromoSeries(data, label, color, isPreview) {
+    var chart = _getHcChart();
+    if (!chart) return null;
+    return chart.addSeries({
+      name: label,
+      data: data,
+      color: color,
+      type: 'line',
+      lineWidth: 2.5,
+      dashStyle: isPreview ? 'ShortDash' : 'Solid',
+      marker: { enabled: false },
+      zIndex: 6,
+      _isPromo: true,
+      _isPromoPreview: isPreview || false
+    }, true, false);
+  }
+
+  function _removePromoSeries(filter) {
+    var chart = _getHcChart();
+    if (!chart) return;
+    var toRemove = chart.series.filter(filter);
+    toRemove.forEach(function(s) { try { s.remove(false); } catch(e){} });
+    chart.redraw();
+  }
+
+  // Build/refresh the editable planning grid
+  function _buildGrid(scenarios) {
+    var months  = _getChartMonths();
+    var baseline = _getBaselineSeries();
+    var gridCard = document.getElementById('planning-grid-card');
+    var thead    = document.getElementById('planning-grid-head');
+    var tbody    = document.getElementById('planning-grid-body');
+    if (!gridCard || !thead || !tbody || !baseline || !months.length) return;
+
+    var baseData = baseline.data.map(function(pt) { return (pt && pt.y !== undefined) ? pt.y : pt; });
+
+    // Header
+    var hRow = '<tr><th>Month</th><th class="text-end">Baseline Forecast</th>';
+    scenarios.forEach(function(sc, i) {
+      var n = i + 1;
+      hRow += '<th class="text-end" style="color:' + sc.color + '">Promo Lift ' + n + '</th>';
+      hRow += '<th class="text-end" style="color:' + sc.color + '">Final Forecast ' + n + '</th>';
+    });
+    hRow += '</tr>';
+    thead.innerHTML = hRow;
+
+    // Rows
+    var rows = '';
+    months.forEach(function(cat, i) {
+      var base = baseData[i];
+      var ym   = _toYM(String(cat));
+      var anyPromo = scenarios.some(function(sc) { return ym && ym >= sc.startYM && ym <= sc.endYM; });
+      rows += '<tr' + (anyPromo ? ' class="promo-row"' : '') + '>';
+      rows += '<td class="fw-semibold">' + cat + '</td>';
+      rows += '<td class="text-end" contenteditable="true">' + (base != null ? Math.round(base).toLocaleString() : '—') + '</td>';
+      scenarios.forEach(function(sc) {
+        var inPeriod = ym && ym >= sc.startYM && ym <= sc.endYM;
+        var lift     = inPeriod && base != null ? Math.round(base * Math.abs(sc.elasticity) * sc.discount / 100) : 0;
+        var final_f  = base != null ? Math.round(base) + lift : 0;
+        rows += '<td class="text-end ' + (lift > 0 ? 'promo-lift-pos' : 'promo-lift-zero') + '">' + (lift > 0 ? '+' : '') + lift.toLocaleString() + '</td>';
+        rows += '<td class="text-end" contenteditable="true">' + (base != null ? final_f.toLocaleString() : '—') + '</td>';
+      });
+      rows += '</tr>';
+    });
+    tbody.innerHTML = rows;
+    gridCard.style.display = '';
+  }
+
+  function _renderScenarioChips() {
+    var container = document.getElementById('promo-scenarios');
+    if (!container) return;
+    if (!_promoScenarios.length) { container.innerHTML = ''; return; }
+    var html = '<div class="promo-panel-label mb-2 mt-1">Saved Scenarios</div>';
+    _promoScenarios.forEach(function(sc, i) {
+      html += '<div class="promo-scenario-chip mb-1">';
+      html += '<span style="width:10px;height:10px;border-radius:50%;background:' + sc.color + ';flex-shrink:0;display:inline-block;"></span>';
+      html += '<span class="flex-grow-1 text-truncate"><strong>' + sc.discount + '% off</strong> · ' + sc.startYM + ' → ' + sc.endYM + ' · e=' + sc.elasticity + '</span>';
+      html += '<button class="btn btn-link btn-sm p-0 text-danger lh-1" style="font-size:0.8rem;" onclick="_promoRemoveScenario(' + i + ')">✕</button>';
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  }
+
+  // Remove a scenario by index (called from chip onclick)
+  window._promoRemoveScenario = function(idx) {
+    var sc = _promoScenarios[idx];
+    if (!sc) return;
+    _removePromoSeries(function(s) { return s.name === sc.label; });
+    _promoScenarios.splice(idx, 1);
+    _renderScenarioChips();
+    if (_promoScenarios.length) _buildGrid(_promoScenarios);
+    else {
+      var gc = document.getElementById('planning-grid-card');
+      if (gc) gc.style.display = 'none';
+    }
+  };
+
+  // Grid CSV export
+  document.getElementById('grid-export-btn')?.addEventListener('click', function() {
+    var table = document.getElementById('planning-grid-table');
+    if (!table) return;
+    var rows = [Array.from(table.querySelectorAll('thead th')).map(function(th){ return '"' + th.textContent.trim() + '"'; }).join(',')];
+    table.querySelectorAll('tbody tr').forEach(function(tr) {
+      rows.push(Array.from(tr.querySelectorAll('td')).map(function(td){ return '"' + td.textContent.trim().replace(/"/g,'""') + '"'; }).join(','));
+    });
+    var blob = new Blob([rows.join('\n')], {type:'text/csv'});
+    var url  = URL.createObjectURL(blob);
+    var a    = Object.assign(document.createElement('a'), {href:url, download:'planning_grid.csv'});
+    a.click(); URL.revokeObjectURL(url);
+  });
+
+  // Run Simulation
+  document.getElementById('promo-run-btn')?.addEventListener('click', function() {
+    var chart = _getHcChart();
+    if (!chart) { alert('Chart not ready.'); return; }
+    var baseline = _getBaselineSeries();
+    if (!baseline) { alert('Could not locate the baseline forecast series in the chart. Try applying a filter first.'); return; }
+
+    var discount   = parseFloat(document.getElementById('promo-discount').value)   || 10;
+    var startYM    = document.getElementById('promo-start').value;
+    var endYM      = document.getElementById('promo-end').value;
+    var elasticity = parseFloat(document.getElementById('promo-elasticity').value) || -1.8;
+    if (!startYM || !endYM || startYM > endYM) { alert('Promo start must be before or equal to promo end.'); return; }
+
+    var n     = _promoScenarios.length + 1;
+    var color = _promoColors[(n - 1) % _promoColors.length];
+    var label = 'Promo Forecast (Scenario ' + n + ')';
+    var data  = _computePromo(baseline, startYM, endYM, discount, elasticity);
+
+    // Remove any existing preview
+    _removePromoSeries(function(s) { return s.options && s.options._isPromoPreview; });
+
+    _addPromoSeries(data, label, color, true);
+    _pendingPromo = { discount, startYM, endYM, elasticity, color, label, data };
+
+    var saveBtn = document.getElementById('promo-save-btn');
+    if (saveBtn) saveBtn.disabled = false;
+  });
+
+  // Save Scenario
+  document.getElementById('promo-save-btn')?.addEventListener('click', function() {
+    if (!_pendingPromo) return;
+    var chart = _getHcChart();
+    // Convert preview series to solid
+    if (chart) {
+      var ps = chart.series.find(function(s) { return s.options && s.options._isPromoPreview; });
+      if (ps) ps.update({ dashStyle: 'Solid', _isPromoPreview: false }, true);
+    }
+    _promoScenarios.push(_pendingPromo);
+    _pendingPromo = null;
+    document.getElementById('promo-save-btn').disabled = true;
+    _renderScenarioChips();
+    _buildGrid(_promoScenarios);
+  });
+
+  // Reset
+  document.getElementById('promo-reset-btn')?.addEventListener('click', function() {
+    _removePromoSeries(function(s) { return s.options && s.options._isPromo; });
+    _promoScenarios = [];
+    _pendingPromo   = null;
+    var saveBtn = document.getElementById('promo-save-btn');
+    if (saveBtn) saveBtn.disabled = true;
+    _renderScenarioChips();
+    var gc = document.getElementById('planning-grid-card');
+    if (gc) gc.style.display = 'none';
+  });
+
+  // ────────────────────────────────────────────────────────
   document.getElementById('chatForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     if (chatInFlight) return;
