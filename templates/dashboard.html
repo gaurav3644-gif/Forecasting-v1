@@ -167,6 +167,52 @@
   }
   .connector-card h6 { margin-bottom: 6px; font-weight: 700; letter-spacing: -0.01em; }
   .connector-card p { margin-bottom: 0; color: rgba(18,24,39,0.62); font-size: 0.9rem; }
+  /* ── Run-action buttons ─────────────────────────────────────────────── */
+  .run-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .run-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(18,24,39,0.13);
+  }
+  .run-btn:disabled { opacity: 0.42; cursor: not-allowed; }
+  .run-btn-results {
+    background: linear-gradient(90deg, rgba(67,233,123,0.12), rgba(56,249,215,0.10));
+    border-color: rgba(67,233,123,0.55);
+    color: #22a855;
+  }
+  .run-btn-results:hover:not(:disabled) { background: linear-gradient(90deg, rgba(67,233,123,0.22), rgba(56,249,215,0.18)); }
+  .run-btn-insights {
+    background: rgba(124,58,237,0.07);
+    border-color: rgba(124,58,237,0.40);
+    color: #7c3aed;
+  }
+  .run-btn-insights:hover:not(:disabled) { background: rgba(124,58,237,0.14); }
+  .run-btn-supply {
+    background: rgba(59,130,246,0.07);
+    border-color: rgba(59,130,246,0.38);
+    color: #2563eb;
+  }
+  .run-btn-supply:hover:not(:disabled) { background: rgba(59,130,246,0.14); }
+  .run-btn-delete {
+    background: rgba(239,68,68,0.06);
+    border-color: rgba(239,68,68,0.35);
+    color: #dc2626;
+    padding: 4px 9px;
+  }
+  .run-btn-delete:hover:not(:disabled) { background: rgba(239,68,68,0.13); }
   /* Provider visual selector inside connector modal */
   .provider-grid {
     display: flex;
@@ -386,21 +432,21 @@
                               <form method="post" action="/history/load" class="d-inline">
                                 <input type="hidden" name="run_id" value="{{ r.run_id }}">
                                 <input type="hidden" name="target" value="results">
-                                <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                                <button type="submit" class="run-btn run-btn-results"><i class="fas fa-chart-line"></i>Results</button>
                               </form>
                               <form method="post" action="/history/load" class="d-inline">
                                 <input type="hidden" name="run_id" value="{{ r.run_id }}">
                                 <input type="hidden" name="target" value="insights">
-                                <button type="submit" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></button>
+                                <button type="submit" class="run-btn run-btn-insights"><i class="fas fa-lightbulb"></i><span data-i18n="nav_insights">Insights</span></button>
                               </form>
                               <form method="post" action="/history/load" class="d-inline">
                                 <input type="hidden" name="run_id" value="{{ r.run_id }}">
                                 <input type="hidden" name="target" value="supply_plan">
-                                <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
+                                <button type="submit" class="run-btn run-btn-supply" {% if not r.has_supply_plan %}disabled{% endif %}><i class="fas fa-boxes-stacked"></i>Supply Plan</button>
                               </form>
                               <form method="post" action="/history/delete" class="d-inline js-delete-run">
                                 <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                <button type="submit" class="run-btn run-btn-delete"><i class="fas fa-trash-can"></i>Delete</button>
                               </form>
                             </td>
                           </tr>
@@ -685,21 +731,21 @@
                                 <form method="post" action="/history/load" class="d-inline">
                                   <input type="hidden" name="run_id" value="{{ r.run_id }}">
                                   <input type="hidden" name="target" value="results">
-                                  <button type="submit" class="btn btn-outline-primary btn-sm">Results</button>
+                                  <button type="submit" class="run-btn run-btn-results"><i class="fas fa-chart-line"></i>Results</button>
                                 </form>
                                 <form method="post" action="/history/load" class="d-inline">
                                   <input type="hidden" name="run_id" value="{{ r.run_id }}">
                                   <input type="hidden" name="target" value="insights">
-                                  <button type="submit" class="btn btn-outline-secondary btn-sm"><span data-i18n="nav_insights">Insights</span></button>
+                                  <button type="submit" class="run-btn run-btn-insights"><i class="fas fa-lightbulb"></i><span data-i18n="nav_insights">Insights</span></button>
                                 </form>
                                 <form method="post" action="/history/load" class="d-inline">
                                   <input type="hidden" name="run_id" value="{{ r.run_id }}">
                                   <input type="hidden" name="target" value="supply_plan">
-                                  <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not r.has_supply_plan %}disabled{% endif %}>Supply Plan</button>
+                                  <button type="submit" class="run-btn run-btn-supply" {% if not r.has_supply_plan %}disabled{% endif %}><i class="fas fa-boxes-stacked"></i>Supply Plan</button>
                                 </form>
                               <form method="post" action="/history/delete" class="d-inline js-delete-run">
                                 <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                <button type="submit" class="run-btn run-btn-delete"><i class="fas fa-trash-can"></i>Delete</button>
                               </form>
                             </td>
                           </tr>
@@ -1018,14 +1064,21 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(obj)
           });
+          let body = {};
+          try { body = await res.json(); } catch (_) {}
           if (msg) {
             msg.style.display = 'block';
-            msg.textContent = res.ok ? 'Saved. You can now upload CSV to run a forecast (connector pull can be enabled next).' : `Failed (HTTP ${res.status})`;
+            const isError = body.status === 'error' || (!res.ok && body.status !== 'success' && body.status !== 'info');
+            msg.className = isError ? 'text-danger small mt-2' : 'text-success small mt-2';
+            msg.textContent = body.message || (isError
+              ? `Failed (HTTP ${res.status})`
+              : 'Credentials saved. Upload CSV to run a forecast (live connector pull coming soon).');
           }
         } catch (err) {
           if (msg) {
             msg.style.display = 'block';
-            msg.textContent = 'Failed to save connector settings.';
+            msg.className = 'text-danger small mt-2';
+            msg.textContent = 'Network error: could not save connector settings.';
           }
         }
       });
