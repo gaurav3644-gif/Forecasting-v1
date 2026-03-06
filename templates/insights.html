@@ -37,9 +37,7 @@
         {% if header_text %}
           <div class="small text-muted mt-1">{{ header_text }}</div>
         {% endif %}
-      </div>
-      <div class="pt-meta">
-        <nav class="pt-page-tabs">
+        <nav class="pt-page-tabs mt-3">
           <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/results{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-chart-line" style="font-size:0.75rem;"></i> <span data-i18n="nav_results">Demand Planning</span></a>
           <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-layer-group" style="font-size:0.75rem;"></i> <span data-i18n="results_supply_plan">Supply Plan</span></a>
           <span class="pt-page-tab active"><i class="fa-solid fa-lightbulb" style="font-size:0.75rem;"></i> <span data-i18n="nav_insights">Insights</span></span>

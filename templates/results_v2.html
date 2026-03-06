@@ -184,6 +184,11 @@
       <div class="small pt-subtle mb-1">PiTensor</div>
       <h2 class="mb-1 pt-hero-title" style="letter-spacing:-0.02em;">Results</h2>
       <div class="pt-subtle small">Forecast visualization, drivers, and exports.</div>
+      <nav class="pt-page-tabs mt-3">
+        <span class="pt-page-tab active"><i class="fa-solid fa-chart-line" style="font-size:0.75rem;"></i> <span data-i18n="nav_results">Demand Planning</span></span>
+        <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-layer-group" style="font-size:0.75rem;"></i> <span data-i18n="results_supply_plan">Supply Plan</span></a>
+        <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/insights{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-lightbulb" style="font-size:0.75rem;"></i> <span data-i18n="nav_insights">Insights</span></a>
+      </nav>
     </div>
     <div class="pt-meta">
       <span class="pt-chip"><span class="pt-dot" aria-hidden="true"></span>{{ current_date }}</span>
@@ -194,11 +199,6 @@
         <span class="pt-dot" aria-hidden="true"></span>
         Grain: {% for g in grain %}{{ g }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
       </span>
-      <nav class="pt-page-tabs">
-        <span class="pt-page-tab active"><i class="fa-solid fa-chart-line" style="font-size:0.75rem;"></i> <span data-i18n="nav_results">Demand Planning</span></span>
-        <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/supply_plan{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-layer-group" style="font-size:0.75rem;"></i> <span data-i18n="results_supply_plan">Supply Plan</span></a>
-        <a class="pt-page-tab {% if not run_session_id %}disabled{% endif %}" href="/insights{% if run_session_id %}?run_session_id={{ run_session_id }}{% endif %}"><i class="fa-solid fa-lightbulb" style="font-size:0.75rem;"></i> <span data-i18n="nav_insights">Insights</span></a>
-      </nav>
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal"><span data-i18n="results_ai_assistant">AI Assistant</span></button>
     </div>
   </div>
