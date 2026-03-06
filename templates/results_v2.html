@@ -254,7 +254,8 @@
 
   <div class="row g-3">
     <div class="col-lg-4 col-xl-3" id="left-sidebar">
-      <div class="card card-soft pt-card" style="position:sticky; top:1rem;">
+      <div style="position:sticky; top:1rem; max-height:calc(100vh - 2rem); overflow-y:auto; display:flex; flex-direction:column; gap:12px; scrollbar-width:thin;">
+      <div class="card card-soft pt-card">
           <div class="card-body">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <div class="fw-semibold" data-i18n="results_filters">Filters</div>
@@ -408,6 +409,7 @@
             <div id=”promo-scenarios” class=”mt-3”></div>
           </div>
         </div>
+      </div><!-- /.sticky-sidebar-wrapper -->
 
     </div><!-- /.col left-sidebar -->
 
