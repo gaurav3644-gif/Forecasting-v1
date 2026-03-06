@@ -167,52 +167,53 @@
   }
   .connector-card h6 { margin-bottom: 6px; font-weight: 700; letter-spacing: -0.01em; }
   .connector-card p { margin-bottom: 0; color: rgba(18,24,39,0.62); font-size: 0.9rem; }
-  /* ── Run-action buttons ─────────────────────────────────────────────── */
+  /* ── Run-action icon buttons (icon-only, like Data tab) ─────────────── */
+  .run-btn-wrap { display: inline-flex; align-items: center; gap: 5px; }
   .run-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 11px;
-    border-radius: 999px;
-    font-size: 0.76rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     border: 1.5px solid transparent;
+    background: transparent;
     cursor: pointer;
-    transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
-    white-space: nowrap;
-    line-height: 1.4;
+    transition: transform 0.12s, box-shadow 0.12s, background 0.12s, border-color 0.12s;
+    font-size: 0.88rem;
+    flex-shrink: 0;
+    padding: 0;
   }
   .run-btn:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(18,24,39,0.13);
+    box-shadow: 0 3px 10px rgba(18,24,39,0.12);
   }
-  .run-btn:disabled { opacity: 0.42; cursor: not-allowed; }
+  .run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .run-btn-results {
-    background: linear-gradient(90deg, rgba(67,233,123,0.12), rgba(56,249,215,0.10));
-    border-color: rgba(67,233,123,0.55);
-    color: #22a855;
+    background: rgba(67,233,123,0.08);
+    border-color: rgba(67,233,123,0.40);
+    color: #16a34a;
   }
-  .run-btn-results:hover:not(:disabled) { background: linear-gradient(90deg, rgba(67,233,123,0.22), rgba(56,249,215,0.18)); }
+  .run-btn-results:hover:not(:disabled) { background: rgba(67,233,123,0.18); border-color: rgba(67,233,123,0.65); }
   .run-btn-insights {
     background: rgba(124,58,237,0.07);
-    border-color: rgba(124,58,237,0.40);
+    border-color: rgba(124,58,237,0.35);
     color: #7c3aed;
   }
-  .run-btn-insights:hover:not(:disabled) { background: rgba(124,58,237,0.14); }
+  .run-btn-insights:hover:not(:disabled) { background: rgba(124,58,237,0.15); border-color: rgba(124,58,237,0.55); }
   .run-btn-supply {
     background: rgba(59,130,246,0.07);
-    border-color: rgba(59,130,246,0.38);
+    border-color: rgba(59,130,246,0.35);
     color: #2563eb;
   }
-  .run-btn-supply:hover:not(:disabled) { background: rgba(59,130,246,0.14); }
+  .run-btn-supply:hover:not(:disabled) { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.55); }
   .run-btn-delete {
     background: rgba(239,68,68,0.06);
-    border-color: rgba(239,68,68,0.35);
+    border-color: rgba(239,68,68,0.28);
     color: #dc2626;
-    padding: 4px 9px;
   }
-  .run-btn-delete:hover:not(:disabled) { background: rgba(239,68,68,0.13); }
+  .run-btn-delete:hover:not(:disabled) { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.50); }
+  .d-contents { display: contents; }
   /* Provider visual selector inside connector modal */
   .provider-grid {
     display: flex;
@@ -429,25 +430,27 @@
                               {% endif %}
                             </td>
                             <td class="text-end pe-3">
-                              <form method="post" action="/history/load" class="d-inline">
-                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                <input type="hidden" name="target" value="results">
-                                <button type="submit" class="run-btn run-btn-results"><i class="fas fa-chart-line"></i>Results</button>
-                              </form>
-                              <form method="post" action="/history/load" class="d-inline">
-                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                <input type="hidden" name="target" value="insights">
-                                <button type="submit" class="run-btn run-btn-insights"><i class="fas fa-lightbulb"></i><span data-i18n="nav_insights">Insights</span></button>
-                              </form>
-                              <form method="post" action="/history/load" class="d-inline">
-                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                <input type="hidden" name="target" value="supply_plan">
-                                <button type="submit" class="run-btn run-btn-supply" {% if not r.has_supply_plan %}disabled{% endif %}><i class="fas fa-boxes-stacked"></i>Supply Plan</button>
-                              </form>
-                              <form method="post" action="/history/delete" class="d-inline js-delete-run">
-                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                <button type="submit" class="run-btn run-btn-delete"><i class="fas fa-trash-can"></i>Delete</button>
-                              </form>
+                              <div class="run-btn-wrap">
+                                <form method="post" action="/history/load" class="d-contents">
+                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                  <input type="hidden" name="target" value="results">
+                                  <button type="submit" class="run-btn run-btn-results" title="Results"><i class="fas fa-chart-line"></i></button>
+                                </form>
+                                <form method="post" action="/history/load" class="d-contents">
+                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                  <input type="hidden" name="target" value="insights">
+                                  <button type="submit" class="run-btn run-btn-insights" title="Insights"><i class="fas fa-lightbulb"></i></button>
+                                </form>
+                                <form method="post" action="/history/load" class="d-contents">
+                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                  <input type="hidden" name="target" value="supply_plan">
+                                  <button type="submit" class="run-btn run-btn-supply" title="Supply Plan" {% if not r.has_supply_plan %}disabled{% endif %}><i class="fas fa-layer-group"></i></button>
+                                </form>
+                                <form method="post" action="/history/delete" class="d-contents js-delete-run">
+                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                  <button type="submit" class="run-btn run-btn-delete" title="Delete"><i class="fas fa-trash"></i></button>
+                                </form>
+                              </div>
                             </td>
                           </tr>
                         {% endfor %}
@@ -728,25 +731,27 @@
                               {% endif %}
                             </td>
                             <td class="text-end pe-3">
-                                <form method="post" action="/history/load" class="d-inline">
-                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                  <input type="hidden" name="target" value="results">
-                                  <button type="submit" class="run-btn run-btn-results"><i class="fas fa-chart-line"></i>Results</button>
-                                </form>
-                                <form method="post" action="/history/load" class="d-inline">
-                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                  <input type="hidden" name="target" value="insights">
-                                  <button type="submit" class="run-btn run-btn-insights"><i class="fas fa-lightbulb"></i><span data-i18n="nav_insights">Insights</span></button>
-                                </form>
-                                <form method="post" action="/history/load" class="d-inline">
-                                  <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                  <input type="hidden" name="target" value="supply_plan">
-                                  <button type="submit" class="run-btn run-btn-supply" {% if not r.has_supply_plan %}disabled{% endif %}><i class="fas fa-boxes-stacked"></i>Supply Plan</button>
-                                </form>
-                              <form method="post" action="/history/delete" class="d-inline js-delete-run">
-                                <input type="hidden" name="run_id" value="{{ r.run_id }}">
-                                <button type="submit" class="run-btn run-btn-delete"><i class="fas fa-trash-can"></i>Delete</button>
-                              </form>
+                                <div class="run-btn-wrap">
+                                  <form method="post" action="/history/load" class="d-contents">
+                                    <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                    <input type="hidden" name="target" value="results">
+                                    <button type="submit" class="run-btn run-btn-results" title="Results"><i class="fas fa-chart-line"></i></button>
+                                  </form>
+                                  <form method="post" action="/history/load" class="d-contents">
+                                    <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                    <input type="hidden" name="target" value="insights">
+                                    <button type="submit" class="run-btn run-btn-insights" title="Insights"><i class="fas fa-lightbulb"></i></button>
+                                  </form>
+                                  <form method="post" action="/history/load" class="d-contents">
+                                    <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                    <input type="hidden" name="target" value="supply_plan">
+                                    <button type="submit" class="run-btn run-btn-supply" title="Supply Plan" {% if not r.has_supply_plan %}disabled{% endif %}><i class="fas fa-layer-group"></i></button>
+                                  </form>
+                                  <form method="post" action="/history/delete" class="d-contents js-delete-run">
+                                    <input type="hidden" name="run_id" value="{{ r.run_id }}">
+                                    <button type="submit" class="run-btn run-btn-delete" title="Delete"><i class="fas fa-trash"></i></button>
+                                  </form>
+                                </div>
                             </td>
                           </tr>
                         {% endfor %}
