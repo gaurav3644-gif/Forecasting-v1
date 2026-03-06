@@ -240,36 +240,52 @@
             box-shadow: 0 10px 26px rgba(67,233,123,0.18);
         }
 
-        /* ── Dark application navbar (logo is designed for dark backgrounds) ── */
+        /* ── Light application navbar (matches PiTensor gradient logo) ── */
         .pt-app-navbar {
-            background: #0a0f0d;
-            border-bottom: 1px solid rgba(67,233,123,0.14);
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(18,24,39,0.10);
+            box-shadow: 0 1px 16px rgba(18,24,39,0.06);
         }
         .pt-app-navbar .btn-outline-secondary {
-            border-color: rgba(255,255,255,0.55) !important;
-            color: #fff !important;
+            border-color: rgba(18,24,39,0.28) !important;
+            color: rgba(18,24,39,0.72) !important;
             background: transparent;
         }
         .pt-app-navbar .btn-outline-secondary:hover,
         .pt-app-navbar .btn-outline-secondary:active {
-            background: rgba(255,255,255,0.12) !important;
-            border-color: rgba(255,255,255,0.75) !important;
-            color: #fff !important;
+            background: rgba(18,24,39,0.06) !important;
+            border-color: rgba(18,24,39,0.40) !important;
+            color: rgba(18,24,39,0.90) !important;
             box-shadow: none;
         }
         .pt-app-navbar .pt-navbar-text-muted {
-            color: rgba(255,255,255,0.52) !important;
+            color: rgba(18,24,39,0.42) !important;
         }
         .pt-app-navbar .lang-picker {
-            background: rgba(255,255,255,0.08);
-            border-color: rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.65);
+            border-color: rgba(18,24,39,0.12);
         }
         .pt-app-navbar .lang-picker select {
-            color: rgba(255,255,255,0.78);
+            color: rgba(18,24,39,0.80);
         }
         .pt-app-navbar .lang-picker select option {
-            background: #1a1f1d;
-            color: rgba(255,255,255,0.88);
+            background: #ffffff;
+            color: rgba(18,24,39,0.88);
+        }
+
+        /* Connector modal is appended to <body> (outside .zoom-wrapper).
+           Apply the same zoom as the wrapper so it matches the page scale. */
+        body > #connector-modal .modal-dialog,
+        body > #connector-modal .modal-content {
+            zoom: 0.8;
+        }
+        @supports not (zoom: 1) {
+            body > #connector-modal .modal-dialog {
+                transform: scale(0.8);
+                transform-origin: top center;
+            }
         }
 
     </style>
@@ -893,7 +909,7 @@
 <body>
     <div class="zoom-wrapper">
     {% block navbar %}
-    <nav class="navbar navbar-expand-lg navbar-dark pt-app-navbar mb-4">
+    <nav class="navbar navbar-expand-lg navbar-light pt-app-navbar mb-4">
         <div class="container-fluid">
             <a class="navbar-brand pt-navbar-brand" href="/" aria-label="PiTensor Home">
                 <img class="pt-navbar-logo" src="/static/pitensor-logo-cropped.png" alt="PiTensor">
